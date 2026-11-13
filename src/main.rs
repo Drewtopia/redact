@@ -70,6 +70,60 @@ enum Command {
     },
     /// Print a shell completion script, e.g. `redact completions zsh`.
     Completions { shell: clap_complete::Shell },
+    /// Print shell setup: completions plus `redacted <cmd>`, which runs a
+    /// command and masks its output, stderr included, keeping its exit status.
+    ///
+    /// Add one line to your shell's startup file:
+    ///
+    ///   bash  ~/.bashrc                        eval "$(redact init bash)"
+    ///   zsh   ~/.zshrc                         eval "$(redact init zsh)"
+    ///   fish  ~/.config/fish/config.fish       redact init fish | source
+    ///   pwsh  $PROFILE                         Invoke-Expression (& redact init powershell | Out-String)
+    ///   elvish ~/.config/elvish/rc.elv         eval (redact init elvish | slurp)
+    #[command(verbatim_doc_comment)]
+    Init { shell: clap_complete::Shell },
+}
+
+/// The `redacted` helper `redact init` prints for each shell. It merges
+/// stderr into stdout, passes the command line as `--command`, and keeps the
+/// command's exit status.
+fn init_helper(shell: clap_complete::Shell) -> &'static str {
+    use clap_complete::Shell;
+    match shell {
+        Shell::Bash => {
+            r#"redacted() { "$@" 2>&1 | redact scan --command "$*"; return "${PIPESTATUS[0]}"; }
+"#
+        }
+        Shell::Zsh => {
+            r#"redacted() { "$@" 2>&1 | redact scan --command "$*"; return "${pipestatus[1]}"; }
+"#
+        }
+        Shell::Fish => {
+            r#"function redacted
+    $argv 2>&1 | redact scan --command "$argv"
+    return $pipestatus[1]
+end
+"#
+        }
+        // shortcut: buffers the output to keep the exit code; stream it if long runs need live output.
+        Shell::PowerShell => {
+            r#"function redacted {
+    $c = $args -join ' '
+    $rest = @($args | Select-Object -Skip 1)
+    $out = & $args[0] @rest 2>&1
+    $code = $LASTEXITCODE
+    $out | ForEach-Object { "$_" } | redact scan --command $c
+    $global:LASTEXITCODE = $code
+}
+"#
+        }
+        Shell::Elvish => {
+            r#"use str
+fn redacted {|@a| var rest = $a[1..]; (external $a[0]) $@rest 2>&1 | redact scan --command (str:join ' ' $a) }
+"#
+        }
+        _ => "",
+    }
 }
 
 #[derive(Subcommand)]
@@ -134,7 +188,10 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    if let Command::Completions { shell } = &command {
+    if let Command::Init { shell } = &command {
+        print!("{}", init_helper(*shell));
+    }
+    if let Command::Completions { shell } | Command::Init { shell } = &command {
         clap_complete::generate(
             *shell,
             &mut Cli::command(),
@@ -199,7 +256,7 @@ fn main() -> ExitCode {
             };
             emit(std::io::stdout().write_all(out.as_bytes()))
         }
-        Command::Completions { .. } => unreachable!("handled above"),
+        Command::Completions { .. } | Command::Init { .. } => unreachable!("handled above"),
     }
 }
 
@@ -352,6 +409,46 @@ mod docs {
             ));
         }
         out
+    }
+
+    /// Every shell `redact init` accepts gets a `redacted` helper, and the bash
+    /// one pipes stderr through `redact scan` and keeps the command's status.
+    #[test]
+    fn init_gives_every_shell_a_helper() {
+        use clap::ValueEnum;
+        for shell in clap_complete::Shell::value_variants() {
+            assert!(init_helper(*shell).contains("redacted"), "{shell}");
+        }
+        if cfg!(not(unix)) {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("redact-init-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // A stand-in redact that tags each line it is given.
+        let stub = dir.join("redact");
+        std::fs::write(&stub, "#!/bin/sh\nsed 's/^/scanned:/'\n").unwrap();
+        #[cfg(unix)]
+        std::fs::set_permissions(&stub, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        let script = format!(
+            "{}redacted sh -c 'echo out; echo err >&2; exit 3'; echo \"status=$?\"",
+            init_helper(clap_complete::Shell::Bash)
+        );
+        let Ok(out) = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(script)
+            .env("PATH", format!("{}:/usr/bin:/bin", dir.display()))
+            .output()
+        else {
+            return; // no bash on this machine
+        };
+        std::fs::remove_dir_all(&dir).ok();
+        let out = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.contains("scanned:out") && out.contains("scanned:err"),
+            "{out}"
+        );
+        assert!(out.contains("status=3"), "{out}");
     }
 
     /// Every example in the starter config, uncommented, loads: the starter can
