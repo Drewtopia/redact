@@ -1,5 +1,8 @@
 # redact
 
+> [!WARNING]
+> **Work in progress.** redact hides a lot, but not everything, and it will miss things. Check its output before you share anything that matters, and do not rely on it as your only safeguard. Found a leak? Please [open an issue](https://github.com/Drewtopia/redact/issues) naming the command and the field, never the value.
+
 Keep secrets, names, and sensitive information out of what AI sees. Pipe any output through `redact` and the parts that say who you are, who you work for or how to get in (tenant and subscription IDs, people, hosts, project names, tokens) come back as placeholders, so you can hand it to Claude, Codex or a chat window without giving those away.
 
 ```console

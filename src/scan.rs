@@ -1,6 +1,7 @@
 //! Finding the parts of a text to hide, and swapping them for placeholders.
 
 use crate::pack::{Loaded, Remember};
+use aho_corasick::AhoCorasick;
 use hmac::{Hmac, KeyInit, Mac};
 use regex::Regex;
 use serde::Serialize;
@@ -113,35 +114,49 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
 }
 
 /// Every remembered value and listed word, as a whole word, in any case.
-fn find_words(text: &str, mut words: Vec<Word>) -> Result<Vec<Span>, String> {
+///
+/// One Aho-Corasick pass finds every word at once, however many there are (a
+/// regex of thousands of alternatives grew past its size limit and took 25 s on
+/// 1 MB). Overlapping matches are all kept; `merge` then keeps the earliest and
+/// longest, so `Fabrikam Holdings` wins over `Fabrikam`. Case is ignored for
+/// ASCII letters only: `ÄBC` does not match `äbc`.
+fn find_words(text: &str, words: Vec<Word>) -> Result<Vec<Span>, String> {
     if words.is_empty() {
         return Ok(Vec::new());
     }
-    // Longest first, so `Fabrikam Holdings` wins over `Fabrikam`.
-    words.sort_by_key(|w| std::cmp::Reverse(w.text.len()));
-    words.dedup_by(|a, b| a.text.to_lowercase() == b.text.to_lowercase());
-    let alt = words
-        .iter()
-        .map(|w| regex::escape(&w.text))
-        .collect::<Vec<_>>()
-        .join("|");
-    let re = Regex::new(&format!(r"(?i)\b(?:{alt})\b"))
-        .map_err(|e| format!("word list too large to match: {e}"))?;
-    Ok(re
-        .find_iter(text)
-        .map(|m| {
-            let found = m.as_str().to_lowercase();
-            // A match the case-folding could not tie back to its word still gets hidden.
-            let w = words.iter().find(|w| w.text.to_lowercase() == found);
-            Span {
-                start: m.start(),
-                end: m.end(),
-                label: w.map_or("WORD".into(), |w| w.label.clone()),
-                pack: w.map_or("words".into(), |w| w.pack.clone()),
-                rule: w.map_or("words".into(), |w| w.rule.clone()),
-            }
-        })
-        .collect())
+    let mut seen = HashSet::new();
+    let words: Vec<Word> = words
+        .into_iter()
+        .filter(|w| seen.insert(w.text.to_ascii_lowercase()))
+        .collect();
+    let ac = AhoCorasick::builder()
+        .ascii_case_insensitive(true)
+        .build(words.iter().map(|w| &w.text))
+        .map_err(|e| format!("cannot build the word matcher: {e}"))?;
+    // A word edge that is a letter or digit must not touch another one, so
+    // `Contoso` is not found inside `Contosoville`. Bytes past ASCII count as
+    // letters, so a match never splits a multi-byte character.
+    let is_word = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b >= 0x80;
+    let bytes = text.as_bytes();
+    let mut out = Vec::new();
+    for m in ac.find_overlapping_iter(text) {
+        let w = &words[m.pattern().as_usize()];
+        let (start, end) = (m.start(), m.end());
+        let (first, last) = (w.text.as_bytes()[0], w.text.as_bytes()[w.text.len() - 1]);
+        if (is_word(first) && start > 0 && is_word(bytes[start - 1]))
+            || (is_word(last) && end < bytes.len() && is_word(bytes[end]))
+        {
+            continue;
+        }
+        out.push(Span {
+            start,
+            end,
+            label: w.label.clone(),
+            pack: w.pack.clone(),
+            rule: w.rule.clone(),
+        });
+    }
+    Ok(out)
 }
 
 /// Sorted, with overlaps removed: the earliest, then longest, span wins.
