@@ -81,6 +81,16 @@ test('a binary that fails withholds the result instead of passing it raw', async
   expect(JSON.stringify(r)).toContain('withheld')
 })
 
+test('a result nested too deep to scan is withheld, even with nothing else hidden', async ($, on) => {
+  let deep: unknown = `TOKEN=${TOKEN}`
+  for (let i = 0; i < 70; i++) deep = { deep }
+  fakeRedact(on)
+  on('tool.call', () => ({ result: deep }))
+  const r = await call($, { tool: 'mcp__x__get', id: 1 })
+  expect(JSON.stringify(r)).not.toContain(TOKEN)
+  expect(JSON.stringify(r)).toContain('withheld')
+})
+
 test('spans of an unknown shape withhold the result', async ($, on) => {
   on('ui.notice', () => ({ value: undefined }))
   on('ui.toast', () => ({ value: undefined }))
