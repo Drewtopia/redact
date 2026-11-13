@@ -49,5 +49,6 @@ jobs:
           bin: redact
           target: ${{ matrix.target }}
           archive: $bin-$tag-$target
+          include: LICENSE-MIT,LICENSE-APACHE,LICENSE-THIRD-PARTY
           checksum: sha256
           token: ${{ secrets.GITHUB_TOKEN }}

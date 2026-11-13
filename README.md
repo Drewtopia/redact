@@ -129,8 +129,10 @@ The full guide, every pack's rules and the CLI reference: **[drewtopia.github.io
 
 ## Prior art and thanks
 
-redact borrows ideas, not code, from tools it was built alongside: rule packs from [dcg](https://github.com/Dicklesworthstone/destructive_command_guard); restorable placeholders and several credential shapes from Ray Amjad's [transcript-redactor](https://github.com/ray-amjad/claude-code-mods) (MIT); config imports and output masking from [fnox](https://github.com/jdx/fnox); layered config from [mise](https://mise.jdx.dev) and [worktrunk](https://github.com/max-sixty/worktrunk); `.env` hiding from [dotenvx](https://dotenvx.com); rule field names from [gitleaks](https://github.com/gitleaks/gitleaks). Thank you to their authors.
+redact draws on rule packs from [dcg](https://github.com/Dicklesworthstone/destructive_command_guard), config imports and output masking from [fnox](https://github.com/jdx/fnox), layered config from [mise](https://mise.jdx.dev) and [worktrunk](https://github.com/max-sixty/worktrunk), `.env` hiding from [dotenvx](https://dotenvx.com), and rule field names from [gitleaks](https://github.com/gitleaks/gitleaks).
+
+Several credential patterns are adapted from Ray Amjad's [transcript-redactor](https://github.com/ray-amjad/claude-code-mods). A small dotenv escape helper also closely matches fnox's implementation. Their MIT copyright and licence notices are retained in [LICENSE-THIRD-PARTY](LICENSE-THIRD-PARTY). See [Prior art and thanks](docs/reference/thanks.md) for the details. Thank you to their authors.
 
 ## Licence
 
-MIT or Apache-2.0, at your option.
+MIT or Apache-2.0, at your option. Third-party portions retain the notices in [LICENSE-THIRD-PARTY](LICENSE-THIRD-PARTY).
