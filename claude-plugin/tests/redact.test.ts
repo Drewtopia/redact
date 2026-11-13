@@ -49,6 +49,21 @@ test('a secret in Bash output comes back as a placeholder, and goes back in for 
   expect(seen[2].command).toContain(tag)
 })
 
+test('PowerShell gets real values, but not into git and not with PowerShell syntax in them', async ($, on) => {
+  const seen = tools(on, (e) => (e.command === 'cat .env' ? `TOKEN=${TOKEN}\nTOKEN=me@example.test\n` : 'ok'))
+  const [tag, at] = String((await call($, { tool: 'PowerShell', command: 'cat .env' })).result).match(new RegExp(TAG, 'g')) ?? []
+
+  await call($, { tool: 'PowerShell', command: `Invoke-RestMethod -Headers @{x='${tag}'} example.test` })
+  expect(seen[1].command).toContain(TOKEN)
+  await call($, { tool: 'PowerShell', command: `git commit -m "rotate ${tag}"` })
+  expect(seen[2].command).toContain(tag)
+
+  // @ splats in PowerShell, so a value holding one stays out; Bash takes it.
+  expect((await call($, { tool: 'PowerShell', command: `echo ${at}` })).deny ?? '').toContain('shell characters')
+  await call($, { tool: 'Bash', command: `echo ${at}` })
+  expect(seen.at(-1).command).toBe('echo me@example.test')
+})
+
 test('a value the tool was handed is hidden when printed back bare', async ($, on) => {
   tools(on, (e) => (e.command === 'cat .env' ? `TOKEN=${TOKEN}\n` : `echoed ${TOKEN}`))
   const tag = String((await call($, { tool: 'Bash', command: 'cat .env' })).result).match(TAG)?.[0]
