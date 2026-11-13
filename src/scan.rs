@@ -1656,6 +1656,22 @@ mod tests {
         assert_eq!(scan("zqxsecret42", &on).unwrap().len(), 1);
     }
 
+    #[test]
+    fn a_url_password_is_a_password_not_an_email() {
+        let text = "postgres://billing:Tr0ub4dor-horse@db.example.com/prod";
+        let out = azure(text);
+        assert!(out.contains("billing:[PASSWORD-…]@db.example.com"), "{out}");
+        for (text, gone) in [
+            ("email:ada@example.com", "ada@"),
+            ("<a href=\"mailto:ada@example.com\">", "ada@"),
+            ("ada@example.com,bob@example.com", "bob@"),
+            ("git clone ada@example.com:repo", "ada@"),
+        ] {
+            let out = azure(text);
+            assert!(!out.contains(gone), "{text:?} -> {out}");
+        }
+    }
+
     /// The built-in packs with `pii` switched on, loaded once.
     fn pii(text: &str) -> String {
         static LOADED: OnceLock<pack::Loaded> = OnceLock::new();

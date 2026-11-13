@@ -10,7 +10,9 @@ allow = ["git@github.com", "git@gitlab.com", "git@bitbucket.org", "git@ssh.dev.a
 [[rules]]
 id = "email"
 description = "An email address, anywhere"
-regex = '''\b([A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24})\b'''
+# Not straight after `scheme://user:`, where `password@host` would read as an
+# address: the credentials pack hides that password. After `email:` or `mailto:` it still matches.
+regex = '''(?:^|[^A-Za-z0-9._%+:/-]|(?:^|[^/A-Za-z0-9._%+-])[A-Za-z0-9_-]*:)([A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24})\b'''
 secretGroup = 1
 label = "EMAIL"
 # Not remembered: this rule already finds an address wherever it appears, and
