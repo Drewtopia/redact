@@ -1,0 +1,287 @@
+# Built-in pack: Azure and Azure DevOps.
+# Each rule's regex finds a spot; `secretGroup` is the capture group that gets hidden,
+# and `label` is what the placeholder says instead: [TENANT-ID-1a2b3c4d].
+# `remember = "distinctive"` hides that value everywhere else in the same text when it
+# reads as a name; `"any"` does so for any capitalised or 5+ character value.
+schema_version = 1
+id = "azure"
+description = "Azure tenant, subscription and identity IDs, people in identity records, your own hosts, and Azure DevOps org, project and repo names"
+keywords = ["tenant", "subscription", "client", "app", "object", "principal", "identities", "isdefault", "uniquename", "principalname", "system.", "microsoft.vsts.", "dynamics.com", "azurewebsites", "powerappsportals", "vault.azure", "windows.net", "azurecr", "sharepoint", "onmicrosoft", "dev.azure.com", "/_git/", "wellformed", "remoteurl", "sshurl", "user", "mail", "userprincipalname", "companyname", "phone", "lastaccesseddate"]
+
+# Public values Microsoft documents: never hidden.
+allow = [
+  "AzureCloud",
+  "04b07795-8ddb-461a-bbee-02f9e1bf7b46", # Azure CLI app ID
+  "1950a258-227b-4e31-a9cf-717495945fc2", # Azure PowerShell app ID
+  "00000003-0000-0000-c000-000000000000", # Microsoft Graph app ID
+  "797f4846-ba00-4fd7-ba43-dac1f8f63013", # Azure Resource Manager app ID
+  "8e3af657-a8ff-443c-a75c-2fe8c4bcb635", # Owner role
+  "b24988ac-6180-42a0-ab88-20f7382dd24c", # Contributor role
+  "acdd72a7-3385-48ef-bd42-f606fba81ae7", # Reader role
+]
+
+# --- IDs beside the name that says what they are ------------------------------
+
+[[rules]]
+id = "tenant-id"
+description = "A tenant GUID after tenantId, /tenants/ or --tenant"
+regex = '''(?i)(?:tenant(?:[_-]?id)?["']?[ \t]*[:=][ \t]*["']?|/tenants/|--tenant[ \t=]+["']?)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b'''
+secretGroup = 1
+label = "TENANT-ID"
+keywords = ["tenant"]
+
+[[rules]]
+id = "subscription-id"
+description = "A subscription GUID after subscriptionId, /subscriptions/ or --subscription"
+regex = '''(?i)(?:subscription(?:[_-]?id)?["']?[ \t]*[:=][ \t]*["']?|/subscriptions/|--subscription[ \t=]+["']?)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b'''
+secretGroup = 1
+label = "SUBSCRIPTION-ID"
+keywords = ["subscription"]
+
+[[rules]]
+id = "subscription-record-id"
+description = "The bare \"id\" in an az account record"
+regex = '''(?i)"id"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"'''
+secretGroup = 1
+label = "SUBSCRIPTION-ID"
+within = '''"isDefault"\s*:'''
+keywords = ["isdefault"]
+
+[[rules]]
+id = "app-id"
+description = "An app or client GUID after appId or clientId"
+regex = '''(?i)(?:client|app)[_-]?id["']?[ \t]*[:=][ \t]*["']?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b'''
+secretGroup = 1
+label = "APP-ID"
+keywords = ["client", "app"]
+
+[[rules]]
+id = "object-id"
+description = "An object or principal GUID after objectId or principalId"
+regex = '''(?i)(?:object|principal)[_-]?id["']?[ \t]*[:=][ \t]*["']?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b'''
+secretGroup = 1
+label = "OBJECT-ID"
+keywords = ["object", "principal"]
+
+[[rules]]
+id = "identity-id"
+description = "An Azure DevOps identity GUID in an identity URL"
+regex = '''(?i)/_apis/identities/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b'''
+secretGroup = 1
+label = "IDENTITY-ID"
+keywords = ["identities"]
+
+# --- People --------------------------------------------------------------------
+
+[[rules]]
+id = "identity-person"
+description = "A name in an Azure DevOps or Entra identity record"
+regex = '''"(?:displayName|givenName|surname)"\s*:\s*"([^"\\]{2,200})"'''
+secretGroup = 1
+label = "PERSON"
+within = '''"(?:uniqueName|userPrincipalName|principalName)"\s*:'''
+remember = "distinctive"
+keywords = ["uniquename", "principalname"]
+
+[[rules]]
+id = "work-item-person"
+description = "The flat form: \"System.AssignedTo\": \"Name <email>\""
+regex = '''"(?:System|Microsoft\.VSTS\.[A-Za-z]+)\.(?:AssignedTo|CreatedBy|ChangedBy|AuthorizedAs|ActivatedBy|ResolvedBy|ClosedBy)"\s*:\s*"([^"<\\]{2,200}?)\s*(?:<[^"]*)?"'''
+secretGroup = 1
+label = "PERSON"
+remember = "distinctive"
+keywords = ["system.", "microsoft.vsts."]
+
+# --- Your own hosts: the <name> part is yours, the suffix is Microsoft's ---------
+
+[[rules]]
+id = "dataverse-env"
+description = "<name>.crm11.dynamics.com"
+regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{1,62})\.crm[0-9]*\.dynamics\.com'''
+secretGroup = 1
+label = "DATAVERSE-ENV"
+remember = "distinctive"
+keywords = ["dynamics.com"]
+
+[[rules]]
+id = "web-app"
+description = "<name>.azurewebsites.net and <name>.powerappsportals.com"
+regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{1,62})\.(?:(?:scm\.)?azurewebsites\.net|powerappsportals\.com)'''
+secretGroup = 1
+label = "WEB-APP"
+remember = "distinctive"
+keywords = ["azurewebsites", "powerappsportals"]
+
+[[rules]]
+id = "azure-resource"
+description = "Key Vault, storage, SQL, Service Bus and container registry names"
+regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{1,62})\.(?:vault\.azure\.net|(?:blob|file|queue|table|dfs)\.core\.windows\.net|database\.windows\.net|servicebus\.windows\.net|azurecr\.io)'''
+secretGroup = 1
+label = "AZURE-RESOURCE"
+remember = "distinctive"
+keywords = ["vault.azure", "windows.net", "azurecr"]
+
+[[rules]]
+id = "tenant-name"
+description = "<name>.sharepoint.com and <name>.onmicrosoft.com"
+regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{1,62})\.(?:sharepoint\.com|onmicrosoft\.com)'''
+secretGroup = 1
+label = "TENANT-NAME"
+remember = "any"
+keywords = ["sharepoint", "onmicrosoft"]
+
+# --- Azure DevOps: found by place, not listed ------------------------------------
+
+[[rules]]
+id = "ado-org"
+description = "dev.azure.com/<org>"
+regex = '''(?i)dev\.azure\.com/([a-z0-9][a-z0-9-]{0,49})\b'''
+secretGroup = 1
+label = "ORG"
+remember = "any"
+keywords = ["dev.azure.com"]
+
+[[rules]]
+id = "ado-project-url"
+description = "dev.azure.com/<org>/<project>"
+regex = '''(?i)dev\.azure\.com/[^/\s"']{1,60}/([^/\s"'?#_][^/\s"'?#]{0,63})'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["dev.azure.com"]
+
+[[rules]]
+id = "ado-repo-url"
+description = ".../_git/<repo>"
+regex = '''/_git/([^/\s"'?#]{1,64})'''
+secretGroup = 1
+label = "REPO"
+remember = "distinctive"
+keywords = ["/_git/"]
+
+[[rules]]
+id = "work-item-project"
+description = "A work item's TeamProject, and the first part of AreaPath and IterationPath"
+regex = '''"System\.(?:TeamProject|AreaPath|IterationPath|AreaLevel1|IterationLevel1)"\s*:\s*"([^"\\]{1,64})'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["system."]
+
+[[rules]]
+id = "project-record"
+description = "The name in an az devops project record"
+regex = '''"name"\s*:\s*"([^"\\]{1,64})"'''
+secretGroup = 1
+label = "PROJECT"
+within = '''"state"\s*:\s*"wellFormed"'''
+remember = "any"
+keywords = ["wellformed"]
+
+[[rules]]
+id = "repo-record"
+description = "The name in an az repos record"
+regex = '''"name"\s*:\s*"([^"\\]{1,64})"'''
+secretGroup = 1
+label = "REPO"
+within = '''"(?:remoteUrl|sshUrl)"\s*:'''
+remember = "distinctive"
+keywords = ["remoteurl", "sshurl"]
+
+# --- az account show / list ------------------------------------------------------
+
+[[rules]]
+id = "tenant-display-name"
+description = "tenantDisplayName: usually the organisation's own name"
+regex = '''"tenantDisplayName"\s*:\s*"([^"\\]{1,200})"'''
+secretGroup = 1
+label = "TENANT-NAME"
+remember = "any"
+keywords = ["tenantdisplayname"]
+
+[[rules]]
+id = "subscription-name"
+description = "The name of a subscription in an az account record"
+regex = '''"name"\s*:\s*"([^"\\]{1,200})"'''
+secretGroup = 1
+label = "SUBSCRIPTION-NAME"
+within = '''"isDefault"\s*:'''
+remember = "distinctive"
+keywords = ["isdefault"]
+
+[[rules]]
+id = "signed-in-user"
+description = "The user or service principal az is signed in as"
+regex = '''"name"\s*:\s*"([^"\\]{1,200})"'''
+secretGroup = 1
+label = "USER"
+within = '''"type"\s*:\s*"(?:user|servicePrincipal)"'''
+remember = "distinctive"
+keywords = ["user", "serviceprincipal"]
+
+[[rules]]
+id = "identity-email"
+description = "The sign-in name or email in an identity record"
+regex = '''"(?:uniqueName|userPrincipalName|principalName|mail)"\s*:\s*"([^"\\\s]{1,200}@[^"\\\s]{1,200})"'''
+secretGroup = 1
+label = "EMAIL"
+remember = "distinctive"
+keywords = ["uniquename", "principalname", "mail"]
+
+# --- az ad user / signed-in-user (Microsoft Graph user records) -------------------
+
+[[rules]]
+id = "graph-user-id"
+description = "The object id of a Graph user record"
+regex = '''(?i)"id"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"'''
+secretGroup = 1
+label = "OBJECT-ID"
+within = '''"userPrincipalName"\s*:'''
+keywords = ["userprincipalname"]
+
+[[rules]]
+id = "graph-user-detail"
+description = "Job, office and address fields of a Graph user record"
+regex = '''"(?:jobTitle|officeLocation|department|streetAddress|city|state|postalCode|country|usageLocation|employeeId)"\s*:\s*"([^"\\]{1,200})"'''
+secretGroup = 1
+label = "USER-DETAIL"
+within = '''"userPrincipalName"\s*:'''
+keywords = ["userprincipalname"]
+
+[[rules]]
+id = "graph-company"
+description = "companyName: the employer"
+regex = '''"companyName"\s*:\s*"([^"\\]{1,200})"'''
+secretGroup = 1
+label = "EMPLOYER"
+remember = "any"
+keywords = ["companyname"]
+
+[[rules]]
+id = "phone"
+description = "A phone number in a Graph user record (mobilePhone, businessPhones)"
+regex = '''"(\+?[0-9][0-9 ().-]{5,20}[0-9])"'''
+secretGroup = 1
+label = "PHONE"
+within = '''"(?:mobilePhone|businessPhones|faxNumber)"\s*:'''
+keywords = ["phone", "faxnumber"]
+
+[[rules]]
+id = "identity-guids"
+description = "A person's id, originId and directory domain in an identity record: each points at one person"
+regex = '''(?i)"(?:id|originId|localId|domain)"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"'''
+secretGroup = 1
+label = "IDENTITY-ID"
+within = '''"(?:uniqueName|principalName|userPrincipalName)"\s*:'''
+remember = "distinctive"
+keywords = ["uniquename", "principalname"]
+
+[[rules]]
+id = "user-entitlement-id"
+description = "The id of a member in az devops user list: one per person"
+regex = '''(?i)"id"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"'''
+secretGroup = 1
+label = "IDENTITY-ID"
+within = '''"lastAccessedDate"\s*:'''
+remember = "distinctive"
+keywords = ["lastaccesseddate"]

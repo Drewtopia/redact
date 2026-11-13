@@ -1,0 +1,23 @@
+[package]
+name = "redact"
+version = "0.1.0"
+edition = "2024"
+description = "Hide the names, IDs and hosts in text that say who you work for"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Drewtopia/redact"
+readme = "README.md"
+keywords = ["redact", "privacy", "azure", "cli", "ai"]
+categories = ["command-line-utilities"]
+publish = false
+
+[dependencies]
+clap = { version = "4.6.7", features = ["derive", "env"] }
+clap_complete = "4.6.11"
+etcetera = "0.11.0"
+getrandom = "0.4.3"
+hmac = "0.13.0"
+regex = "1.13.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+toml = "1.2.1"
