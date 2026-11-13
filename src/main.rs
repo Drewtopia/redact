@@ -165,16 +165,10 @@ fn main() -> ExitCode {
         Err(e) => return fail(&e),
     };
     match command {
-        Command::Packs => {
-            print_packs(&loaded);
-            ExitCode::SUCCESS
-        }
+        Command::Packs => emit(print_packs(&mut std::io::stdout().lock(), &loaded)),
         Command::Config {
             action: ConfigAction::Ls,
-        } => {
-            print_sources(&loaded);
-            ExitCode::SUCCESS
-        }
+        } => emit(print_sources(&mut std::io::stdout().lock(), &loaded)),
         Command::Config {
             action: ConfigAction::Init { .. },
         } => unreachable!("handled before loading"),
@@ -203,12 +197,19 @@ fn main() -> ExitCode {
                     }
                 }
             };
-            match std::io::stdout().write_all(out.as_bytes()) {
-                Ok(()) => ExitCode::SUCCESS,
-                Err(e) => fail(&format!("cannot write stdout: {e}")),
-            }
+            emit(std::io::stdout().write_all(out.as_bytes()))
         }
         Command::Completions { .. } => unreachable!("handled above"),
+    }
+}
+
+// A reader that stops early (`redact packs | head`) is not a failure.
+fn emit(written: std::io::Result<()>) -> ExitCode {
+    match written {
+        Err(e) if e.kind() != std::io::ErrorKind::BrokenPipe => {
+            fail(&format!("cannot write stdout: {e}"))
+        }
+        _ => ExitCode::SUCCESS,
     }
 }
 
@@ -217,7 +218,7 @@ fn fail(message: &str) -> ExitCode {
     ExitCode::from(3)
 }
 
-fn print_packs(loaded: &pack::Loaded) {
+fn print_packs(w: &mut impl Write, loaded: &pack::Loaded) -> std::io::Result<()> {
     let all = loaded.packs.iter().map(|p| (p, "")).chain(
         loaded
             .off
@@ -225,37 +226,41 @@ fn print_packs(loaded: &pack::Loaded) {
             .map(|p| (p, ", off: turn on with [packs] enable")),
     );
     for (p, off) in all {
-        println!("{}  {} rules  ({}{off})", p.id, p.rules.len(), p.source);
+        writeln!(w, "{}  {} rules  ({}{off})", p.id, p.rules.len(), p.source)?;
         if !p.description.is_empty() {
-            println!("  {}", p.description);
+            writeln!(w, "  {}", p.description)?;
         }
         for r in &p.rules {
-            println!("  {:<24} [{}-…]  {}", r.id, r.label, r.description);
+            writeln!(w, "  {:<24} [{}-…]  {}", r.id, r.label, r.description)?;
         }
         if !p.allow_as_written.is_empty() {
-            println!(
+            writeln!(
+                w,
                 "  allowed (never hidden): {}",
                 p.allow_as_written.join(", ")
-            );
+            )?;
         }
     }
-    for w in &loaded.words {
-        println!(
+    for list in &loaded.words {
+        writeln!(
+            w,
             "words  {} entries as [{}-…]  ({})",
-            w.words.len(),
-            w.label,
-            w.source
-        );
+            list.words.len(),
+            list.label,
+            list.source
+        )?;
     }
     if let Some(home) = pack::config_home() {
-        println!(
+        writeln!(
+            w,
             "\nYour config: {}  (redact config ls shows every file)",
             pack::tilde(&home.join("config.toml"))
-        );
+        )?;
     }
+    Ok(())
 }
 
-fn print_sources(loaded: &pack::Loaded) {
+fn print_sources(w: &mut impl Write, loaded: &pack::Loaded) -> std::io::Result<()> {
     let width = loaded
         .sources
         .iter()
@@ -268,14 +273,16 @@ fn print_sources(loaded: &pack::Loaded) {
             .as_deref()
             .map(|v| format!("  <- {v}"))
             .unwrap_or_default();
-        println!(
+        writeln!(
+            w,
             "{:>2}  {:<7} {:<width$}  {}{via}",
             i + 1,
             s.kind,
             s.path,
             s.detail
-        );
+        )?;
     }
+    Ok(())
 }
 
 /// The reference pages in docs/ are generated from the code, so they cannot

@@ -42,6 +42,16 @@ Or download a binary for macOS, Linux or Windows from [Releases](https://github.
 
 Exit codes: 0 done, 2 bad usage, 3 a pack would not load or the scan failed. A file that will not load stops redact rather than being skipped: a redactor that quietly skips a rule hides less than you think.
 
+## With AI agents
+
+**Claude Code:** the `redact` mod runs every prompt, tool result, CLAUDE.md and subagent task through redact before Claude reads it, and puts the real value back when Claude uses a placeholder in a local command. With the binary installed, type this in Claude Code:
+
+```
+/plugin install redact --marketplace Drewtopia/redact
+```
+
+**Codex CLI, plain Claude Code hooks, chat windows, git and CI:** see [With other agents](https://drewtopia.github.io/redact/guide/agents) and [With Claude Code](https://drewtopia.github.io/redact/guide/claude-code).
+
 ## What it hides
 
 The built-in `credentials` pack hides credentials wherever they appear:
@@ -149,7 +159,7 @@ The full guide, every pack's rules and the CLI reference: **[drewtopia.github.io
 
 redact draws on rule packs from [dcg](https://github.com/Dicklesworthstone/destructive_command_guard), config imports and output masking from [fnox](https://github.com/jdx/fnox), layered config from [mise](https://mise.jdx.dev) and [worktrunk](https://github.com/max-sixty/worktrunk), `.env` hiding from [dotenvx](https://dotenvx.com), and rule field names from [gitleaks](https://github.com/gitleaks/gitleaks).
 
-Several credential patterns are adapted from Ray Amjad's [transcript-redactor](https://github.com/ray-amjad/claude-code-mods). A small dotenv escape helper also closely matches fnox's implementation. Their MIT copyright and licence notices are retained in [LICENSE-THIRD-PARTY](LICENSE-THIRD-PARTY). See [Prior art and thanks](docs/reference/thanks.md) for the details. Thank you to their authors.
+Several credential patterns are adapted from Ray Amjad's [transcript-redactor](https://github.com/ray-amjad/claude-code-mods). The Claude Code mod's event wiring follows it too. A small dotenv escape helper also closely matches fnox's implementation. Their MIT copyright and licence notices are retained in [LICENSE-THIRD-PARTY](LICENSE-THIRD-PARTY). See [Prior art and thanks](docs/reference/thanks.md) for the details. Thank you to their authors.
 
 ## Licence
 

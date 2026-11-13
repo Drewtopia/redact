@@ -18,6 +18,7 @@ export default defineConfig({
         items: [
           { text: 'Getting started', link: '/guide/getting-started' },
           { text: 'With Claude Code', link: '/guide/claude-code' },
+          { text: 'With other agents', link: '/guide/agents' },
           { text: 'With fnox and mise', link: '/guide/fnox-mise' },
           { text: 'With .env files', link: '/guide/dotenv' },
           { text: 'Hiding yourself', link: '/guide/me' },

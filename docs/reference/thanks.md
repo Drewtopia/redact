@@ -5,7 +5,7 @@ redact draws on the projects below. The credential patterns adapted from transcr
 | Project | Contribution |
 | :- | :- |
 | [dcg](https://github.com/Dicklesworthstone/destructive_command_guard) | Rule packs with a keyword pre-check, community packs on top of built-in ones, and refusing a pack that will not load. dcg guards the commands an agent runs; redact guards the text it reads |
-| [transcript-redactor](https://github.com/ray-amjad/claude-code-mods) by Ray Amjad | The idea of stable placeholders, and adapted credential patterns for Entra client secrets, Azure storage keys and SAS signatures. MIT notice retained below |
+| [transcript-redactor](https://github.com/ray-amjad/claude-code-mods) by Ray Amjad | The idea of stable placeholders, and adapted credential patterns for Entra client secrets, Azure storage keys and SAS signatures. The Claude Code mod's event wiring and its guards on restored values. MIT notice retained below |
 | [fnox](https://github.com/jdx/fnox) | Config imports resolved beside the file that names them, and `fnox exec --redact` masking values in output. The dotenv escape helper also closely matches fnox's implementation. MIT notice retained below |
 | [mise](https://mise.jdx.dev) | Layered config files and a command that lists which ones loaded |
 | [worktrunk](https://github.com/max-sixty/worktrunk) | Config layers merged in a fixed order, and typos in config reported rather than ignored |

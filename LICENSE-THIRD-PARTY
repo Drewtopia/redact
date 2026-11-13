@@ -7,6 +7,9 @@ transcript-redactor
 Credential patterns in packs/credentials.toml are adapted from the detector in
 ray-amjad/claude-code-mods, plugins/transcript-redactor, version 0.4.1.
 Source: https://github.com/ray-amjad/claude-code-mods/blob/467b20300d8ec56e24fb0534befb4d1f51dc6b92/plugins/transcript-redactor/hooks/detect.ts
+The Claude Code mod in claude-plugin/hooks (event wiring, the git and GitHub
+command guard, the shell-character guard, the result walk and the placeholder
+map) is adapted from the same plugin's hooks/redact.ts and hooks/detect.ts.
 
 MIT License
 

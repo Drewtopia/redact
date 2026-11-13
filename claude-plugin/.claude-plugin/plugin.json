@@ -1,0 +1,29 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "redact",
+  "version": "0.1.0",
+  "description": "Runs everything that enters the conversation through the redact binary: each hidden part becomes a placeholder, and the real value goes back into a tool that runs on this machine",
+  "author": { "name": "Drew" },
+  "repository": "https://github.com/Drewtopia/redact",
+  "license": "MIT OR Apache-2.0",
+  "userConfig": {
+    "binary": {
+      "type": "string",
+      "title": "redact binary",
+      "description": "The redact command to run: a name on PATH or a full path",
+      "default": "redact"
+    },
+    "restoreTools": {
+      "type": "string",
+      "title": "Tools that get real values",
+      "description": "Tools that run on this machine and may receive the real value behind a placeholder, separated by commas. Never list a tool that sends its input to another model or the network (Agent, WebFetch, WebSearch)",
+      "default": "Bash,Write,Edit,MultiEdit,NotebookEdit,Read,Glob,Grep"
+    },
+    "notify": {
+      "type": "boolean",
+      "title": "Say when something is hidden",
+      "description": "Show a count on the tool row and a toast on a prompt",
+      "default": true
+    }
+  }
+}
