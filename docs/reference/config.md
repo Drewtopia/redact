@@ -33,7 +33,7 @@ me = true
 | :- | :- | :- |
 | `env` | Names of environment variables whose values to hide. Exact names, or patterns with `*` | [fnox and mise](../guide/fnox-mise) |
 | `env_files` | Dotenv files whose values to hide, relative to where redact runs | [.env files](../guide/dotenv) |
-| `import` | Packs, word lists, folders and other config files to load, relative to this file. `~/` is your home folder | [Packs](../packs/) |
+| `import` | Packs, word lists, folders and other config files to load, relative to this file (for a symlinked config, the file it points to). `~/` is your home folder | [Packs](../packs/) |
 | `me` | Hide your git `user.name` and `user.email` and your GitHub logins | [Hiding yourself](../guide/me) |
 
 An unknown setting is an error, so a typo such as `imports` is caught rather than ignored.

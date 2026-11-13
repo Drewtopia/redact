@@ -24,6 +24,10 @@ Tokens, keys and passwords: JWTs, bearer tokens, common vendor key shapes, priva
 | `named-secret-yaml` | `[SECRET-…]` | A YAML line `password: value`, to the end of the line, commas and quotes included | when it reads as a name |
 | `named-secret-yaml-block` | `[SECRET-…]` | A YAML block scalar under a name that says secret: `password: \|` and the indented lines after it |  |
 | `named-value` | `[SECRET-…]` | The value of a {"name": …, "value": …} pair whose name says secret: ACR passwords, Kubernetes env lists |  |
+| `named-value-yaml` | `[SECRET-…]` | The value: line under a `- name:` line whose name says secret (kubectl ... -o yaml, app settings) | when it reads as a name |
+| `secret-flag` | `[SECRET-…]` | The value of --password, --client-secret, --token and similar command-line flags | when it reads as a name |
+| `docker-login-password` | `[SECRET-…]` | The password after -p in docker login (and podman login) | when it reads as a name |
+| `mysql-password` | `[SECRET-…]` | The password joined to -p in mysql, mysqldump and mysqladmin (-pSECRET) | when it reads as a name |
 
 ## Allowed values
 

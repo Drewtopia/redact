@@ -342,7 +342,7 @@ regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{0,49})\.visualstudio\.com'''
 secretGroup = 1
 label = "ORG"
 # Microsoft's own hosts under visualstudio.com, not an org.
-except = '''(?i)^(?:vs-ssh|app|marketplace|vssps|aex|vsaex|vsrm|status|vsassets|sps[a-z0-9]*|login|management)$'''
+except = '''(?i)^(?:vs-ssh|app|marketplace|vssps|aex|vsaex|vsrm|status|vsassets|spsprod[a-z]{2,6}[0-9]{0,3}|login|management)$'''
 remember = "any"
 keywords = ["visualstudio.com"]
 
@@ -371,3 +371,12 @@ regex = '''(?i)"[A-Za-z]*(?:MasterKey|primaryKey|secondaryKey)"\s*:\s*"((?:[^"\\
 secretGroup = 1
 label = "KEY"
 keywords = ["masterkey", "primarykey", "secondarykey"]
+
+[[rules]]
+id = "ado-project-visualstudio"
+description = "The project in <org>.visualstudio.com/<project>/ URLs"
+regex = '''(?i)[a-z0-9][a-z0-9-]{0,49}\.visualstudio\.com/(?:DefaultCollection/)?([^/\s"'?#_][^/\s"'?#]{0,63})'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["visualstudio.com/"]

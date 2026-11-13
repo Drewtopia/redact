@@ -35,7 +35,21 @@ fn distinctive(v: &str) -> bool {
 }
 
 fn chosen_name(v: &str) -> bool {
-    v.chars().any(|c| c.is_uppercase()) || v.chars().count() >= 5
+    (v.chars().any(|c| c.is_uppercase()) || v.chars().count() >= 5) && !common_word(v)
+}
+
+/// Words a project, repo or org is often called that also fill ordinary text:
+/// a project named `Main` is hidden where it is found, but remembering it would
+/// hide `git push origin main` and `main.go` too.
+fn common_word(v: &str) -> bool {
+    const COMMON: &[&str] = &[
+        "main", "master", "develop", "dev", "test", "tests", "prod", "staging", "web", "app",
+        "apps", "api", "data", "core", "common", "shared", "docs", "infra", "platform", "default",
+        "demo", "sandbox", "tools", "scripts", "build", "release", "service", "services",
+        "backend", "frontend", "mobile", "admin", "portal", "site", "website", "public", "private",
+        "internal", "general",
+    ];
+    COMMON.contains(&v.to_ascii_lowercase().as_str())
 }
 
 /// One JSON object's own fields: the pieces of it outside any nested object, as
@@ -187,28 +201,41 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
             });
         }
     }
-    // A label is a key or file name (`CONTOSO_TOKEN`, `contoso.txt`), so it can
-    // hold a word being hidden. Such a label becomes a plain VALUE.
-    let hidden: Vec<String> = words
-        .iter()
-        .map(|w| label_key(&w.text))
-        .filter(|w| w.chars().count() >= 3)
-        .collect();
+    let mut hidden: HashSet<String> = words.iter().map(|w| label_key(&w.text)).collect();
     spans.extend(find_words(text, words)?);
+    // A label or rule name can be a key or file name (`CONTOSO_TOKEN`,
+    // `contoso.txt`), so it can hold something being hidden: a listed word, a
+    // remembered value, or any value a rule found. Such a name becomes VALUE,
+    // in the placeholder and in --json and --explain alike. Only values short
+    // enough to fit inside a name are worth checking.
+    let longest = spans
+        .iter()
+        .map(|s| s.label.len().max(s.rule.len()))
+        .max()
+        .unwrap_or(0);
+    hidden.extend(
+        spans
+            .iter()
+            .filter(|s| s.end - s.start <= longest)
+            .map(|s| label_key(&text[s.start..s.end])),
+    );
+    hidden.retain(|w| w.chars().count() >= 3);
     let mut safe: HashMap<String, String> = HashMap::new();
-    for s in &mut spans {
-        let label = safe
-            .entry(s.label.clone())
+    let mut clean = |name: &str| -> String {
+        safe.entry(name.to_string())
             .or_insert_with(|| {
-                let key = label_key(&s.label);
+                let key = label_key(name);
                 if hidden.iter().any(|w| key.contains(w.as_str())) {
                     "VALUE".to_string()
                 } else {
-                    s.label.clone()
+                    name.to_string()
                 }
             })
-            .clone();
-        s.label = label;
+            .clone()
+    };
+    for s in &mut spans {
+        s.label = clean(&s.label);
+        s.rule = clean(&s.rule);
     }
     Ok(merge(spans))
 }
@@ -1213,5 +1240,107 @@ mod tests {
             "fabrikamq@vs-ssh.visualstudio.com:v3/fabrikamq/Bluefinq/app",
             &["fabrikamq", "Bluefinq"],
         );
+    }
+
+    // Third review: P1 leaks and over-hiding.
+
+    #[test]
+    fn a_shell_default_is_not_a_reference() {
+        for text in [
+            r#"{"password": "${DB_PASS:-Zq8vFabrikamPw42}"}"#,
+            "DB_PASSWORD=${X:-Zq8vFabrikamPw42}",
+            "password: \"${X:-Zq8vFabrikamPw42}\"",
+        ] {
+            hides_all("shell default", text, &["Zq8vFabrikamPw42"]);
+        }
+        for kept in ["password: ${DB_PASSWORD}", "token: $(cat /run/secret)"] {
+            assert_eq!(azure(kept), kept, "a reference was hidden");
+        }
+    }
+
+    #[test]
+    fn json_output_never_names_a_hidden_word() {
+        let d = tmp("rulefield");
+        std::fs::write(d.join("fabrikamq.txt"), "Fabrikamq\n").unwrap();
+        let loaded = only(&[d.join("fabrikamq.txt")]).unwrap();
+        let spans = scan("Fabrikamq ships", &loaded).unwrap();
+        std::fs::remove_dir_all(&d).unwrap();
+        let json = serde_json::to_string(&spans).unwrap().to_lowercase();
+        assert!(!json.contains("fabrikamq"), "{json}");
+    }
+
+    #[test]
+    fn a_label_never_shows_a_value_a_rule_hid() {
+        let d = tmp("labelvalue");
+        std::fs::write(d.join("x.env"), "CONTOSOQ_API_KEY=Zq8vToken42abc\n").unwrap();
+        let loaded = pack::load(&pack::Options {
+            files: vec![],
+            builtin: true,
+            user: false,
+            config: None,
+            env_files: vec![d.join("x.env")],
+        })
+        .unwrap();
+        let text = r#"{"name": "Contosoq", "isDefault": true} and Zq8vToken42abc"#;
+        let out = blank_tags(&mask(
+            text,
+            &scan(text, &loaded).unwrap(),
+            &mut Tagger::new(None).unwrap(),
+        ));
+        std::fs::remove_dir_all(&d).unwrap();
+        assert!(!out.to_lowercase().contains("contosoq"), "{out}");
+    }
+
+    #[test]
+    fn third_review_shapes() {
+        hides_all(
+            "vs project",
+            "https://fabrikamq.visualstudio.com/Bluefinq/_git/web",
+            &["Bluefinq"],
+        );
+        hides_all(
+            "vs workitems",
+            "https://fabrikamq.visualstudio.com/Bluefinq/_workitems/edit/3",
+            &["Bluefinq"],
+        );
+        hides_all(
+            "k8s yaml env",
+            "env:\n- name: DB_PASSWORD\n  value: Zq8vYamlPw42\n- name: PORT\n  value: \"8080\"\n",
+            &["Zq8vYamlPw42"],
+        );
+        hides_all(
+            "az login flag",
+            "az login --service-principal -u app --password Zq8vFlagPw42 --tenant t",
+            &["Zq8vFlagPw42"],
+        );
+        hides_all(
+            "flag equals",
+            "tool --client-secret=Zq8vFlagPw43",
+            &["Zq8vFlagPw43"],
+        );
+        hides_all(
+            "docker login",
+            "docker login reg.example.com -u bot -p Zq8vDockerPw42",
+            &["Zq8vDockerPw42"],
+        );
+        hides_all(
+            "mysql",
+            "mysql -u root -pZq8vMysqlPw42 db",
+            &["Zq8vMysqlPw42"],
+        );
+        hides_all(
+            "escape first",
+            r#"{"password": "\\Zq8vBackslashPw42"}"#,
+            &["Zq8vBackslashPw42"],
+        );
+        // A flag that is not a secret keeps its value.
+        assert_eq!(azure("az group list -p 8080"), "az group list -p 8080");
+    }
+
+    #[test]
+    fn common_words_are_not_remembered_and_settings_not_hidden() {
+        // A project called Main must not hide every "main".
+        let out = azure("https://dev.azure.com/fabrikamq/Main/_git/app\ngit push origin main\n");
+        assert!(out.contains("origin main"), "{out}");
     }
 }

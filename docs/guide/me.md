@@ -7,7 +7,7 @@ Your own GitHub username sits in plain URLs (`github.com/<you>/project`), git re
 me = true
 ```
 
-At start, redact asks git for your `user.name` and `user.email`, both here and globally (so a work email set by an `includeIf` counts), and reads your GitHub logins from gh's `hosts.yml`. They are hidden everywhere:
+At start, redact asks git for your `user.name` and `user.email`, in the repo you run it from and globally (a work email set by an `includeIf` counts when you run redact inside that repo), and reads your GitHub logins from gh's `hosts.yml`. They are hidden everywhere:
 
 | What | Placeholder |
 | :- | :- |

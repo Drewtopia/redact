@@ -43,6 +43,7 @@ Azure tenant, subscription and identity IDs; people in Azure DevOps and Microsof
 | `keyvault-secret-value` | `[SECRET-…]` | The value of az keyvault secret show (a record whose id holds /secrets/) |  |
 | `account-key-value` | `[KEY-…]` | The value of az storage account keys list and similar keyName records |  |
 | `service-key` | `[KEY-…]` | primaryKey, secondaryKey and *MasterKey fields (Cosmos DB, Service Bus, Event Hubs keys list) |  |
+| `ado-project-visualstudio` | `[PROJECT-…]` | The project in &lt;org&gt;.visualstudio.com/&lt;project&gt;/ URLs | yes |
 
 ## Allowed values
 

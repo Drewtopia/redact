@@ -311,11 +311,37 @@ fn dotenv_words(text: &str, source: &str) -> Vec<WordList> {
                 }
             }
             unescape(&v)
-        } else if let Some(rest) = raw.strip_prefix('\'') {
-            // Single quotes: literal up to the next one; no escapes, no comment.
-            rest.split_once('\'').map_or(rest, |(v, _)| v).to_string()
+        } else if let Some((q, rest)) = raw
+            .strip_prefix('\'')
+            .map(|r| ('\'', r))
+            .or_else(|| raw.strip_prefix('`').map(|r| ('`', r)))
+        {
+            // Single quotes and backticks: literal up to the closing one, across
+            // lines if need be; no escapes.
+            let mut v = String::new();
+            let mut chunk = rest.to_string();
+            loop {
+                if let Some((inside, _)) = chunk.split_once(q) {
+                    v.push_str(inside);
+                    break;
+                }
+                v.push_str(&chunk);
+                match lines.next() {
+                    Some(next) => {
+                        v.push('\n');
+                        chunk = next.to_string();
+                    }
+                    None => break,
+                }
+            }
+            v
         } else {
-            raw.split(" #").next().unwrap_or("").trim().to_string()
+            // Unquoted: up to a `#` that follows any whitespace (a space or a tab).
+            let cut = raw
+                .char_indices()
+                .find(|&(i, c)| c == '#' && i > 0 && raw[..i].ends_with(char::is_whitespace))
+                .map_or(raw.len(), |(i, _)| i);
+            raw[..cut].trim().to_string()
         };
         if key.is_empty() || key.starts_with("DOTENV_PUBLIC_KEY") || value.starts_with("encrypted:")
         {
@@ -352,7 +378,8 @@ fn env_words(
             words: value
                 .lines()
                 .map(str::trim)
-                .filter(|l| l.chars().count() >= 3 && !l.starts_with('#'))
+                // Settings (`true`, `3000`, `development`) would hide ordinary text.
+                .filter(|l| l.chars().count() >= 3 && !l.starts_with('#') && !is_setting(l))
                 .map(String::from)
                 .collect(),
         })
@@ -780,6 +807,37 @@ mod tests {
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect::<Vec<_>>()
             .into_iter()
+    }
+
+    #[test]
+    fn dotenv_backticks_multiline_single_quotes_and_tab_comments() {
+        // Third review: three more dotenv forms.
+        let text =
+            "A=`alpha-tick-1`\nB='bravo\nline-two'\nC=charlie-val-3\t# note\nD=delta-val-4\n";
+        let got: Vec<(String, Vec<String>)> = dotenv_words(text, ".env")
+            .into_iter()
+            .map(|w| (w.label, w.words))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("A".to_string(), vec!["alpha-tick-1".to_string()]),
+                ("B".into(), vec!["bravo".into(), "line-two".into()]),
+                ("C".into(), vec!["charlie-val-3".into()]),
+                ("D".into(), vec!["delta-val-4".into()]),
+            ]
+        );
+    }
+
+    #[test]
+    fn env_values_that_are_settings_are_not_hidden() {
+        let set = [("WORK_DEBUG", "true"), ("WORK_ORG", "fabrikamq-dev")];
+        let (lists, _) = env_words(&["WORK_*".into()], vars(&set));
+        let words: Vec<&str> = lists
+            .iter()
+            .flat_map(|w| w.words.iter().map(String::as_str))
+            .collect();
+        assert_eq!(words, ["fabrikamq-dev"]);
     }
 
     #[test]
