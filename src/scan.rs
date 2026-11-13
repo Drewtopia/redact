@@ -264,10 +264,12 @@ mod tests {
 
     #[test]
     fn a_short_key_is_refused() {
-        assert!(Tagger::new(Some("short"))
-            .err()
-            .unwrap()
-            .contains("at least 16"));
+        assert!(
+            Tagger::new(Some("short"))
+                .err()
+                .unwrap()
+                .contains("at least 16")
+        );
         assert!(
             Tagger::new(Some("")).is_ok(),
             "an empty REDACT_KEY means no key"
@@ -458,7 +460,9 @@ mod tests {
 
     #[test]
     fn devops_found_by_place() {
-        let out = azure("git clone https://dev.azure.com/fabrikamq/ZQX/_git/OrderPortal; cd C:\\zqx\\automation");
+        let out = azure(
+            "git clone https://dev.azure.com/fabrikamq/ZQX/_git/OrderPortal; cd C:\\zqx\\automation",
+        );
         assert!(
             !out.contains("fabrikamq")
                 && !out.contains("ZQX")

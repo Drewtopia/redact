@@ -122,7 +122,10 @@ struct ConfigFile {
 
 /// The variables an `env` list names: an exact name, or a prefix ending in `*`.
 /// Each value is a word, or a list with one per line; the variable name is the label.
-fn env_words(patterns: &[String], vars: impl Iterator<Item = (String, String)>) -> (Vec<WordList>, Vec<String>) {
+fn env_words(
+    patterns: &[String],
+    vars: impl Iterator<Item = (String, String)>,
+) -> (Vec<WordList>, Vec<String>) {
     let mut lists: Vec<WordList> = vars
         .filter(|(name, _)| patterns.iter().any(|p| glob(p, name)))
         .map(|(name, value)| WordList {
@@ -174,7 +177,12 @@ pub fn load(opts: &Options) -> Result<Loaded, String> {
     if opts.builtin {
         for (name, text) in BUILTIN {
             let pack = compile(text, &format!("built-in {name}"))?;
-            l.record("builtin", name.to_string(), format!("{} rules", pack.rules.len()), None);
+            l.record(
+                "builtin",
+                name.to_string(),
+                format!("{} rules", pack.rules.len()),
+                None,
+            );
             l.loaded.packs.push(pack);
         }
     }
@@ -204,7 +212,9 @@ pub fn load(opts: &Options) -> Result<Loaded, String> {
 /// `~/.config/redact` on Linux and macOS (or `$XDG_CONFIG_HOME/redact`), and
 /// `%APPDATA%\redact` on Windows: the same rule worktrunk and most CLIs use.
 pub fn config_home() -> Option<PathBuf> {
-    etcetera::choose_base_strategy().ok().map(|s| etcetera::BaseStrategy::config_dir(&s).join("redact"))
+    etcetera::choose_base_strategy()
+        .ok()
+        .map(|s| etcetera::BaseStrategy::config_dir(&s).join("redact"))
 }
 
 fn home() -> Option<PathBuf> {
@@ -223,13 +233,19 @@ fn resolve(raw: &str, importer: &Path) -> PathBuf {
         return home.join(rest);
     }
     let p = PathBuf::from(raw);
-    if p.is_absolute() { p } else { importer.parent().unwrap_or(Path::new(".")).join(p) }
+    if p.is_absolute() {
+        p
+    } else {
+        importer.parent().unwrap_or(Path::new(".")).join(p)
+    }
 }
 
 /// Shows `/home/me/x` as `~/x`, so `config ls` reads the same on any machine.
 pub fn tilde(p: &Path) -> String {
     match home().and_then(|h| p.strip_prefix(&h).ok().map(Path::to_path_buf)) {
-        Some(rest) if !rest.as_os_str().is_empty() => format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display()),
+        Some(rest) if !rest.as_os_str().is_empty() => {
+            format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display())
+        }
         _ => p.display().to_string(),
     }
 }
@@ -245,13 +261,22 @@ struct Loader {
 
 impl Loader {
     fn record(&mut self, kind: &'static str, path: String, detail: String, via: Option<&Path>) {
-        self.loaded.sources.push(Source { kind, path, detail, via: via.map(tilde) });
+        self.loaded.sources.push(Source {
+            kind,
+            path,
+            detail,
+            via: via.map(tilde),
+        });
     }
 
     fn file(&mut self, path: &Path, via: Option<&Path>) -> Result<(), String> {
         let shown = tilde(path);
-        let named_by = via.map(|v| format!(" (imported by {})", tilde(v))).unwrap_or_default();
-        let canon = path.canonicalize().map_err(|e| format!("{shown}{named_by}: {e}"))?;
+        let named_by = via
+            .map(|v| format!(" (imported by {})", tilde(v)))
+            .unwrap_or_default();
+        let canon = path
+            .canonicalize()
+            .map_err(|e| format!("{shown}{named_by}: {e}"))?;
         if self.stack.contains(&canon) {
             let chain: Vec<String> = self.stack.iter().map(|p| tilde(p)).chain([shown]).collect();
             return Err(format!("import loop: {}", chain.join(" -> ")));
@@ -272,22 +297,38 @@ impl Loader {
             }
             return Ok(());
         }
-        let text = std::fs::read_to_string(&canon).map_err(|e| format!("{shown}{named_by}: {e}"))?;
+        let text =
+            std::fs::read_to_string(&canon).map_err(|e| format!("{shown}{named_by}: {e}"))?;
         match ext(&canon) {
             "txt" => {
                 let list = word_list(&canon, &text);
-                self.record("words", shown, format!("{} entries as [{}-…]", list.words.len(), list.label), via);
+                self.record(
+                    "words",
+                    shown,
+                    format!("{} entries as [{}-…]", list.words.len(), list.label),
+                    via,
+                );
                 self.loaded.words.push(list);
             }
             // A pack has an `id`; a TOML file without one is a config file of imports.
             "toml" if text.lines().any(|l| l.trim_start().starts_with("id")) => {
                 let pack = compile(&text, &shown)?;
-                self.record("pack", shown, format!("{} ({} rules)", pack.id, pack.rules.len()), via);
+                self.record(
+                    "pack",
+                    shown,
+                    format!("{} ({} rules)", pack.id, pack.rules.len()),
+                    via,
+                );
                 self.loaded.packs.push(pack);
             }
             "toml" => {
                 let cfg: ConfigFile = toml::from_str(&text).map_err(|e| format!("{shown}: {e}"))?;
-                self.record("config", shown, format!("{} imports", cfg.import.len()), via);
+                self.record(
+                    "config",
+                    shown,
+                    format!("{} imports", cfg.import.len()),
+                    via,
+                );
                 self.stack.push(canon.clone());
                 for raw in &cfg.import {
                     self.file(&resolve(raw, &canon), Some(&canon))?;
@@ -296,13 +337,24 @@ impl Loader {
                 if !cfg.env.is_empty() {
                     let (lists, missing) = env_words(&cfg.env, std::env::vars());
                     let total: usize = lists.iter().map(|w| w.words.len()).sum();
-                    let unset = if missing.is_empty() { String::new() } else { format!("; not set: {}", missing.join(", ")) };
-                    self.record("env", cfg.env.join(", "), format!("{} variables, {total} words{unset}", lists.len()), Some(&canon));
+                    let unset = if missing.is_empty() {
+                        String::new()
+                    } else {
+                        format!("; not set: {}", missing.join(", "))
+                    };
+                    self.record(
+                        "env",
+                        cfg.env.join(", "),
+                        format!("{} variables, {total} words{unset}", lists.len()),
+                        Some(&canon),
+                    );
                     self.loaded.words.extend(lists);
                 }
             }
             other => {
-                return Err(format!("{shown}{named_by}: unknown file type .{other}: use .toml for a pack or config, .txt for a word list"));
+                return Err(format!(
+                    "{shown}{named_by}: unknown file type .{other}: use .toml for a pack or config, .txt for a word list"
+                ));
             }
         }
         Ok(())
@@ -350,7 +402,9 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             ));
         }
         let within = match &r.within {
-            Some(w) => Some(Regex::new(w).map_err(|e| format!("{source}: rule {} within: {e}", r.id))?),
+            Some(w) => {
+                Some(Regex::new(w).map_err(|e| format!("{source}: rule {} within: {e}", r.id))?)
+            }
             None => None,
         };
         rules.push(Rule {
@@ -379,25 +433,63 @@ mod tests {
     use super::*;
 
     fn vars(list: &[(&str, &str)]) -> impl Iterator<Item = (String, String)> {
-        list.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<Vec<_>>().into_iter()
+        list.iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 
     #[test]
     fn glob_star_anywhere() {
-        for (p, n) in [("WORK_*", "WORK_AZ_ORG"), ("*_TOKEN", "AZURE_TOKEN"), ("*AZURE*", "ORCA_AZURE_DEVOPS_TOKEN"), ("A*B*C", "AxxBxxC"), ("*", "ANY")] {
+        for (p, n) in [
+            ("WORK_*", "WORK_AZ_ORG"),
+            ("*_TOKEN", "AZURE_TOKEN"),
+            ("*AZURE*", "ORCA_AZURE_DEVOPS_TOKEN"),
+            ("A*B*C", "AxxBxxC"),
+            ("*", "ANY"),
+        ] {
             assert!(glob(p, n), "{p} should match {n}");
         }
-        for (p, n) in [("*_TOKEN", "TOKEN"), ("*_TOKEN", "AZURE_TOKENS"), ("WORK_*", "WORKSPACE"), ("A*B*C", "AxxCxxB"), ("PR_HOST", "PR_HOSTS")] {
+        for (p, n) in [
+            ("*_TOKEN", "TOKEN"),
+            ("*_TOKEN", "AZURE_TOKENS"),
+            ("WORK_*", "WORKSPACE"),
+            ("A*B*C", "AxxCxxB"),
+            ("PR_HOST", "PR_HOSTS"),
+        ] {
             assert!(!glob(p, n), "{p} should not match {n}");
         }
     }
 
     #[test]
     fn env_names_and_prefixes_pick_variables() {
-        let set = [("WORK_AZ_ORG", "fabrikam-dev"), ("WORK_CUSTOMERS", "# note\nNorthwind Traders\nContoso"), ("PATH", "/usr/bin"), ("WORKSPACE", "x")];
+        let set = [
+            ("WORK_AZ_ORG", "fabrikam-dev"),
+            ("WORK_CUSTOMERS", "# note\nNorthwind Traders\nContoso"),
+            ("PATH", "/usr/bin"),
+            ("WORKSPACE", "x"),
+        ];
         let (lists, missing) = env_words(&["WORK_*".into(), "EMPLOYER".into()], vars(&set));
-        let got: Vec<(&str, Vec<&str>)> = lists.iter().map(|w| (w.label.as_str(), w.words.iter().map(String::as_str).collect())).collect();
-        assert_eq!(got, [("WORK-AZ-ORG", vec!["fabrikam-dev"]), ("WORK-CUSTOMERS", vec!["Northwind Traders", "Contoso"])]);
-        assert_eq!(missing, ["EMPLOYER"], "an exact name that is not set is reported");
+        let got: Vec<(&str, Vec<&str>)> = lists
+            .iter()
+            .map(|w| {
+                (
+                    w.label.as_str(),
+                    w.words.iter().map(String::as_str).collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("WORK-AZ-ORG", vec!["fabrikam-dev"]),
+                ("WORK-CUSTOMERS", vec!["Northwind Traders", "Contoso"])
+            ]
+        );
+        assert_eq!(
+            missing,
+            ["EMPLOYER"],
+            "an exact name that is not set is reported"
+        );
     }
 }

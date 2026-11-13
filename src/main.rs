@@ -23,7 +23,13 @@ struct Cli {
     only_files: bool,
 
     /// Use this config file instead of ~/.config/redact/config.toml.
-    #[arg(long, short = 'c', global = true, env = "REDACT_CONFIG", value_name = "PATH")]
+    #[arg(
+        long,
+        short = 'c',
+        global = true,
+        env = "REDACT_CONFIG",
+        value_name = "PATH"
+    )]
     config: Option<PathBuf>,
 
     /// With no command, piped input is scanned: `az account show | redact`.
@@ -63,17 +69,30 @@ fn main() -> ExitCode {
     let mut cli = Cli::parse();
     let command = match cli.command.take() {
         Some(c) => c,
-        None if !std::io::stdin().is_terminal() => Command::Scan { json: false, explain: false },
+        None if !std::io::stdin().is_terminal() => Command::Scan {
+            json: false,
+            explain: false,
+        },
         None => {
             Cli::command().print_help().ok();
             return ExitCode::from(2);
         }
     };
     if let Command::Completions { shell } = &command {
-        clap_complete::generate(*shell, &mut Cli::command(), "redact", &mut std::io::stdout());
+        clap_complete::generate(
+            *shell,
+            &mut Cli::command(),
+            "redact",
+            &mut std::io::stdout(),
+        );
         return ExitCode::SUCCESS;
     }
-    let opts = pack::Options { files: cli.files, builtin: !cli.only_files, user: !cli.only_files, config: cli.config };
+    let opts = pack::Options {
+        files: cli.files,
+        builtin: !cli.only_files,
+        user: !cli.only_files,
+        config: cli.config,
+    };
     let loaded = match pack::load(&opts) {
         Ok(l) => l,
         Err(e) => return fail(&e),
@@ -83,7 +102,9 @@ fn main() -> ExitCode {
             print_packs(&loaded);
             ExitCode::SUCCESS
         }
-        Command::Config { action: ConfigAction::Ls } => {
+        Command::Config {
+            action: ConfigAction::Ls,
+        } => {
             print_sources(&loaded);
             ExitCode::SUCCESS
         }
@@ -137,17 +158,40 @@ fn print_packs(loaded: &pack::Loaded) {
         }
     }
     for w in &loaded.words {
-        println!("words  {} entries as [{}-…]  ({})", w.words.len(), w.label, w.source);
+        println!(
+            "words  {} entries as [{}-…]  ({})",
+            w.words.len(),
+            w.label,
+            w.source
+        );
     }
     if let Some(home) = pack::config_home() {
-        println!("\nYour config: {}  (redact config ls shows every file)", pack::tilde(&home.join("config.toml")));
+        println!(
+            "\nYour config: {}  (redact config ls shows every file)",
+            pack::tilde(&home.join("config.toml"))
+        );
     }
 }
 
 fn print_sources(loaded: &pack::Loaded) {
-    let width = loaded.sources.iter().map(|s| s.path.chars().count()).max().unwrap_or(0);
+    let width = loaded
+        .sources
+        .iter()
+        .map(|s| s.path.chars().count())
+        .max()
+        .unwrap_or(0);
     for (i, s) in loaded.sources.iter().enumerate() {
-        let via = s.via.as_deref().map(|v| format!("  <- {v}")).unwrap_or_default();
-        println!("{:>2}  {:<7} {:<width$}  {}{via}", i + 1, s.kind, s.path, s.detail);
+        let via = s
+            .via
+            .as_deref()
+            .map(|v| format!("  <- {v}"))
+            .unwrap_or_default();
+        println!(
+            "{:>2}  {:<7} {:<width$}  {}{via}",
+            i + 1,
+            s.kind,
+            s.path,
+            s.detail
+        );
     }
 }
