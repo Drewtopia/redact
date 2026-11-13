@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 const BUILTIN: &[(&str, &str)] = &[
     // Specific packs first: when two rules hide exactly the same text, the first label wins.
     ("azure", include_str!("../packs/azure.toml")),
+    ("identity", include_str!("../packs/identity.toml")),
     ("credentials", include_str!("../packs/credentials.toml")),
 ];
 

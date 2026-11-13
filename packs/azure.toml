@@ -6,7 +6,7 @@
 schema_version = 1
 id = "azure"
 description = "Azure tenant, subscription and identity IDs, people in identity records, your own hosts, and Azure DevOps org, project and repo names"
-keywords = ["tenant", "subscription", "client", "app", "object", "principal", "identities", "isdefault", "uniquename", "principalname", "system.", "microsoft.vsts.", "dynamics.com", "azurewebsites", "powerappsportals", "vault.azure", "windows.net", "azurecr", "sharepoint", "onmicrosoft", "dev.azure.com", "/_git/", "wellformed", "remoteurl", "sshurl", "user", "mail", "userprincipalname", "companyname", "phone", "lastaccesseddate"]
+keywords = ["tenant", "subscription", "client", "app", "object", "principal", "identities", "isdefault", "uniquename", "principalname", "system.", "microsoft.vsts.", "dynamics.com", "azurewebsites", "powerappsportals", "vault.azure", "windows.net", "azurecr", "sharepoint", "onmicrosoft", "dev.azure.com", "/_git/", "wellformed", "remoteurl", "sshurl", "user", "mail", "userprincipalname", "companyname", "phone", "lastaccesseddate", "mailaddress", "issecret"]
 
 # Public values Microsoft documents: never hidden.
 allow = [
@@ -79,7 +79,7 @@ description = "A name in an Azure DevOps or Entra identity record"
 regex = '''"(?:displayName|givenName|surname)"\s*:\s*"([^"\\]{2,200})"'''
 secretGroup = 1
 label = "PERSON"
-within = '''"(?:uniqueName|userPrincipalName|principalName)"\s*:'''
+within = '''"(?:uniqueName|userPrincipalName|principalName|mailAddress)"\s*:'''
 remember = "distinctive"
 keywords = ["uniquename", "principalname"]
 
@@ -222,7 +222,7 @@ keywords = ["user", "serviceprincipal"]
 [[rules]]
 id = "identity-email"
 description = "The sign-in name or email in an identity record"
-regex = '''"(?:uniqueName|userPrincipalName|principalName|mail)"\s*:\s*"([^"\\\s]{1,200}@[^"\\\s]{1,200})"'''
+regex = '''"(?:uniqueName|userPrincipalName|principalName|mail|mailAddress|directoryAlias)"\s*:\s*"([^"\\\s]{1,200}@[^"\\\s]{1,200})"'''
 secretGroup = 1
 label = "EMAIL"
 remember = "distinctive"
@@ -272,7 +272,7 @@ description = "A person's id, originId and directory domain in an identity recor
 regex = '''(?i)"(?:id|originId|localId|domain)"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"'''
 secretGroup = 1
 label = "IDENTITY-ID"
-within = '''"(?:uniqueName|principalName|userPrincipalName)"\s*:'''
+within = '''"(?:uniqueName|principalName|userPrincipalName|mailAddress)"\s*:'''
 remember = "distinctive"
 keywords = ["uniquename", "principalname"]
 
@@ -285,3 +285,15 @@ label = "IDENTITY-ID"
 within = '''"lastAccessedDate"\s*:'''
 remember = "distinctive"
 keywords = ["lastaccesseddate"]
+
+# --- az pipelines variable-group list ---------------------------------------------
+
+[[rules]]
+id = "pipeline-variable"
+description = "The value of each variable in a pipeline variable group (client IDs, hosts, names, keys)"
+regex = '''"value"\s*:\s*"([^"\\]{1,2000})"'''
+secretGroup = 1
+label = "PIPELINE-VAR"
+within = '''"isSecret"\s*:'''
+remember = "distinctive"
+keywords = ["issecret"]

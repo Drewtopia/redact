@@ -381,6 +381,78 @@ mod tests {
     }
 
     #[test]
+    fn git_log_and_config_hide_people() {
+        let log = "commit abc123\nAuthor:     Jordan Quillfeather <jq@fabrikamq.example>\nAuthorDate: Mon Nov 10 2026\nCommit:     Morwenna Tregarthen <mt@fabrikamq.example>\n\n    Fix the build\n\n    Co-authored-by: Ellery Vandermolen <ev@fabrikamq.example>\n";
+        let out = azure(log);
+        for gone in ["Quillfeather", "Tregarthen", "Vandermolen", "@fabrikamq"] {
+            assert!(!out.contains(gone), "still shows {gone}:\n{out}");
+        }
+        assert!(
+            out.contains("Fix the build") && out.contains("commit abc123"),
+            "{out}"
+        );
+        let cfg = "user.name=Jordan Quillfeather\nuser.email=jq@fabrikamq.example\ncore.editor=nvim\nremote.origin.url=git@github.com:o/r.git\n";
+        let out = azure(cfg);
+        assert!(
+            !out.contains("Quillfeather") && !out.contains("jq@"),
+            "{out}"
+        );
+        assert!(
+            out.contains("core.editor=nvim") && out.contains("git@github.com"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_github_user_record() {
+        let text = r#"{"login": "quillfeatherq", "id": 1, "html_url": "https://github.com/quillfeatherq", "repos_url": "https://api.github.com/users/quillfeatherq/repos", "name": "Jordan Quillfeather", "company": "Fabrikamq", "location": "Leeds", "email": "jq@fabrikamq.example", "public_repos": 12}"#;
+        let out = azure(text);
+        for gone in ["quillfeatherq", "Quillfeather", "Fabrikamq", "Leeds", "jq@"] {
+            assert!(!out.contains(gone), "still shows {gone}:\n{out}");
+        }
+        assert!(
+            out.contains("\"public_repos\": 12") && out.contains("api.github.com/users/"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn pipeline_variable_group_values() {
+        let text = r#"[{"id": 7, "name": "app-settings", "type": "Vsts", "variables": {
+  "sit-app-client-id": {"isReadOnly": false, "isSecret": false, "value": "0000000c-7b4d-4e8a-9c21-5d6e7f8a9b0c"},
+  "api-host": {"isSecret": false, "value": "bluefin-api.internal.fabrikamq.example"},
+  "db-password": {"isSecret": true, "value": null}
+}}]"#;
+        let out = azure(text);
+        assert!(
+            !out.contains("0000000c-7b4d") && !out.contains("bluefin-api"),
+            "{out}"
+        );
+        assert!(
+            out.contains("\"sit-app-client-id\"")
+                && out.contains("\"app-settings\"")
+                && out.contains("null"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn azure_devops_userinfo_and_mail_address() {
+        let repo = r#"{"name": "app", "remoteUrl": "https://fabrikamq@dev.azure.com/fabrikamq/Bluefinq/_git/app"}"#;
+        let out = azure(repo);
+        assert!(
+            !out.contains("fabrikamq") && !out.contains("Bluefinq"),
+            "{out}"
+        );
+        let user = r#"{"principalName": "jq@fabrikamq.example", "mailAddress": "jordan.q@fabrikamq.example", "displayName": "Jordan Quillfeather"}"#;
+        let out = azure(user);
+        assert!(
+            !out.contains("jordan.q@") && !out.contains("Quillfeather"),
+            "{out}"
+        );
+    }
+
+    #[test]
     fn credentials_by_shape() {
         let jwt = format!(
             "ey{}.ey{}.{}",

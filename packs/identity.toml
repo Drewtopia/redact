@@ -1,0 +1,55 @@
+# Built-in pack: who people are, outside Azure records.
+# Emails anywhere, git authors and your git identity, and GitHub user records.
+schema_version = 1
+id = "identity"
+description = "Email addresses anywhere, git commit authors and git config user lines, and the login, name and profile of a GitHub user record"
+
+# Service addresses that name no one.
+allow = ["git@github.com", "git@gitlab.com", "git@bitbucket.org", "git@ssh.dev.azure.com", "noreply@github.com"]
+
+[[rules]]
+id = "email"
+description = "An email address, anywhere"
+regex = '''\b([A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24})\b'''
+secretGroup = 1
+label = "EMAIL"
+remember = "distinctive"
+keywords = ["@"]
+
+[[rules]]
+id = "git-person"
+description = "The name in Author:, Commit:, Tagger:, Signed-off-by: and Co-authored-by: lines"
+regex = '''(?mi)^\s*(?:Author|Commit|Tagger|Signed-off-by|Co-authored-by):\s+([^<\n]+?)\s+<'''
+secretGroup = 1
+label = "PERSON"
+remember = "distinctive"
+keywords = ["author", "commit", "tagger", "signed-off-by", "co-authored-by"]
+
+[[rules]]
+id = "git-config-user"
+description = "user.name in git config -l"
+regex = '''(?m)^user\.name=(.{2,200})$'''
+secretGroup = 1
+label = "PERSON"
+remember = "distinctive"
+keywords = ["user.name"]
+
+[[rules]]
+id = "github-login"
+description = "The login of a GitHub user record, then the same login everywhere else"
+regex = '''"login"\s*:\s*"([A-Za-z0-9-]{1,39})"'''
+secretGroup = 1
+label = "GITHUB-USER"
+within = '''"html_url"\s*:'''
+remember = "any"
+keywords = ["\"login\""]
+
+[[rules]]
+id = "github-profile"
+description = "The name, company, blog, location, bio and handle in a GitHub user record"
+regex = '''"(?:name|company|blog|location|bio|twitter_username)"\s*:\s*"([^"\\]{1,500})"'''
+secretGroup = 1
+label = "USER-DETAIL"
+within = '''"login"\s*:'''
+remember = "distinctive"
+keywords = ["\"login\""]

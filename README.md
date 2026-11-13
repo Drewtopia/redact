@@ -49,6 +49,12 @@ The built-in `credentials` pack hides credentials wherever they appear:
 - **By name:** the value of anything named as a secret: `TOKEN=`, `"password":`, `client_secret:`, `API_KEY=`, `*_PAT=`, `Authorization:` and the like.
 - **Environment dumps:** the value on each `NAME=value` line of `env`, `mise env` or a `.env` file, except settings such as numbers, `true` and `development`.
 
+The built-in `identity` pack hides who people are, outside any one service:
+
+- **Emails**, anywhere. Service addresses such as `git@github.com` stay visible.
+- **git:** the names in `Author:`, `Commit:`, `Co-authored-by:` and similar lines, and `user.name` in `git config -l`.
+- **GitHub:** the login, name, company, location and bio of a user record (`gh api user`), then the login everywhere else, URLs included.
+
 The built-in `azure` pack finds things by where they sit, so you do not list them:
 
 - **IDs beside their names:** tenant, subscription, app, object and identity GUIDs. A bare GUID (a request id) stays visible.
@@ -56,6 +62,7 @@ The built-in `azure` pack finds things by where they sit, so you do not list the
 - **Your own hosts:** the `<name>` in `<name>.azurewebsites.net`, `<name>.crm11.dynamics.com`, `<name>.vault.azure.net` and other tenant hosts. Public hosts such as `portal.azure.com` stay visible.
 - **Azure DevOps:** org, project and repo names from URLs, work items and `az devops` / `az repos` output.
 - **`az account`:** tenant name, subscription name and the signed-in user.
+- **Pipeline variable groups:** the value of every variable.
 
 Values Microsoft documents publicly (well-known app and role IDs, `AzureCloud`) are never hidden.
 
