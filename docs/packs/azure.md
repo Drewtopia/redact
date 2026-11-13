@@ -39,4 +39,8 @@ Azure tenant, subscription and identity IDs; people in Azure DevOps and Microsof
 | `ado-org-ssh` | `[ORG-…]` | The org in an Azure Repos SSH URL: ssh.dev.azure.com:v3/&lt;org&gt;/... | yes |
 | `ado-project-ssh` | `[PROJECT-…]` | The project in an Azure Repos SSH URL: ssh.dev.azure.com:v3/&lt;org&gt;/&lt;project&gt;/... | yes |
 
-Never hidden: `00000003-0000-0000-c000-000000000000`, `04b07795-8ddb-461a-bbee-02f9e1bf7b46`, `1950a258-227b-4e31-a9cf-717495945fc2`, `797f4846-ba00-4fd7-ba43-dac1f8f63013`, `8e3af657-a8ff-443c-a75c-2fe8c4bcb635`, `acdd72a7-3385-48ef-bd42-f606fba81ae7`, `azurecloud`, `b24988ac-6180-42a0-ab88-20f7382dd24c`.
+## Allowed values
+
+These exact values are left alone even when a rule above would hide them: they are settings or public names, not secrets. Only the value itself is allowed, never what sits next to it.
+
+`AzureCloud`, `04b07795-8ddb-461a-bbee-02f9e1bf7b46`, `1950a258-227b-4e31-a9cf-717495945fc2`, `00000003-0000-0000-c000-000000000000`, `797f4846-ba00-4fd7-ba43-dac1f8f63013`, `8e3af657-a8ff-443c-a75c-2fe8c4bcb635`, `b24988ac-6180-42a0-ab88-20f7382dd24c`, `acdd72a7-3385-48ef-bd42-f606fba81ae7`

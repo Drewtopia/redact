@@ -76,7 +76,10 @@ pub struct Pack {
     pub description: String,
     pub source: String,
     pub keywords: Vec<String>,
+    /// The allow list, lower-cased for matching.
     pub allow: HashSet<String>,
+    /// The allow list as the pack wrote it, for the docs.
+    pub allow_as_written: Vec<String>,
     pub rules: Vec<Rule>,
 }
 
@@ -434,8 +437,12 @@ fn home() -> Option<PathBuf> {
     etcetera::home_dir().ok()
 }
 
-fn ext(p: &Path) -> &str {
-    p.extension().and_then(|e| e.to_str()).unwrap_or("")
+/// A file's extension in lower case, so `Clients.TXT` is a word list too.
+fn ext(p: &Path) -> String {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
 }
 
 /// `~/x` (or `~\x`) is in your home folder; any other relative path is beside `importer`.
@@ -517,7 +524,7 @@ impl Loader {
     /// since a project may simply not have one.
     fn env_file(&mut self, path: &Path, via: Option<&Path>, required: bool) -> Result<(), String> {
         let shown = tilde(path);
-        let text = match std::fs::read_to_string(path) {
+        let text = match read_text(path) {
             Ok(t) => t,
             Err(e) if !required && e.kind() == std::io::ErrorKind::NotFound => {
                 self.record("dotenv", shown, "not found here".into(), via);
@@ -562,21 +569,41 @@ impl Loader {
             return Ok(());
         }
         if canon.is_dir() {
-            let mut children: Vec<PathBuf> = std::fs::read_dir(&canon)
+            // Subfolders load too. Any other file is listed as skipped, so a
+            // `clients.list` that redact cannot read does not vanish silently.
+            // Hidden files (`.DS_Store`) are left out of that list.
+            let mut entries: Vec<PathBuf> = std::fs::read_dir(&canon)
                 .map_err(|e| format!("{shown}: {e}"))?
                 .filter_map(|e| e.ok().map(|e| e.path()))
-                .filter(|p| matches!(ext(p), "toml" | "txt"))
+                .filter(|p| {
+                    !p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.starts_with('.'))
+                })
                 .collect();
-            children.sort();
-            self.record("folder", shown, format!("{} files", children.len()), via);
-            for c in &children {
+            entries.sort();
+            let (load, skip): (Vec<PathBuf>, Vec<PathBuf>) = entries
+                .into_iter()
+                .partition(|p| p.is_dir() || matches!(ext(p).as_str(), "toml" | "txt"));
+            let mut detail = format!("{} files and folders", load.len());
+            if !skip.is_empty() {
+                let names: Vec<String> = skip
+                    .iter()
+                    .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(String::from))
+                    .collect();
+                detail.push_str(&format!(
+                    "; skipped, not .toml or .txt: {}",
+                    names.join(", ")
+                ));
+            }
+            self.record("folder", shown, detail, via);
+            for c in &load {
                 self.file(c, Some(&canon))?;
             }
             return Ok(());
         }
-        let text =
-            std::fs::read_to_string(&canon).map_err(|e| format!("{shown}{named_by}: {e}"))?;
-        match ext(&canon) {
+        let text = read_text(&canon).map_err(|e| format!("{shown}{named_by}: {e}"))?;
+        match ext(&canon).as_str() {
             "txt" => {
                 let list = word_list(&canon, &text);
                 self.record(
@@ -657,11 +684,27 @@ fn word_list(path: &Path, text: &str) -> WordList {
         source: path.display().to_string(),
         words: text
             .lines()
-            .map(str::trim)
-            .filter(|l| l.chars().count() >= 3 && !l.starts_with('#'))
-            .map(String::from)
+            // A note after a word: `Contoso # main customer`. `C#` stays whole.
+            .map(|l| {
+                l.split([' ', '\t'])
+                    .take_while(|w| !w.starts_with('#'))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .map(|l| l.trim().to_string())
+            .filter(|l| l.chars().count() >= 3)
             .collect(),
     }
+}
+
+/// A text file, without the byte-order mark Windows editors put at the start
+/// (it would otherwise stick to the first word or key).
+fn read_text(path: &Path) -> std::io::Result<String> {
+    let text = std::fs::read_to_string(path)?;
+    Ok(match text.strip_prefix('\u{feff}') {
+        Some(rest) => rest.to_string(),
+        None => text,
+    })
 }
 
 pub fn label_of(name: &str) -> String {
@@ -710,7 +753,8 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
         description: f.description,
         source: source.to_string(),
         keywords: lower(f.keywords),
-        allow: f.allow.into_iter().map(|a| a.to_lowercase()).collect(),
+        allow: f.allow.iter().map(|a| a.to_lowercase()).collect(),
+        allow_as_written: f.allow,
         rules,
     })
 }

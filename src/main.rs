@@ -161,6 +161,12 @@ fn print_packs(loaded: &pack::Loaded) {
         for r in &p.rules {
             println!("  {:<24} [{}-…]  {}", r.id, r.label, r.description);
         }
+        if !p.allow_as_written.is_empty() {
+            println!(
+                "  allowed (never hidden): {}",
+                p.allow_as_written.join(", ")
+            );
+        }
     }
     for w in &loaded.words {
         println!(
@@ -235,11 +241,16 @@ mod docs {
                 remember
             ));
         }
-        if !p.allow.is_empty() {
-            let mut allow: Vec<&String> = p.allow.iter().collect();
-            allow.sort();
-            let list: Vec<String> = allow.iter().map(|a| format!("`{a}`")).collect();
-            out.push_str(&format!("\nNever hidden: {}.\n", list.join(", ")));
+        if !p.allow_as_written.is_empty() {
+            let list: Vec<String> = p
+                .allow_as_written
+                .iter()
+                .map(|a| format!("`{a}`"))
+                .collect();
+            out.push_str(&format!(
+                "\n## Allowed values\n\nThese exact values are left alone even when a rule above would hide them: they are settings or public names, not secrets. Only the value itself is allowed, never what sits next to it.\n\n{}\n",
+                list.join(", ")
+            ));
         }
         out
     }

@@ -22,4 +22,8 @@ Tokens, keys and passwords: JWTs, bearer tokens, common vendor key shapes, priva
 | `named-secret` | `[SECRET-…]` | An unquoted value of TOKEN=, password:, client_secret: and other names that say secret, to the end of the line (YAML values may hold spaces) | when it reads as a name |
 | `env-dump` | `[ENV-VALUE-…]` | The value on each NAME=value line of env, mise env or a .env file | when it reads as a name |
 
-Never hidden: `bearer`, `debug`, `development`, `error`, `false`, `info`, `localhost`, `production`, `staging`, `true`, `warning`.
+## Allowed values
+
+These exact values are left alone even when a rule above would hide them: they are settings or public names, not secrets. Only the value itself is allowed, never what sits next to it.
+
+`true`, `false`, `development`, `production`, `staging`, `localhost`, `debug`, `info`, `warning`, `error`, `Bearer`

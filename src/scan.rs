@@ -117,6 +117,7 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
 
     let mut spans = Vec::new();
     let mut words: Vec<Word> = Vec::new();
+    let mut remembered: HashSet<String> = HashSet::new();
 
     for pack in &loaded.packs {
         if !has(&pack.keywords) {
@@ -140,24 +141,29 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                     let Some(m) = caps.get(rule.group) else {
                         continue;
                     };
-                    if m.is_empty() || pack.allow.contains(&m.as_str().to_lowercase()) {
+                    // Trailing whitespace is not part of a value: on a CRLF line
+                    // the `\r` would otherwise stick to a remembered name.
+                    let value = m.as_str().trim_end();
+                    if value.is_empty() || pack.allow.contains(&value.to_lowercase()) {
                         continue;
                     }
                     spans.push(Span {
                         start: offset + m.start(),
-                        end: offset + m.end(),
+                        end: offset + m.start() + value.len(),
                         label: rule.label.clone(),
                         pack: pack.id.clone(),
                         rule: rule.id.clone(),
                     });
                     let keep = match rule.remember {
                         Remember::No => false,
-                        Remember::Distinctive => distinctive(m.as_str()),
-                        Remember::Any => chosen_name(m.as_str()),
+                        Remember::Distinctive => distinctive(value),
+                        Remember::Any => chosen_name(value),
                     };
-                    if keep {
+                    // Stored once, not once per match: email-dense input made
+                    // one copy per address.
+                    if keep && remembered.insert(value.to_string()) {
                         words.push(Word {
-                            text: m.as_str().to_string(),
+                            text: value.to_string(),
                             label: rule.label.clone(),
                             pack: pack.id.clone(),
                             rule: rule.id.clone(),
@@ -178,8 +184,35 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
             });
         }
     }
+    // A label is a key or file name (`CONTOSO_TOKEN`, `contoso.txt`), so it can
+    // hold a word being hidden. Such a label becomes a plain VALUE.
+    let hidden: Vec<String> = words
+        .iter()
+        .map(|w| label_key(&w.text))
+        .filter(|w| w.chars().count() >= 3)
+        .collect();
     spans.extend(find_words(text, words)?);
+    let mut safe: HashMap<String, String> = HashMap::new();
+    for s in &mut spans {
+        let label = safe
+            .entry(s.label.clone())
+            .or_insert_with(|| {
+                let key = label_key(&s.label);
+                if hidden.iter().any(|w| key.contains(w.as_str())) {
+                    "VALUE".to_string()
+                } else {
+                    s.label.clone()
+                }
+            })
+            .clone();
+        s.label = label;
+    }
     Ok(merge(spans))
+}
+
+/// Lower case with `-`, `_` and spaces folded together, to compare labels and words.
+fn label_key(s: &str) -> String {
+    s.to_lowercase().replace(['_', ' '], "-")
 }
 
 /// Every remembered value and listed word, as a whole word, in any case.
@@ -202,18 +235,19 @@ fn find_words(text: &str, words: Vec<Word>) -> Result<Vec<Span>, String> {
         .ascii_case_insensitive(true)
         .build(words.iter().map(|w| &w.text))
         .map_err(|e| format!("cannot build the word matcher: {e}"))?;
-    // A word edge that is a letter or digit must not touch another one, so
-    // `Contoso` is not found inside `Contosoville`. Bytes past ASCII count as
-    // letters, so a match never splits a multi-byte character.
-    let is_word = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b >= 0x80;
-    let bytes = text.as_bytes();
+    // A word edge that is a letter or digit must not touch another letter or
+    // digit, so `Contoso` is not found inside `Contosoville`. Anything else is an
+    // edge: punctuation of any script (`Contoso’s`, `«Contoso»`) and `_`, so a
+    // name inside `rg_contoso_prod` or `CONTOSO_API_KEY` is still found. Matches
+    // are whole UTF-8 sequences, so slicing at them is on character boundaries.
     let mut out = Vec::new();
     for m in ac.find_overlapping_iter(text) {
         let w = &words[m.pattern().as_usize()];
         let (start, end) = (m.start(), m.end());
-        let (first, last) = (w.text.as_bytes()[0], w.text.as_bytes()[w.text.len() - 1]);
-        if (is_word(first) && start > 0 && is_word(bytes[start - 1]))
-            || (is_word(last) && end < bytes.len() && is_word(bytes[end]))
+        let alnum = |c: Option<char>| c.is_some_and(char::is_alphanumeric);
+        let (first, last) = (w.text.chars().next(), w.text.chars().next_back());
+        if (alnum(first) && alnum(text[..start].chars().next_back()))
+            || (alnum(last) && alnum(text[end..].chars().next()))
         {
             continue;
         }
@@ -917,5 +951,112 @@ mod tests {
         let err = only(&[d.join("config.toml")]).err().unwrap();
         std::fs::remove_dir_all(&d).unwrap();
         assert!(err.contains("imports"), "{err}");
+    }
+
+    // Regressions from the second independent review (batch 1: the engine).
+
+    /// Masks `text` with the files in a fresh folder, tags blanked.
+    fn with_files(name: &str, files: &[(&str, &[u8])], text: &str) -> String {
+        let d = tmp(name);
+        for (path, body) in files {
+            let p = d.join(path);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, body).unwrap();
+        }
+        let loaded = only(std::slice::from_ref(&d)).unwrap();
+        let out = mask(
+            text,
+            &scan(text, &loaded).unwrap(),
+            &mut Tagger::new(None).unwrap(),
+        );
+        std::fs::remove_dir_all(&d).unwrap();
+        blank_tags(&out)
+    }
+
+    #[test]
+    fn a_word_beside_unicode_punctuation_or_underscores() {
+        let list: &[(&str, &[u8])] = &[("customers.txt", b"Contoso\n")];
+        for text in [
+            "Contoso\u{2019}s deal",
+            "Contoso\u{2014}Fabrikam",
+            "\u{ab}Contoso\u{bb}",
+            "rg_contoso_prod",
+            "CONTOSO_API_KEY",
+        ] {
+            let out = with_files("edges", list, text);
+            assert!(
+                !out.to_lowercase().contains("contoso"),
+                "still shows: {out}"
+            );
+        }
+        assert!(with_files("edges2", list, "Contosoville").contains("Contosoville"));
+    }
+
+    #[test]
+    fn a_word_list_with_a_bom_and_notes() {
+        let list: &[(&str, &[u8])] = &[(
+            "customers.txt",
+            b"\xef\xbb\xbfContoso # main customer\nFabrikam\n",
+        )];
+        let out = with_files("bom", list, "Contoso and Fabrikam");
+        assert!(
+            !out.contains("Contoso") && !out.contains("Fabrikam"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn crlf_does_not_stick_to_remembered_values() {
+        let out = azure("user.name=Jordan Quillfeather\r\nlater Jordan Quillfeather here\r\n");
+        assert!(!out.contains("Quillfeather"), "{out}");
+        assert!(out.contains("\r\nlater"), "line endings changed: {out:?}");
+    }
+
+    #[test]
+    fn a_label_never_shows_a_listed_word() {
+        let files: &[(&str, &[u8])] = &[("customers.txt", b"Contoso\n")];
+        let d = tmp("labels");
+        for (p, b) in files {
+            std::fs::write(d.join(p), b).unwrap();
+        }
+        std::fs::write(d.join("x.env"), "CONTOSO_TOKEN=zq-secret-value-123\n").unwrap();
+        let loaded = pack::load(&pack::Options {
+            files: vec![d.join("customers.txt")],
+            builtin: false,
+            user: false,
+            config: None,
+            env_files: vec![d.join("x.env")],
+        })
+        .unwrap();
+        let text = "the token is zq-secret-value-123";
+        let out = mask(
+            text,
+            &scan(text, &loaded).unwrap(),
+            &mut Tagger::new(None).unwrap(),
+        );
+        std::fs::remove_dir_all(&d).unwrap();
+        assert!(
+            !out.to_lowercase().contains("contoso") && !out.contains("zq-secret"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_packs_folder_loads_subfolders_and_any_case() {
+        let files: &[(&str, &[u8])] = &[
+            ("clients/Clients.TXT", b"Northwindq\n"),
+            ("notes.list", b"x\n"),
+        ];
+        let out = with_files("folders", files, "ship to Northwindq");
+        assert!(!out.contains("Northwindq"), "{out}");
+        let d = tmp("folders2");
+        std::fs::write(d.join("notes.list"), "x\n").unwrap();
+        let loaded = only(std::slice::from_ref(&d)).unwrap();
+        std::fs::remove_dir_all(&d).unwrap();
+        assert!(
+            loaded.sources[0].detail.contains("skipped"),
+            "{}",
+            loaded.sources[0].detail
+        );
     }
 }

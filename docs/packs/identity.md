@@ -6,10 +6,14 @@ Email addresses anywhere, git commit authors and git config user lines, and the 
 
 | Rule | Hides as | What it finds | Hidden everywhere after |
 | :- | :- | :- | :- |
-| `email` | `[EMAIL-…]` | An email address, anywhere | when it reads as a name |
+| `email` | `[EMAIL-…]` | An email address, anywhere |  |
 | `git-person` | `[PERSON-…]` | The name in Author:, Commit:, Tagger:, Signed-off-by: and Co-authored-by: lines | when it reads as a name |
 | `git-config-user` | `[PERSON-…]` | user.name in git config -l | when it reads as a name |
 | `github-login` | `[GITHUB-USER-…]` | The login of a GitHub user record, then the same login everywhere else | yes |
 | `github-profile` | `[USER-DETAIL-…]` | The name, company, blog, location, bio and handle in a GitHub user record | when it reads as a name |
 
-Never hidden: `git@bitbucket.org`, `git@github.com`, `git@gitlab.com`, `git@ssh.dev.azure.com`, `noreply@github.com`.
+## Allowed values
+
+These exact values are left alone even when a rule above would hide them: they are settings or public names, not secrets. Only the value itself is allowed, never what sits next to it.
+
+`git@github.com`, `git@gitlab.com`, `git@bitbucket.org`, `git@ssh.dev.azure.com`, `noreply@github.com`
