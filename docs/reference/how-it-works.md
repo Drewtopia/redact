@@ -3,10 +3,10 @@
 ## One pass
 
 1. Load the packs, word lists and values (see [load order](./config#load-order)).
-2. For each pack whose keywords appear in the text, run each rule whose keywords appear. A rule with `within` runs only inside the JSON records that match it.
+2. For each pack whose keywords appear in the text, run each rule whose keywords appear. A rule with `within` runs only inside the JSON objects whose own fields match it, and a found value that matches its `except` is left alone.
 3. Collect what each rule found. Values marked as remembered join the word list.
 4. Find every word, remembered value and listed value in one pass ([Aho-Corasick](https://docs.rs/aho-corasick)), as whole words in any case.
-5. Where two finds overlap, keep the earliest, then the longest.
+5. Where finds overlap, join them into one span that covers every byte any of them found. The earliest (then longest) gives the span its label.
 6. Swap each find for its placeholder.
 
 Every regex runs in linear time, and the word pass costs the same however many words there are. Measured on one laptop: 9 MB of nested JSON takes about 1.3 seconds, and 15 MB of text with two email addresses on every line about 0.9 seconds and 150 MB of memory.
