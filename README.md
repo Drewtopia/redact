@@ -123,6 +123,14 @@ Regexes use the Rust [`regex`](https://docs.rs/regex) syntax, which runs in line
 
 A placeholder is `[LABEL-` + the first 8 hex characters of HMAC-SHA256(key, value) + `]`. Without `REDACT_KEY` the key is 32 random bytes made fresh for each run, so runs cannot be linked. Set `REDACT_KEY` (16+ characters, e.g. `openssl rand -hex 32`) for the same placeholder across runs in one session. Either way a placeholder cannot be worked back to its value without the key, and two values never share one.
 
+## Docs
+
+The full guide, every pack's rules and the CLI reference: **[drewtopia.github.io/redact](https://drewtopia.github.io/redact/)**. The pack and CLI pages are generated from the code (`REDACT_BLESS=1 cargo test`), and a test fails when they drift.
+
+## Prior art and thanks
+
+redact borrows ideas, not code, from tools it was built alongside: rule packs from [dcg](https://github.com/Dicklesworthstone/destructive_command_guard); restorable placeholders and several credential shapes from Ray Amjad's [transcript-redactor](https://github.com/ray-amjad/claude-code-mods) (MIT); config imports and output masking from [fnox](https://github.com/jdx/fnox); layered config from [mise](https://mise.jdx.dev) and [worktrunk](https://github.com/max-sixty/worktrunk); `.env` hiding from [dotenvx](https://dotenvx.com); rule field names from [gitleaks](https://github.com/gitleaks/gitleaks). Thank you to their authors.
+
 ## Licence
 
 MIT or Apache-2.0, at your option.

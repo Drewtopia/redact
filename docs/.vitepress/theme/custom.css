@@ -1,0 +1,14 @@
+/* redact's own accent: a deep teal, like ink drawn over text. */
+:root {
+  --vp-c-brand-1: #0e7c6b;
+  --vp-c-brand-2: #12937f;
+  --vp-c-brand-3: #16a892;
+  --vp-c-brand-soft: rgba(14, 124, 107, 0.14);
+}
+
+.dark {
+  --vp-c-brand-1: #3cc9b0;
+  --vp-c-brand-2: #2fb39c;
+  --vp-c-brand-3: #249c87;
+  --vp-c-brand-soft: rgba(60, 201, 176, 0.16);
+}
