@@ -38,19 +38,19 @@ keywords = ["user.name"]
 [[rules]]
 id = "github-login"
 description = "The login of a GitHub user record, then the same login everywhere else"
-regex = '''"login"\s*:\s*"([A-Za-z0-9-]{1,39})"'''
+regex = '''(?i)"login"\s*:\s*"([A-Za-z0-9-]{1,39})"'''
 secretGroup = 1
 label = "GITHUB-USER"
-within = '''"html_url"\s*:'''
+within = '''(?i)"(?:html_url|is_bot)"\s*:'''
 remember = "any"
 keywords = ["\"login\""]
 
 [[rules]]
 id = "github-profile"
 description = "The name, company, blog, location, bio and handle in a GitHub user record"
-regex = '''"(?:name|company|blog|location|bio|twitter_username)"\s*:\s*"([^"\\]{1,500})"'''
+regex = '''(?i)"(?:name|company|blog|location|bio|twitter_username)"\s*:\s*"((?:[^"\\]|\\.){1,})"'''
 secretGroup = 1
 label = "USER-DETAIL"
-within = '''"(?:site_admin|public_repos|user_view_type)"\s*:'''
+within = '''(?i)"(?:site_admin|public_repos|user_view_type|is_bot)"\s*:'''
 remember = "distinctive"
-keywords = ["site_admin", "public_repos"]
+keywords = ["site_admin", "public_repos", "is_bot"]

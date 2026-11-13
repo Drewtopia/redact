@@ -21,6 +21,9 @@ Tokens, keys and passwords: JWTs, bearer tokens, common vendor key shapes, priva
 | `named-secret-single-quoted` | `[SECRET-…]` | A single-quoted value of a name that says secret | when it reads as a name |
 | `named-secret` | `[SECRET-…]` | An unquoted value of TOKEN=, password:, client_secret: and other names that say secret, to the end of the line (YAML values may hold spaces) | when it reads as a name |
 | `env-dump` | `[ENV-VALUE-…]` | The value on each NAME=value line of env, mise env or a .env file | when it reads as a name |
+| `named-secret-yaml` | `[SECRET-…]` | A YAML line `password: value`, to the end of the line, commas and quotes included | when it reads as a name |
+| `named-secret-yaml-block` | `[SECRET-…]` | A YAML block scalar under a name that says secret: `password: \|` and the indented lines after it |  |
+| `named-value` | `[SECRET-…]` | The value of a {"name": …, "value": …} pair whose name says secret: ACR passwords, Kubernetes env lists |  |
 
 ## Allowed values
 

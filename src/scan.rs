@@ -144,7 +144,10 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                     // Trailing whitespace is not part of a value: on a CRLF line
                     // the `\r` would otherwise stick to a remembered name.
                     let value = m.as_str().trim_end();
-                    if value.is_empty() || pack.allow.contains(&value.to_lowercase()) {
+                    if value.is_empty()
+                        || pack.allow.contains(&value.to_lowercase())
+                        || rule.except.as_ref().is_some_and(|x| x.is_match(value))
+                    {
                         continue;
                     }
                     spans.push(Span {
@@ -1057,6 +1060,158 @@ mod tests {
             loaded.sources[0].detail.contains("skipped"),
             "{}",
             loaded.sources[0].detail
+        );
+    }
+
+    // Second review, batch 2: rule coverage.
+
+    fn hides_all(name: &str, text: &str, gone: &[&str]) {
+        let out = azure(text);
+        for g in gone {
+            assert!(!out.contains(g), "{name}: still shows {g}:\n{out}");
+        }
+    }
+
+    #[test]
+    fn json_escapes_and_pascal_case_keys() {
+        hides_all(
+            "escaped name",
+            r#"{"displayName": "Renée Dubois", "uniqueName": "rd@fabrikamq.example"}"#,
+            &["Dubois"],
+        );
+        hides_all(
+            "apostrophe",
+            r#"{"displayName": "Jordan O'Quill", "uniqueName": "jq@fabrikamq.example"}"#,
+            &["Quill"],
+        );
+        hides_all(
+            "domain user",
+            r#"{"displayName": "Jordan Quillfeather", "uniqueName": "FABRIKAMQ\\jquill"}"#,
+            &["jquill", "Quillfeather"],
+        );
+        hides_all(
+            "tenant name escaped",
+            r#"{"tenantDisplayName": "Fabrikamq \"Holdings\""}"#,
+            &["Fabrikamq", "Holdings"],
+        );
+        hides_all(
+            "PascalCase",
+            r#"{"DisplayName": "Jordan Quillfeather", "UserPrincipalName": "jq@fabrikamq.example"}"#,
+            &["Quillfeather"],
+        );
+        hides_all(
+            "PascalCase account",
+            r#"{"Name": "Fabrikamq Prod", "IsDefault": true, "TenantDisplayName": "Fabrikamq Holdings"}"#,
+            &["Fabrikamq"],
+        );
+    }
+
+    #[test]
+    fn az_secret_outputs() {
+        let key = body(44);
+        hides_all(
+            "keyvault secret",
+            &format!(
+                r#"{{"attributes": {{"enabled": true}}, "id": "https://kv-x.vault.azure.net/secrets/db-pass/abc", "name": "db-pass", "tags": {{}}, "value": "{key}"}}"#
+            ),
+            &[&key],
+        );
+        hides_all(
+            "storage keys",
+            &format!(
+                r#"[{{"creationTime": "2026-01-01", "keyName": "key1", "permissions": "FULL", "value": "{key}=="}}]"#
+            ),
+            &[&key],
+        );
+        hides_all(
+            "cosmos keys",
+            &format!(r#"{{"primaryMasterKey": "{key}==", "primaryReadonlyMasterKey": "{key}xx"}}"#),
+            &[&key],
+        );
+        hides_all(
+            "acr",
+            &format!(
+                r#"{{"passwords": [{{"name": "password", "value": "{key}"}}, {{"name": "password2", "value": "{key}y"}}], "username": "regq"}}"#
+            ),
+            &[&key],
+        );
+        hides_all(
+            "k8s env",
+            &format!(r#"{{"env": [{{"name": "DB_PASSWORD", "value": "{key}"}}]}}"#),
+            &[&key],
+        );
+    }
+
+    #[test]
+    fn password_shapes() {
+        hides_all(
+            "dollar start",
+            "password: $ecretPa55word\n",
+            &["ecretPa55word"],
+        );
+        hides_all(
+            "dollar quoted",
+            r#"{"password": "$ecretPa55word"}"#,
+            &["ecretPa55word"],
+        );
+        hides_all(
+            "yaml comma",
+            "  password: ab,cdefgh1234\n",
+            &["cdefgh1234", "ab,"],
+        );
+        hides_all(
+            "yaml block",
+            "db:\n  password: |\n    s3cr3t-line-one\n    s3cr3t-line-two\n  host: db-host\n",
+            &["s3cr3t-line"],
+        );
+        hides_all(
+            "pgp",
+            "-----BEGIN PGP PRIVATE KEY BLOCK-----\n\nlQOYBGabcdefgh1234567890\n-----END PGP PRIVATE KEY BLOCK-----\n",
+            &["lQOYBGabcdefgh"],
+        );
+        hides_all(
+            "truncated pem",
+            "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEAabcdef1234\nMIIEpAIBAAKCAQEAghijkl5678\n",
+            &["MIIEpAIBAAKCAQEA"],
+        );
+        // References are not secrets.
+        for kept in [
+            "TOKEN=$AZURE_TOKEN",
+            "password: ${DB_PASSWORD}",
+            "token: <placeholder>",
+        ] {
+            assert_eq!(azure(kept), kept, "a reference was hidden");
+        }
+    }
+
+    #[test]
+    fn github_author_and_more_azure_shapes() {
+        hides_all(
+            "gh author",
+            r#"{"author": {"id": "MDQ6VXNlcjE=", "is_bot": false, "login": "quillfeatherq", "name": "Jordan Quillfeather"}}"#,
+            &["quillfeatherq", "Quillfeather"],
+        );
+        let t = "0000000e-7b4d-4e8a-9c21-5d6e7f8a9b0c";
+        hides_all(
+            "login url",
+            &format!("AADSTS700016: see https://login.microsoftonline.com/{t}/oauth2/token"),
+            &[t],
+        );
+        hides_all(
+            "sts iss",
+            &format!(r#"{{"iss": "https://sts.windows.net/{t}/"}}"#),
+            &[t],
+        );
+        hides_all("ApplicationId", &format!("ApplicationId : {t}"), &[t]);
+        hides_all(
+            "visualstudio",
+            "https://fabrikamq.visualstudio.com/Bluefinq/_git/app",
+            &["fabrikamq"],
+        );
+        hides_all(
+            "vs-ssh",
+            "fabrikamq@vs-ssh.visualstudio.com:v3/fabrikamq/Bluefinq/app",
+            &["fabrikamq", "Bluefinq"],
         );
     }
 }

@@ -53,6 +53,7 @@ struct RuleFile {
     secret_group: usize,
     label: Option<String>,
     within: Option<String>,
+    except: Option<String>,
     #[serde(default)]
     remember: Remember,
     #[serde(default)]
@@ -67,6 +68,10 @@ pub struct Rule {
     pub group: usize,
     pub label: String,
     pub within: Option<Regex>,
+    /// A found value that matches this is left alone: a reference such as
+    /// `$AZURE_TOKEN`, not a secret. Rust's regex has no lookahead, so this is
+    /// how a rule says "but not these".
+    pub except: Option<Regex>,
     pub remember: Remember,
     pub keywords: Vec<String>,
 }
@@ -737,6 +742,12 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             }
             None => None,
         };
+        let except = match &r.except {
+            Some(x) => {
+                Some(Regex::new(x).map_err(|e| format!("{source}: rule {} except: {e}", r.id))?)
+            }
+            None => None,
+        };
         rules.push(Rule {
             label: label_of(r.label.as_deref().unwrap_or(&r.id)),
             id: r.id,
@@ -744,6 +755,7 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             re,
             group: r.secret_group,
             within,
+            except,
             remember: r.remember,
             keywords: lower(r.keywords),
         });

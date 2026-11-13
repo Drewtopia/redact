@@ -38,6 +38,11 @@ Azure tenant, subscription and identity IDs; people in Azure DevOps and Microsof
 | `directory-alias` | `[USER-…]` | directoryAlias in an Azure DevOps user record: a short sign-in name with no @ | yes |
 | `ado-org-ssh` | `[ORG-…]` | The org in an Azure Repos SSH URL: ssh.dev.azure.com:v3/&lt;org&gt;/... | yes |
 | `ado-project-ssh` | `[PROJECT-…]` | The project in an Azure Repos SSH URL: ssh.dev.azure.com:v3/&lt;org&gt;/&lt;project&gt;/... | yes |
+| `sign-in-name` | `[USER-…]` | A sign-in name in an identity record, with or without an @ (DOMAIN\user) | when it reads as a name |
+| `ado-org-visualstudio` | `[ORG-…]` | The org in the older &lt;org&gt;.visualstudio.com Azure DevOps URLs | yes |
+| `keyvault-secret-value` | `[SECRET-…]` | The value of az keyvault secret show (a record whose id holds /secrets/) |  |
+| `account-key-value` | `[KEY-…]` | The value of az storage account keys list and similar keyName records |  |
+| `service-key` | `[KEY-…]` | primaryKey, secondaryKey and *MasterKey fields (Cosmos DB, Service Bus, Event Hubs keys list) |  |
 
 ## Allowed values
 

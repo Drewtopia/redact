@@ -45,7 +45,8 @@ remember = "distinctive"
 | `regex` | Where to look. Rust [`regex`](https://docs.rs/regex) syntax |
 | `secretGroup` | The capture group to hide; `0`, the default, is the whole match |
 | `label` | What the placeholder says; defaults to the rule id |
-| `within` | Run only inside a JSON record (the text between braces) that matches this regex, so a record's fields can come in any order |
+| `within` | Run only inside a JSON object whose own fields match this regex, whatever their order and wherever nested objects sit |
+| `except` | Leave a found value alone when it matches this regex: a reference such as `$TOKEN` or `<placeholder>`, not a secret. Rust's `regex` has no lookahead, so this is how a rule says "but not these" |
 | `remember` | `"distinctive"`: also hide the value everywhere else when it reads as a name (a space, `-`, `_`, `.`, a digit or an inner capital). `"any"`: any value with a capital letter or of 5+ characters |
 | `keywords` | The rule runs only when one of these appears |
 

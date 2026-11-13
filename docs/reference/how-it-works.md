@@ -9,7 +9,7 @@
 5. Where two finds overlap, keep the earliest, then the longest.
 6. Swap each find for its placeholder.
 
-Every regex runs in linear time, and the word pass costs the same however many words there are: 8 MB of JSON takes under a second.
+Every regex runs in linear time, and the word pass costs the same however many words there are. Measured on one laptop: 9 MB of nested JSON takes about 1.3 seconds, and 15 MB of text with two email addresses on every line about 0.9 seconds and 150 MB of memory.
 
 ## Placeholders
 
