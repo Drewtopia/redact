@@ -1,6 +1,6 @@
 # redact
 
-Hide the names, IDs and hosts in text that say who you work for, before you paste it, log it or hand it to an AI agent.
+Keep secrets, names and work details out of what AI agents see. Pipe any output through `redact` and the parts that say who you are, who you work for or how to get in (tenant and subscription IDs, people, hosts, project names, tokens) come back as placeholders, so you can hand it to Claude, Codex or a chat window without giving those away.
 
 ```console
 $ az account show -o json | redact

@@ -1,4 +1,4 @@
-//! redact: hide the names, IDs and hosts in text that say who you work for.
+//! redact: keep secrets, names and work details out of what AI agents see.
 //!
 //! Exit codes: 0 done, 2 bad usage, 3 a pack would not load or the scan failed.
 
@@ -10,7 +10,7 @@ use std::io::{IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-/// Hide the names, IDs and hosts in text that say who you work for.
+/// Keep secrets, names and work details out of what AI agents see.
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {
