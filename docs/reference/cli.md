@@ -14,6 +14,8 @@ Commands:
   packs        List the packs and word lists that load, and where each comes from
   config       Show the config files and what they load
   completions  Print a shell completion script, e.g. `redact completions zsh`
+  init         Print shell setup: completions plus `redacted <cmd>`, which runs a
+               command and masks its output, stderr included, keeping its exit status.
   help         Print this message or the help of the given subcommand(s)
 
 Options:
@@ -180,4 +182,48 @@ Options:
 
   -h, --help
           Print help
+```
+
+## `redact init`
+
+```text
+Print shell setup: completions plus `redacted <cmd>`, which runs a
+command and masks its output, stderr included, keeping its exit status.
+
+Add one line to your shell's startup file:
+
+  bash  ~/.bashrc                        eval "$(redact init bash)"
+  zsh   ~/.zshrc                         eval "$(redact init zsh)"
+  fish  ~/.config/fish/config.fish       redact init fish | source
+  pwsh  $PROFILE                         Invoke-Expression (& redact init powershell | Out-String)
+  elvish ~/.config/elvish/rc.elv         eval (redact init elvish | slurp)
+
+Usage: init [OPTIONS] <SHELL>
+
+Arguments:
+  <SHELL>
+          [possible values: bash, elvish, fish, powershell, zsh]
+
+Options:
+  -f, --file <PATH>
+          Also load this pack (.toml) or word list (.txt). Repeatable
+
+      --only-files
+          Load only --file: skip the built-in packs and everything in ~/.config/redact
+
+  -c, --config <PATH>
+          Use this config file instead of ~/.config/redact/config.toml
+          
+          [env: REDACT_CONFIG=]
+
+      --env-file <PATH>
+          Also hide every value in this dotenv file (`.env`). Repeatable
+
+      --command <COMMAND>
+          The command whose output this is, for `[[override]] command = "..."`
+          
+          [env: REDACT_COMMAND=]
+
+  -h, --help
+          Print help (see a summary with '-h')
 ```
