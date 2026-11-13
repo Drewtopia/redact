@@ -151,7 +151,22 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                     .collect(),
             };
             for (offset, seg) in segments {
-                for caps in rule.re.captures_iter(seg) {
+                let mut pos = 0;
+                while let Some(caps) = rule.re.captures_at(seg, pos) {
+                    let whole = caps.get(0).unwrap();
+                    let end = caps.get(rule.group).map_or(whole.end(), |m| m.end());
+                    // Look again from the end of the hidden part, not of the whole
+                    // match: the boundary after one value may be the one before the next.
+                    pos = if end > pos {
+                        end
+                    } else if whole.end() > pos {
+                        whole.end()
+                    } else {
+                        match seg[pos..].chars().next() {
+                            Some(c) => pos + c.len_utf8(),
+                            None => break,
+                        }
+                    };
                     let Some(m) = caps.get(rule.group) else {
                         continue;
                     };
@@ -1543,6 +1558,15 @@ mod tests {
     }
 
     #[test]
+    fn dir_overrides_match_windows_paths() {
+        let url = "https://dev.azure.com/fabrikamq/Bluefinq/_git/app";
+        let cfg = "[[override]]\ndir = \"C:/Users/x/dev\"\nallow = [\"bluefinq\"]\n";
+        let cwd = Some("C:\\Users\\x\\dev\\proj");
+        let out = with_context("ovwin", cfg, url, None, cwd, None).unwrap();
+        assert!(out.contains("/Bluefinq/"), "{out}");
+    }
+
+    #[test]
     fn overrides_by_machine_folder_and_command() {
         let url = "https://dev.azure.com/fabrikamq/Bluefinq/_git/app";
         let cfg = "[[override]]\nhost = \"work-*\"\nallow = [\"fabrikamq\"]\n\n[[override]]\ndir = \"/srv/bluefinq\"\nallow = [\"bluefinq\"]\n\n[[override]]\ncommand = \"az repos pr *\"\n[override.packs]\ndisable = [\"identity\"]\n";
@@ -1756,8 +1780,30 @@ mod tests {
             "card 4111 1111 1111 1112 fails the Luhn check",
             "GB00WEST12345698765432 fails the mod-97 check",
             "order 1234567890123 and build 20261114",
+            "telemetry: 2026-11-14 10:30, cells: 1234567, mobileAppVersion: 1.2.3.4567",
         ] {
             assert_eq!(pii(text), text);
         }
+        // Epoch milliseconds pass the Luhn check one time in ten.
+        for ms in (1_731_542_400_000u64..).step_by(86_400_123).take(50) {
+            let text = format!("\"createdAt\": {ms}");
+            assert_eq!(pii(&text), text);
+        }
+    }
+
+    #[test]
+    fn pii_hides_values_side_by_side() {
+        for (text, gone) in [
+            ("10.0.0.1 10.0.0.2", "10.0.0.2"),
+            ("10.0.0.1\n10.0.0.2", "10.0.0.2"),
+            ("+44 20 7946 0958\n+44 20 7946 0959", "0959"),
+            ("555-010-0199 555-010-0198", "0198"),
+            ("123-45-6789 123-45-6788", "6788"),
+        ] {
+            let out = pii(text);
+            assert!(!out.contains(gone), "{text:?} -> {out}");
+        }
+        let out = pii("\"phoneNumber\": \"+1 555 010 0199\", \"fax_no\": \"0207 946 0958\"");
+        assert!(!out.contains("0199") && !out.contains("0958"), "{out}");
     }
 }

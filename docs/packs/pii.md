@@ -10,8 +10,8 @@ Personal data: phone numbers, card numbers (Luhn-checked), IBANs (mod-97-checked
 | `phone-north-america` | `[PHONE-…]` | A US or Canadian number: (555) 010-0199, 555-010-0199, 555.010.0199, 1-555-010-0199 |  |
 | `phone-uk` | `[PHONE-…]` | A UK number without the country code: 020 7946 0958, 07700 900123 |  |
 | `phone-pairs` | `[PHONE-…]` | A number written in pairs after a leading 0, as in France: 01 23 45 67 89, 06.12.34.56.78 |  |
-| `phone-named` | `[PHONE-…]` | Any number after a name that says phone: phone, tel, mobile, cell, fax |  |
-| `card-number` | `[CARD-…]` | A payment card number: 13 to 19 digits, spaces or dashes allowed, passing the Luhn check |  |
+| `phone-named` | `[PHONE-…]` | Any number after a key that says phone: phone, tel, mobile, cell or fax, with number, num or no after it |  |
+| `card-number` | `[CARD-…]` | A payment card number: 13 to 19 digits starting 2 to 6, spaces or dashes allowed, passing the Luhn check. The first digit leaves out timestamps such as 1731542400000 |  |
 | `iban` | `[IBAN-…]` | An IBAN, spaces allowed, passing the mod-97 check |  |
 | `ipv4` | `[IP-…]` | An IPv4 address |  |
 | `ipv6` | `[IP-…]` | An IPv6 address, full or with :: (four or more groups, so a time such as 12:30:45 is not one) |  |
