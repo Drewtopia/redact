@@ -389,6 +389,8 @@ mod tests {
         })
     }
 
+    /// The built-in packs' output, with each tag's random hex shown as `…`: a
+    /// random tag such as `[OBJECT-ID-a17946f0]` must not read as a leaked `7946`.
     fn azure(text: &str) -> String {
         let loaded = pack::load(&pack::Options {
             files: vec![],
@@ -398,11 +400,19 @@ mod tests {
             env_files: vec![],
         })
         .unwrap();
-        mask(
+        let out = mask(
             text,
             &scan(text, &loaded).unwrap(),
             &mut Tagger::new(None).unwrap(),
-        )
+        );
+        blank_tags(&out)
+    }
+
+    fn blank_tags(out: &str) -> String {
+        static RE: OnceLock<Regex> = OnceLock::new();
+        RE.get_or_init(|| Regex::new(r"(\[[A-Z][A-Z0-9-]*)-[0-9a-f]{8}\]").unwrap())
+            .replace_all(out, "$1-…]")
+            .into_owned()
     }
 
     /// A fresh folder for one test's files.

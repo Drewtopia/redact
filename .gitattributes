@@ -1,0 +1,2 @@
+# LF everywhere, so a Windows checkout matches the docs the code generates.
+* text=auto eol=lf
