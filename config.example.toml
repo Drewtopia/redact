@@ -8,7 +8,7 @@
 
 # Hide whatever these environment variables hold. `*` matches anything.
 # fnox, mise or your shell set them; run redact under them: `fnox exec -- redact`.
-# env = ["WORK_*", "*_TOKEN"]
+# env = ["ACME_*", "*_TOKEN"]
 
 # Hide every value in these dotenv files, relative to where redact runs.
 # env_files = [".env", ".env.local", ".env.keys"]
@@ -22,7 +22,7 @@
 # --- Values to leave visible ---------------------------------------------------
 
 # Never hidden, in any case. `$NAME` reads an environment variable.
-# allow = ["Contoso", "$WORK_AZ_ORG"]
+# allow = ["Contoso", "$ACME_ORG"]
 
 # --- Packs -----------------------------------------------------------------------
 
@@ -40,14 +40,14 @@
 # env_files, allow and [override.packs].
 
 # [[override]]
-# host = "WORK-*"
-# allow = ["$WORK_AZ_ORG", "$WORK_AZ_PROJECT"]
+# host = "work-laptop"
+# allow = ["$ACME_ORG"]
 
 # [[override]]
 # dir = "~/dev/my-project"
 # env_files = [".env.local"]
 
 # [[override]]
-# command = "az repos pr *"
+# command = "gh pr *"
 # [override.packs]
 # disable = ["identity"]

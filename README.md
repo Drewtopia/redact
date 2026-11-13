@@ -3,21 +3,20 @@
 > [!WARNING]
 > **Work in progress.** redact hides a lot, but not everything, and it will miss things. Check its output before you share anything that matters, and do not rely on it as your only safeguard. Found a leak? Please [open an issue](https://github.com/Drewtopia/redact/issues) naming the command and the field, never the value.
 
-Keep secrets, names, and sensitive information out of what AI sees. Pipe any output through `redact` and the parts that say who you are, who you work for or how to get in (tenant and subscription IDs, people, hosts, project names, tokens) come back as placeholders, so you can hand it to Claude, Codex or a chat window without giving those away.
+Keep secrets, names, and sensitive information out of what AI sees. Pipe any output through `redact` and the parts that say who you are, who you work for or how to get in (tokens, passwords, people, emails, internal hosts and IDs) come back as placeholders, so you can hand it to Claude, Codex or a chat window without giving those away.
 
 ```console
-$ az account show -o json | redact
-{
-  "environmentName": "AzureCloud",
-  "id": "[SUBSCRIPTION-ID-3f1a9c2e]",
-  "name": "[SUBSCRIPTION-NAME-77b0e1d4]",
-  "tenantDisplayName": "[TENANT-NAME-a91c0f3b]",
-  "tenantId": "[TENANT-ID-5d2e8a10]",
-  "user": { "name": "[USER-0c2c9128]", "type": "user" }
-}
+$ { git log -1; env | grep BILLING; curl -sv https://api.example.com/v1/jobs; } 2>&1 | redact
+commit 4e1f0c2a9b7d
+Author: [PERSON-9e6bf2c0] <[EMAIL-208f8db2]>
+
+    Fix retry on the billing job
+
+BILLING_DB_PASSWORD=[SECRET-5e7ccdc3]
+> x-api-key: [SECRET-9692fb16]
 ```
 
-Each hidden part becomes a labelled placeholder. The same value gets the same placeholder within a run, so the text still makes sense: you can tell one person or project from another without seeing who they are.
+Each hidden part becomes a labelled placeholder. The same value gets the same placeholder within a run, so the text still makes sense: you can tell one person or secret from another without seeing who they are.
 
 ## Install
 
@@ -37,7 +36,7 @@ Or download a binary for macOS, Linux or Windows from [Releases](https://github.
 | `redact packs` | Lists the rules that load, and the packs switched off |
 | `redact config ls` | Lists every file that loads, in order, what imported it, and each override that applied |
 | `redact config init` | Writes a starter config with every setting switched off |
-| `redact --command "az repos pr show"` | Names the command whose output this is, for `command` overrides |
+| `redact --command "gh pr view"` | Names the command whose output this is, for `command` overrides |
 | `redact --env-file .env` | Also hides every value in that dotenv file |
 | `redact completions zsh` | Prints a shell completion script (bash, zsh, fish, powershell, elvish) |
 
@@ -47,7 +46,7 @@ Exit codes: 0 done, 2 bad usage, 3 a pack would not load or the scan failed. A f
 
 The built-in `credentials` pack hides credentials wherever they appear:
 
-- **On sight:** JWTs (such as an Azure access token), bearer tokens, GitHub, Anthropic, OpenAI, AWS, Slack, Stripe and Google keys, Azure storage keys and SAS signatures, Entra client secrets, PEM private key blocks, and the password in `scheme://user:password@host`.
+- **On sight:** JWTs, bearer tokens, GitHub, Anthropic, OpenAI, AWS, Slack, Stripe, Google and Azure keys, PEM private key blocks, and the password in `scheme://user:password@host`.
 - **By name:** the value of anything named as a secret: `TOKEN=`, `"password":`, `client_secret:`, `API_KEY=`, `*_PAT=`, `Authorization:` and the like.
 - **Environment dumps:** the value on each `NAME=value` line of `env`, `mise env` or a `.env` file, except settings such as numbers, `true` and `development`.
 
@@ -61,21 +60,14 @@ Built-in packs for common tools:
 
 - **`kubernetes`:** the values of a Secret's `data:` (`kubectl get secret -o yaml` or `-o json`), and client keys in a kubeconfig.
 - **`docker`:** registry logins in `~/.docker/config.json`, and secret-named entries in `docker inspect`'s `Env` list.
-- **`npm`:** `_authToken`, `_password` and `_auth` in `.npmrc`, Azure Artifacts feeds included.
-- **`http`:** `Cookie` and `Set-Cookie` values and API key headers (`Ocp-Apim-Subscription-Key`, `x-functions-key`, `x-api-key`), as `curl -v` prints them.
+- **`npm`:** `_authToken`, `_password` and `_auth` in `.npmrc`, for any registry.
+- **`http`:** `Cookie` and `Set-Cookie` values and API key headers such as `x-api-key`, as `curl -v` prints them.
 - **`gcp`:** `ya29.` access tokens, and project IDs in key files, resource paths and `--project`.
 - **`pii`, off by default:** phone numbers, card numbers and IBANs that pass their checksums, IP and MAC addresses, US Social Security and UK National Insurance numbers. Turn it on with `[packs] enable = ["pii"]`.
 
-The built-in `azure` pack finds things by where they sit, so you do not list them:
+- **`azure`:** tenant, subscription and identity IDs beside their names, people in Azure DevOps and Microsoft Graph records, your own Azure hosts, and Azure DevOps org, project and repo names. Public values Microsoft documents stay visible. See [the azure pack](https://drewtopia.github.io/redact/packs/azure).
 
-- **IDs beside their names:** tenant, subscription, app, object and identity GUIDs. A bare GUID (a request id) stays visible.
-- **People:** names, emails, phones, job details and IDs in Azure DevOps and Microsoft Graph identity records, then the same name anywhere else in the text.
-- **Your own hosts:** the `<name>` in `<name>.azurewebsites.net`, `<name>.crm11.dynamics.com`, `<name>.vault.azure.net` and other tenant hosts. Public hosts such as `portal.azure.com` stay visible.
-- **Azure DevOps:** org, project and repo names from URLs, work items and `az devops` / `az repos` output.
-- **`az account`:** tenant name, subscription name and the signed-in user.
-- **Pipeline variable groups:** the value of every variable.
-
-Values Microsoft documents publicly (well-known app and role IDs, `AzureCloud`) are never hidden.
+Rules find things by where they sit (the value after `password=`, the name in an `Author:` line), so you do not list them. Every pack's rules: [drewtopia.github.io/redact/packs](https://drewtopia.github.io/redact/packs/).
 
 ## Config
 
@@ -83,27 +75,27 @@ Values Microsoft documents publicly (well-known app and role IDs, `AzureCloud`) 
 
 ```toml
 # Hide the values these environment variables hold. `*` matches anything.
-env = ["WORK_*", "*_TOKEN"]
+env = ["ACME_*", "*_TOKEN"]
 
 # Hide every value in these dotenv files, relative to where redact runs.
 env_files = [".env", ".env.local", ".env.keys"]
 
 # More packs (.toml), word lists (.txt) or folders of them, relative to this file.
-import = ["~/work/customers.txt", "packs"]
+import = ["customers.txt", "packs"]
 
 # Hide who you are: your git name and email, and your GitHub login.
 me = true
 
 # Never hidden, in any case. `$NAME` reads an environment variable.
-allow = ["$WORK_AZ_ORG"]
+allow = ["$ACME_ORG"]
 
 [packs]
 enable = ["pii"]     # phone numbers, cards, IBANs, IPs: off by default
 
 # Settings for one machine, folder (`dir`) or command (`--command`).
 [[override]]
-host = "WORK-*"
-allow = ["$WORK_AZ_PROJECT"]
+host = "work-laptop"
+env_files = ["~/work/.env"]
 ```
 
 `redact config init` writes a starter file with every setting switched off. The [config reference](https://drewtopia.github.io/redact/reference/config) covers each one.

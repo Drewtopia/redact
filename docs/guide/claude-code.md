@@ -7,7 +7,7 @@ Anything that reaches Claude's conversation stays in it: it is sent again on eve
 The simplest way: run the command, pipe it through redact, paste the result.
 
 ```sh
-az boards work-item show --id 1234 -o json | redact
+gh issue view 1234 | redact
 ```
 
 ## Inside Claude Code
@@ -19,7 +19,7 @@ redact is built to be the detector behind such a mod: `redact scan --json` retur
 The mod knows which command made the output, so it can pass it on with `--command` (or `REDACT_COMMAND`). A `command` [override](../reference/config#overrides) then changes what is hidden for that command alone:
 
 ```sh
-az repos pr show --id 42 -o json | redact scan --json --command "az repos pr show --id 42"
+gh pr view 42 | redact scan --json --command "gh pr view 42"
 ```
 
 ::: tip Hooks or a mod?

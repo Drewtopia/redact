@@ -19,34 +19,38 @@ Or download a binary for macOS, Linux or Windows from the [releases page](https:
 ## Your first pipe
 
 ```sh
-az account show -o json | redact
+git log -1 | redact
 ```
 
-```json
-{
-  "environmentName": "AzureCloud",
-  "id": "[SUBSCRIPTION-ID-3f1a9c2e]",
-  "name": "[SUBSCRIPTION-NAME-77b0e1d4]",
-  "tenantDisplayName": "[TENANT-NAME-a91c0f3b]",
-  "tenantId": "[TENANT-ID-5d2e8a10]",
-  "user": { "name": "[USER-0c2c9128]", "type": "user" }
-}
+```text
+commit 4e1f0c2a9b7d
+Author: [PERSON-9e6bf2c0] <[EMAIL-208f8db2]>
+
+    Fix retry on the billing job
 ```
 
-What stays visible is what says nothing about you: `AzureCloud`, field names, public IDs Microsoft documents.
+What stays visible is what says nothing about you: the commit hash, the message, field names. Anything with a name that says secret is hidden too:
+
+```sh
+env | redact
+```
+
+```text
+BILLING_DB_PASSWORD=[SECRET-5e7ccdc3]
+PORT=8080
+```
 
 ## See what it did
 
 `--explain` says on stderr which rule hid each part. It never prints the value.
 
 ```sh
-az repos list -o json | redact scan --explain > /dev/null
+git log -1 | redact scan --explain > /dev/null
 ```
 
 ```text
-azure:ado-org -> [ORG-…]
-azure:ado-project-url -> [PROJECT-…]
-azure:repo-record -> [REPO-…]
+identity:git-person -> [PERSON-…]
+identity:email -> [EMAIL-…]
 ```
 
 ## See what loaded

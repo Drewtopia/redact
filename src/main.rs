@@ -368,9 +368,9 @@ mod docs {
             user: true,
             config: Some(d.join("config.toml")),
             env_files: vec![],
-            command: Some("az repos pr show".into()),
+            command: Some("gh pr view 42".into()),
             cwd: Some(d.clone()),
-            host: Some("WORK-LAPTOP".into()),
+            host: Some("work-laptop".into()),
         });
         std::fs::remove_dir_all(&d).unwrap();
         let loaded = loaded.expect("the uncommented starter config loads");

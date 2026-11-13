@@ -10,7 +10,7 @@ A pack is a TOML file of rules. Each rule's `regex` finds a spot in the text, an
 | [identity](./identity) | Emails anywhere; git authors and `user.name`; GitHub user records |
 | [kubernetes](./kubernetes) | Secret `data:` values (YAML and JSON); kubeconfig client keys |
 | [docker](./docker) | Registry logins in `config.json`; secret-named `docker inspect` env entries |
-| [npm](./npm) | `.npmrc` `_authToken`, `_password` and `_auth`, Azure Artifacts feeds included |
+| [npm](./npm) | `.npmrc` `_authToken`, `_password` and `_auth`, for any registry |
 | [http](./http) | `Cookie` and `Set-Cookie` values; API key headers (`Ocp-Apim-Subscription-Key`, `x-functions-key`, `x-api-key`) |
 | [gcp](./gcp) | `ya29.` access tokens; project IDs in key files, resource paths and `--project` |
 | [credentials](./credentials) | JWTs and bearer tokens; vendor key shapes; private keys; URL passwords; values named as secrets; environment dump values |
@@ -34,4 +34,4 @@ Contoso Pharma
 
 ## Remembered values
 
-A rule can mark what it hides as remembered: the same value is then hidden everywhere else in the text too. A person found in a work item's `AssignedTo` is also hidden when an `@mention` names them in a comment, and a project found in a URL is hidden in a path like `C:\<project>\`.
+A rule can mark what it hides as remembered: the same value is then hidden everywhere else in the text too. A person found in a git `Author:` line is also hidden where a later line names them, and a GitHub login found in a user record is hidden in every URL that holds it.

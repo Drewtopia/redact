@@ -23,7 +23,7 @@ writes a starter file with every setting shown and switched off. `--print` shows
 
 ```toml
 # Hide the values these environment variables hold. `*` matches anything.
-env = ["WORK_*", "*_TOKEN", "AZURE_ORGANISATION"]
+env = ["ACME_*", "*_TOKEN", "DATABASE_URL"]
 
 # Hide every value in these dotenv files, relative to where redact runs.
 env_files = [".env", ".env.local", ".env.keys"]
@@ -35,20 +35,20 @@ import = ["~/work/customers.txt", "packs"]
 me = true
 
 # Never hidden, in any case. `$NAME` reads an environment variable.
-allow = ["Contoso", "$WORK_AZ_ORG"]
+allow = ["Contoso", "$ACME_ORG"]
 
 [packs]
 enable = ["pii"]     # packs that start switched off
 disable = ["gcp"]    # packs you do not want
 
-# On the work laptop only: leave the Azure DevOps project visible, so PR links work.
+# On the work laptop only: hide the values in the work .env as well.
 [[override]]
-host = "WORK-*"
-allow = ["$WORK_AZ_PROJECT"]
+host = "work-laptop"
+env_files = ["~/work/.env"]
 
-# For `az repos pr` output: people are already in the PR, so leave them.
+# For `gh pr` output: the people are already in the PR, so leave them.
 [[override]]
-command = "az repos pr *"
+command = "gh pr *"
 [override.packs]
 disable = ["identity"]
 ```
@@ -69,12 +69,12 @@ An unknown setting is an error, so a typo such as `imports` is caught rather tha
 
 ## Allow
 
-`allow` leaves a value visible even when a rule or a word list would hide it: your own organisation's name, so Azure DevOps links still open, or a public product name a word list catches. It allows the value itself, never what sits next to it.
+`allow` leaves a value visible even when a rule or a word list would hide it: your own organisation's name, so links that contain it still work, or a public product name a word list catches. It allows the value itself, never what sits next to it.
 
 `$NAME` reads the value from an environment variable, so the config file itself names nothing:
 
 ```toml
-allow = ["$WORK_AZ_ORG"]
+allow = ["$ACME_ORG"]
 ```
 
 A variable that is not set allows nothing, and `redact config ls` lists it as not set.
@@ -106,7 +106,7 @@ An override with no condition always applies. It may set `env`, `env_files`, `al
 redact cannot see the command whose output it reads, so a hook or alias that knows it passes it on:
 
 ```sh
-az repos pr show --id 42 | redact scan --command "az repos pr show"
+gh pr view 42 | redact scan --command "gh pr view 42"
 ```
 
 ## Load order
