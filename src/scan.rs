@@ -38,18 +38,82 @@ fn chosen_name(v: &str) -> bool {
     v.chars().any(|c| c.is_uppercase()) || v.chars().count() >= 5
 }
 
-/// The text between braces: one JSON record's own fields, whatever their order.
-fn records(text: &str) -> impl Iterator<Item = (usize, &str)> {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"[^{}]+").unwrap())
-        .find_iter(text)
-        .map(|m| (m.start(), m.as_str()))
+/// One JSON object's own fields: the pieces of it outside any nested object, as
+/// (offset, text), plus those pieces joined, for the `within` test.
+struct Record<'a> {
+    pieces: Vec<(usize, &'a str)>,
+    joined: String,
+}
+
+/// Every object in the text, each with only its own fields, so a nested object
+/// (`"user": {…}`) between two fields does not split them apart and field order
+/// does not matter. Braces inside JSON strings are not structure. Text outside
+/// every object counts as one more record; an unclosed object runs to the end.
+fn records(text: &str) -> Vec<Record<'_>> {
+    let b = text.as_bytes();
+    // Each open object: its finished pieces, and where its current piece began.
+    let mut stack: Vec<(Vec<(usize, usize)>, usize)> = vec![(Vec::new(), 0)];
+    let mut done: Vec<Vec<(usize, usize)>> = Vec::new();
+    let (mut in_string, mut escaped) = (false, false);
+    for (i, &c) in b.iter().enumerate() {
+        if in_string {
+            match c {
+                _ if escaped => escaped = false,
+                b'\\' => escaped = true,
+                b'"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        match c {
+            b'"' => in_string = true,
+            b'{' => {
+                let top = stack
+                    .last_mut()
+                    .expect("the outermost record is never popped here");
+                if i > top.1 {
+                    top.0.push((top.1, i));
+                }
+                stack.push((Vec::new(), i + 1));
+            }
+            b'}' if stack.len() > 1 => {
+                let (mut pieces, start) = stack.pop().expect("checked above");
+                if i > start {
+                    pieces.push((start, i));
+                }
+                done.push(pieces);
+                stack.last_mut().expect("the outermost record remains").1 = i + 1;
+            }
+            _ => {}
+        }
+    }
+    while let Some((mut pieces, start)) = stack.pop() {
+        if b.len() > start {
+            pieces.push((start, b.len()));
+        }
+        done.push(pieces);
+    }
+    // Braces and quotes are ASCII, so every cut is on a character boundary.
+    done.into_iter()
+        .filter(|p| !p.is_empty())
+        .map(|p| {
+            let pieces: Vec<(usize, &str)> = p.into_iter().map(|(s, e)| (s, &text[s..e])).collect();
+            let joined = pieces
+                .iter()
+                .map(|(_, t)| *t)
+                .collect::<Vec<_>>()
+                .join("\n");
+            Record { pieces, joined }
+        })
+        .collect()
 }
 
 pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
     // Keywords are a cheap test that a pack or rule could match at all.
     let low = text.to_lowercase();
     let has = |keys: &[String]| keys.is_empty() || keys.iter().any(|k| low.contains(k.as_str()));
+    // Built on first use, and only if a `within` rule runs.
+    let recs: OnceLock<Vec<Record>> = OnceLock::new();
 
     let mut spans = Vec::new();
     let mut words: Vec<Word> = Vec::new();
@@ -64,7 +128,12 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
             }
             let segments: Vec<(usize, &str)> = match &rule.within {
                 None => vec![(0, text)],
-                Some(w) => records(text).filter(|(_, seg)| w.is_match(seg)).collect(),
+                Some(w) => recs
+                    .get_or_init(|| records(text))
+                    .iter()
+                    .filter(|r| w.is_match(&r.joined))
+                    .flat_map(|r| r.pieces.iter().copied())
+                    .collect(),
             };
             for (offset, seg) in segments {
                 for caps in rule.re.captures_iter(seg) {
@@ -159,13 +228,16 @@ fn find_words(text: &str, words: Vec<Word>) -> Result<Vec<Span>, String> {
     Ok(out)
 }
 
-/// Sorted, with overlaps removed: the earliest, then longest, span wins.
+/// Sorted, and overlapping finds joined into one span covering every byte any
+/// of them found: a later find that runs past an earlier one must not leave its
+/// tail showing. The earliest (then longest) find gives the joined span its label.
 fn merge(mut spans: Vec<Span>) -> Vec<Span> {
     spans.sort_by(|a, b| a.start.cmp(&b.start).then(b.end.cmp(&a.end)));
     let mut out: Vec<Span> = Vec::new();
     for s in spans {
-        if out.last().is_none_or(|l| s.start >= l.end) {
-            out.push(s);
+        match out.last_mut() {
+            Some(l) if s.start < l.end => l.end = l.end.max(s.end),
+            _ => out.push(s),
         }
     }
     out
@@ -527,6 +599,59 @@ mod tests {
             r#"{{"accessToken": "{jwt}", "tokenType": "Bearer"}}"#
         ));
         assert!(out.contains("\"Bearer\""), "{out}");
+    }
+
+    // Regressions from the independent review of 2026-11-14.
+
+    #[test]
+    fn overlapping_finds_hide_every_byte_either_found() {
+        // named-secret stops at the comma; url-password covers the whole password.
+        let text = r#"{"connection_string": "postgres://app:alpha1,bravo2zz@db-host:5432/x"}"#;
+        let out = azure(text);
+        assert!(
+            !out.contains("alpha1") && !out.contains("bravo2zz"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_multiword_quoted_secret_is_hidden_whole() {
+        for text in [
+            r#"{"password": "correct horse battery staple"}"#,
+            "password: 'correct horse battery staple'",
+            "db:\n  password: correct horse battery staple\n  host: db-host\n",
+            "PASSWORD=correct horse battery staple",
+        ] {
+            let out = azure(text);
+            for w in ["correct", "horse", "battery", "staple"] {
+                assert!(!out.contains(w), "still shows {w}: {out}");
+            }
+        }
+        // The line after keeps its own content.
+        let out = azure("password: correct horse battery\nhost: db-host\n");
+        assert!(out.contains("host: db-host"), "{out}");
+    }
+
+    #[test]
+    fn a_records_fields_count_whatever_their_order() {
+        let sub = "0000000d-7b4d-4e8a-9c21-5d6e7f8a9b0c";
+        for text in [
+            // isDefault, then a nested user, then id and name.
+            format!(
+                r#"{{"isDefault": true, "user": {{"name": "x", "type": "user"}}, "id": "{sub}", "name": "Fabrikamq Prod"}}"#
+            ),
+            // id before the nested user, isDefault after it.
+            format!(
+                r#"{{"id": "{sub}", "name": "Fabrikamq Prod", "user": {{"name": "x", "type": "user"}}, "isDefault": true}}"#
+            ),
+            // a brace inside a string does not split the record.
+            format!(
+                r#"{{"id": "{sub}", "note": "a {{ brace", "isDefault": true, "name": "Fabrikamq Prod"}}"#
+            ),
+        ] {
+            let out = azure(&text);
+            assert!(!out.contains(sub) && !out.contains("Fabrikamq"), "{out}");
+        }
     }
 
     #[test]

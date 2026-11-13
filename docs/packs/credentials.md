@@ -17,7 +17,9 @@ Tokens, keys and passwords: JWTs, bearer tokens, common vendor key shapes, priva
 | `entra-client-secret` | `[CLIENT-SECRET-…]` | An Entra ID (Azure AD) app client secret |  |
 | `private-key` | `[PRIVATE-KEY-…]` | A PEM private key block |  |
 | `url-password` | `[PASSWORD-…]` | The password in scheme://user:password@host |  |
-| `named-secret` | `[SECRET-…]` | The value of TOKEN=, "password":, client_secret: and other names that say secret | when it reads as a name |
+| `named-secret-quoted` | `[SECRET-…]` | A double-quoted value of TOKEN, "password", client_secret and other names that say secret | when it reads as a name |
+| `named-secret-single-quoted` | `[SECRET-…]` | A single-quoted value of a name that says secret | when it reads as a name |
+| `named-secret` | `[SECRET-…]` | An unquoted value of TOKEN=, password:, client_secret: and other names that say secret, to the end of the line (YAML values may hold spaces) | when it reads as a name |
 | `env-dump` | `[ENV-VALUE-…]` | The value on each NAME=value line of env, mise env or a .env file | when it reads as a name |
 
 Never hidden: `bearer`, `debug`, `development`, `error`, `false`, `info`, `localhost`, `production`, `staging`, `true`, `warning`.

@@ -227,6 +227,44 @@ fn is_setting(v: &str) -> bool {
         || COMMON.contains(&v.to_ascii_lowercase().as_str())
 }
 
+/// The byte offset of the first `"` in `s` that a backslash does not escape.
+fn closing_quote(s: &str) -> Option<usize> {
+    let mut escaped = false;
+    for (i, c) in s.char_indices() {
+        match c {
+            _ if escaped => escaped = false,
+            '\\' => escaped = true,
+            '"' => return Some(i),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// A double-quoted dotenv value's escapes: `\n`, `\"` and `\\`. Any other
+/// backslash is kept as it is.
+fn unescape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => out.push('\n'),
+            Some('"') => out.push('"'),
+            Some('\\') => out.push('\\'),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+            None => out.push('\\'),
+        }
+    }
+    out
+}
+
 /// The values of a dotenv file: `KEY=value`, `export KEY=value`, single or double
 /// quotes (a double-quoted value may span lines), `#` comments. Skips empty
 /// values, settings (see `is_setting`), `encrypted:` values (ciphertext hides
@@ -246,19 +284,28 @@ fn dotenv_words(text: &str, source: &str) -> Vec<WordList> {
         let key = key.trim();
         let raw = raw.trim();
         let value = if let Some(rest) = raw.strip_prefix('"') {
-            let mut v = rest.to_string();
-            while !v.trim_end().ends_with('"') {
+            // Up to the closing quote that is not escaped, across lines if need be.
+            // Whatever follows it (a `# comment`) is not part of the value.
+            let mut v = String::new();
+            let mut chunk = rest.to_string();
+            loop {
+                if let Some(end) = closing_quote(&chunk) {
+                    v.push_str(&chunk[..end]);
+                    break;
+                }
+                v.push_str(&chunk);
                 match lines.next() {
                     Some(next) => {
                         v.push('\n');
-                        v.push_str(next);
+                        chunk = next.to_string();
                     }
                     None => break,
                 }
             }
-            v.trim_end().trim_end_matches('"').replace("\\n", "\n")
+            unescape(&v)
         } else if let Some(rest) = raw.strip_prefix('\'') {
-            rest.trim_end_matches('\'').to_string()
+            // Single quotes: literal up to the next one; no escapes, no comment.
+            rest.split_once('\'').map_or(rest, |(v, _)| v).to_string()
         } else {
             raw.split(" #").next().unwrap_or("").trim().to_string()
         };
@@ -677,6 +724,26 @@ mod tests {
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect::<Vec<_>>()
             .into_iter()
+    }
+
+    #[test]
+    fn dotenv_quoted_values_with_comments() {
+        // Review 2026-11-14: a comment after a quoted value swallowed the next line.
+        let text = "ALPHA=\"alpha-value-1\" # a note\nBETA=bravo-value-2\nGAMMA='gamma-value-3' # another\nDELTA=\"multi\nline-value\" # end\nECHO=\"has \\\"quote\\\" inside\"\n";
+        let got: Vec<(String, Vec<String>)> = dotenv_words(text, ".env")
+            .into_iter()
+            .map(|w| (w.label, w.words))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("ALPHA".to_string(), vec!["alpha-value-1".to_string()]),
+                ("BETA".into(), vec!["bravo-value-2".into()]),
+                ("GAMMA".into(), vec!["gamma-value-3".into()]),
+                ("DELTA".into(), vec!["multi".into(), "line-value".into()]),
+                ("ECHO".into(), vec!["has \"quote\" inside".into()]),
+            ]
+        );
     }
 
     #[test]
