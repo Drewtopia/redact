@@ -132,14 +132,14 @@ export const register: Register = (on, options) => {
     const strings: string[] = []
     const st: WalkState = { incomplete: false }
     walk(r.result, (s) => (strings.push(s), s), st)
+    // Part of the result could not be read (too deep, or not plain data), so
+    // it was never scanned: withhold the whole result rather than pass it raw.
+    if (st.incomplete) return { deny: 'redact: part of this result could not be scanned (too deep, or not plain data), so it was withheld. Narrow the call and retry.' }
     if (r.text !== undefined) strings.push(r.text)
     for (const c of r.context ?? []) strings.push(c)
     const unique = [...new Set(strings)]
     const { masked, tags } = await run($, next, binary, unique, { ...scan, escape: !LIVE_TAG_TOOLS.has(e.tool) })
     if (tags.size === 0) return r
-    // Something was hidden and part of the result cannot be rewritten: that
-    // part may hold the same value, so the whole result is withheld.
-    if (st.incomplete) return { deny: 'redact: a hidden value sits in a part of this result it cannot rewrite (too deep, or not plain data). Narrow the call and retry.' }
 
     const lookup = new Map(unique.map((s, i) => [s, masked[i] ?? s]))
     const fix = (s: string): string => lookup.get(s) ?? s
