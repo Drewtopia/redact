@@ -279,10 +279,12 @@ mod tests {
 
     #[test]
     fn a_short_key_is_refused() {
-        assert!(Tagger::new(Some("short"))
-            .err()
-            .unwrap()
-            .contains("at least 16"));
+        assert!(
+            Tagger::new(Some("short"))
+                .err()
+                .unwrap()
+                .contains("at least 16")
+        );
         assert!(
             Tagger::new(Some("")).is_ok(),
             "an empty REDACT_KEY means no key"

@@ -131,6 +131,71 @@ struct ConfigFile {
     env: Vec<String>,
     #[serde(default)]
     env_files: Vec<String>,
+    /// Hide who you are: your git name and email, and your GitHub login.
+    #[serde(default)]
+    me: bool,
+}
+
+/// GitHub logins in gh's `hosts.yml`: each host's `user:`, and the names under
+/// its `users:` map (gh keeps one entry per account you have signed in with).
+fn gh_logins(hosts_yml: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_users = false;
+    for line in hosts_yml.lines() {
+        let indent = line.len() - line.trim_start().len();
+        let t = line.trim();
+        if let Some(v) = t.strip_prefix("user:") {
+            in_users = false;
+            out.push(v.trim().to_string());
+        } else if t == "users:" {
+            in_users = true;
+        } else if in_users && indent >= 8 && t.ends_with(':') && !t.contains(' ') {
+            out.push(t.trim_end_matches(':').to_string());
+        } else if indent <= 4 {
+            in_users = false;
+        }
+    }
+    out.retain(|l| !l.is_empty());
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// gh's config folder: `$GH_CONFIG_DIR`, else `%AppData%\GitHub CLI` on Windows,
+/// else `$XDG_CONFIG_HOME/gh` or `~/.config/gh`.
+fn gh_config_dir() -> Option<PathBuf> {
+    if let Some(d) = std::env::var_os("GH_CONFIG_DIR") {
+        return Some(PathBuf::from(d));
+    }
+    if cfg!(windows) {
+        return std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("GitHub CLI"));
+    }
+    etcetera::choose_base_strategy()
+        .ok()
+        .map(|s| etcetera::BaseStrategy::config_dir(&s).join("gh"))
+}
+
+/// `git config --get <key>`, here and globally (an `includeIf` can give a repo
+/// its own email). git not installed, or the key not set, gives nothing.
+fn git_values(key: &str) -> Vec<String> {
+    let run = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty())
+    };
+    let mut v: Vec<String> = [
+        run(&["config", "--get", key]),
+        run(&["config", "--global", "--get", key]),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    v.dedup();
+    v
 }
 
 /// Values in a dotenv file that are settings, not secrets: hiding `true` or
@@ -361,6 +426,45 @@ struct Loader {
 }
 
 impl Loader {
+    /// `me = true`: your git user.name and user.email, and your GitHub logins
+    /// from gh's hosts.yml, hidden everywhere as [ME-NAME-…], [ME-EMAIL-…] and
+    /// [ME-GITHUB-…]. What is not set is skipped; `config ls` lists what was found.
+    fn me(&mut self, via: &Path) {
+        let gh = gh_config_dir()
+            .and_then(|d| std::fs::read_to_string(d.join("hosts.yml")).ok())
+            .map(|t| gh_logins(&t))
+            .unwrap_or_default();
+        let mut found = Vec::new();
+        for (label, words) in [
+            ("ME-NAME", git_values("user.name")),
+            ("ME-EMAIL", git_values("user.email")),
+            ("ME-GITHUB", gh),
+        ] {
+            let words: Vec<String> = words
+                .into_iter()
+                .filter(|w| w.chars().count() >= 3)
+                .collect();
+            if !words.is_empty() {
+                found.push(format!(
+                    "{} {}",
+                    words.len(),
+                    label.trim_start_matches("ME-").to_lowercase()
+                ));
+                self.loaded.words.push(WordList {
+                    label: label.into(),
+                    source: "me".into(),
+                    words,
+                });
+            }
+        }
+        let detail = if found.is_empty() {
+            "nothing found".into()
+        } else {
+            found.join(", ")
+        };
+        self.record("me", "git config, gh hosts.yml".into(), detail, Some(via));
+    }
+
     /// A dotenv file's values. `required` (from `--env-file`) makes a missing file
     /// an error; from a config's `env_files` it is listed as not found instead,
     /// since a project may simply not have one.
@@ -482,6 +586,9 @@ impl Loader {
                         None => PathBuf::from(raw), // relative: to where redact runs
                     };
                     self.env_file(&path, Some(&canon), false)?;
+                }
+                if cfg.me {
+                    self.me(&canon);
                 }
             }
             other => {
@@ -610,6 +717,16 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
                 ("INLINE", vec!["bluefin-api"]),
             ]
         );
+    }
+
+    #[test]
+    fn gh_logins_from_hosts_yml() {
+        let yml = "github.com:\n    git_protocol: ssh\n    users:\n        quillfeatherq:\n            oauth_token: x\n        workaccountq:\n            oauth_token: y\n    user: quillfeatherq\n    oauth_token: x\nghe.example.com:\n    user: jq-enterprise\n";
+        assert_eq!(
+            gh_logins(yml),
+            ["jq-enterprise", "quillfeatherq", "workaccountq"]
+        );
+        assert!(gh_logins("").is_empty());
     }
 
     #[test]

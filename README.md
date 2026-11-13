@@ -79,7 +79,12 @@ env_files = [".env", ".env.local", ".env.keys"]
 
 # More packs (.toml), word lists (.txt) or folders of them, relative to this file.
 import = ["~/work/customers.txt", "packs"]
+
+# Hide who you are: your git name and email, and your GitHub login.
+me = true
 ```
+
+`me` asks git for your `user.name` and `user.email` (here and globally, so a work email from an `includeIf` counts) and reads your GitHub logins from gh's `hosts.yml`. They are hidden everywhere as `[ME-NAME-…]`, `[ME-EMAIL-…]` and `[ME-GITHUB-…]`, so your username stops showing in GitHub URLs and remotes. Nothing to keep in sync: change your git name and redact follows.
 
 `env` is how redact works with [fnox](https://github.com/jdx/fnox), [mise](https://mise.jdx.dev) or anything else that sets variables, without reading their files: `fnox exec -- redact`.
 
