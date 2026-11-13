@@ -7,19 +7,23 @@ on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
 
+# Third-party actions are pinned to a commit SHA (tag in the comment) because
+# they run with write access to this repo's releases.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   create-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check the tag matches Cargo.toml
         run: |
           version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
           [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME is not v$version"; exit 1; }
-      - uses: taiki-e/create-gh-release-action@v1
+      - uses: taiki-e/create-gh-release-action@045e5c0ed9c50cc1f96de7e891a09ad3daea245f # v1.12.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -36,9 +40,11 @@ jobs:
           - { target: x86_64-pc-windows-msvc, os: windows-latest }
           - { target: aarch64-pc-windows-msvc, os: windows-latest }
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: taiki-e/upload-rust-binary-action@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6 # v1.30.2
         with:
           bin: redact
           target: ${{ matrix.target }}
