@@ -342,7 +342,7 @@ regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{0,49})\.visualstudio\.com'''
 secretGroup = 1
 label = "ORG"
 # Microsoft's own hosts under visualstudio.com, not an org.
-except = '''(?i)^(?:vs-ssh|app|marketplace|vssps|aex|vsaex|vsrm|status|vsassets|spsprod[a-z]{2,6}[0-9]{0,3}|login|management)$'''
+except = '''(?i)^(?:vs-ssh|pkgs|app|marketplace|vssps|aex|vsaex|vsrm|status|vsassets|spsprod[a-z]{2,6}[0-9]{0,3}|login|management)$'''
 remember = "any"
 keywords = ["visualstudio.com"]
 
@@ -380,3 +380,21 @@ secretGroup = 1
 label = "PROJECT"
 remember = "any"
 keywords = ["visualstudio.com/"]
+
+[[rules]]
+id = "ado-org-artifacts"
+description = "The org in Azure Artifacts feed URLs: pkgs.dev.azure.com/<org>/"
+regex = '''(?i)pkgs\.dev\.azure\.com/([a-z0-9][a-z0-9-]{0,49})'''
+secretGroup = 1
+label = "ORG"
+remember = "any"
+keywords = ["pkgs.dev.azure.com"]
+
+[[rules]]
+id = "ado-org-artifacts-vs"
+description = "The org in older Azure Artifacts feed URLs: <org>.pkgs.visualstudio.com"
+regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{0,49})\.pkgs\.visualstudio\.com'''
+secretGroup = 1
+label = "ORG"
+remember = "any"
+keywords = ["pkgs.visualstudio.com"]

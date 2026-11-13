@@ -1343,4 +1343,118 @@ mod tests {
         let out = azure("https://dev.azure.com/fabrikamq/Main/_git/app\ngit push origin main\n");
         assert!(out.contains("origin main"), "{out}");
     }
+
+    // New packs: kubernetes, docker, npm, http, gcp.
+
+    #[test]
+    fn kubernetes_secrets_and_kubeconfig() {
+        let b64 = format!("cG9zdGdyZXM6Ly9{}", body(30));
+        hides_all(
+            "secret yaml",
+            &format!(
+                "apiVersion: v1\ndata:\n  DATABASE_URL: {b64}\n  tls.key: LS0tLS1CRUdJTi{}\nkind: Secret\nmetadata:\n  name: app-secrets\ntype: Opaque\n",
+                body(20)
+            ),
+            &[&b64, "LS0tLS1CRUdJTi"],
+        );
+        hides_all(
+            "secret json",
+            &format!(
+                r#"{{"apiVersion": "v1", "data": {{"DATABASE_URL": "{b64}", ".dockerconfigjson": "eyJhdXRocyI6{}"}}, "kind": "Secret"}}"#,
+                body(20)
+            ),
+            &[&b64, "eyJhdXRocyI6"],
+        );
+        hides_all(
+            "kubeconfig",
+            &format!(
+                "users:\n- name: admin\n  user:\n    client-certificate-data: LS0tLS1DRVJU{}\n    client-key-data: LS0tLS1CRUdJTiBSU0Eg{}\n",
+                body(20),
+                body(30)
+            ),
+            &["LS0tLS1CRUdJTiBSU0Eg"],
+        );
+        // The Secret's name and type stay readable.
+        let out = azure(&format!(
+            "data:\n  DB: {b64}\nkind: Secret\nmetadata:\n  name: app-secrets\n"
+        ));
+        assert!(
+            out.contains("name: app-secrets") && out.contains("kind: Secret"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn docker_auth_and_inspect_env() {
+        hides_all(
+            "config.json",
+            r#"{"auths": {"reg.example.com": {"auth": "Ym90OlpxOHZEb2NrZXJQdzQy"}}}"#,
+            &["Ym90OlpxOHZEb2NrZXJQdzQy"],
+        );
+        hides_all(
+            "identity token",
+            r#"{"auths": {"x": {"identitytoken": "Zq8vIdentityTok42"}}}"#,
+            &["Zq8vIdentityTok42"],
+        );
+        hides_all(
+            "inspect env",
+            r#"{"Config": {"Env": ["DB_PASS=Zq8vEnvPass42", "PATH=/usr/local/bin", "API_KEY=Zq8vEnvKey42"]}}"#,
+            &["Zq8vEnvPass42", "Zq8vEnvKey42"],
+        );
+        assert!(azure(r#"["PATH=/usr/local/bin"]"#).contains("/usr/local/bin"));
+    }
+
+    #[test]
+    fn npmrc_tokens() {
+        hides_all(
+            "npmrc",
+            "//registry.npmjs.org/:_authToken=Zq8vNpmTok42abc\n//pkgs.dev.azure.com/fabrikamq/_packaging/feed/npm/registry/:_password=WnE4dlBhc3M0Mg==\n_auth=Ym90OlpxOHY=\n",
+            &[
+                "Zq8vNpmTok42abc",
+                "WnE4dlBhc3M0Mg",
+                "Ym90OlpxOHY",
+                "fabrikamq",
+            ],
+        );
+    }
+
+    #[test]
+    fn http_headers() {
+        hides_all(
+            "curl -v",
+            "> GET /api HTTP/1.1\n> Cookie: session=Zq8vSess42; theme=dark\n> Ocp-Apim-Subscription-Key: Zq8vApimKey42abc\n< Set-Cookie: auth=Zq8vSetCookie42; Path=/; HttpOnly\n< HTTP/1.1 200 OK\n",
+            &["Zq8vSess42", "Zq8vApimKey42abc", "Zq8vSetCookie42"],
+        );
+        hides_all(
+            "x-functions-key",
+            "x-functions-key: Zq8vFuncKey42abc",
+            &["Zq8vFuncKey42abc"],
+        );
+        assert!(azure("< HTTP/1.1 200 OK").contains("200 OK"));
+    }
+
+    #[test]
+    fn gcp_tokens_and_projects() {
+        let tok = format!("ya29.{}", body(60));
+        hides_all(
+            "access token",
+            &format!("Authorization header: {tok} end"),
+            &[&tok[..20]],
+        );
+        hides_all(
+            "key file",
+            r#"{"type": "service_account", "project_id": "bluefinq-prod-42", "private_key_id": "0123456789abcdef0123456789abcdef01234567", "client_email": "ci@bluefinq-prod-42.iam.gserviceaccount.com"}"#,
+            &["bluefinq-prod-42", "0123456789abcdef"],
+        );
+        hides_all(
+            "resource path",
+            "projects/bluefinq-prod-43/locations/eu/keyRings/r",
+            &["bluefinq-prod-43"],
+        );
+        hides_all(
+            "flag",
+            "gcloud run deploy --project=bluefinq-prod-44 --region eu",
+            &["bluefinq-prod-44"],
+        );
+    }
 }

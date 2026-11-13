@@ -1,0 +1,21 @@
+# Built-in pack: Docker credentials.
+schema_version = 1
+id = "docker"
+description = "Registry logins in ~/.docker/config.json, and secret-named entries in docker inspect's Env list"
+
+[[rules]]
+id = "registry-auth"
+description = "auth, identitytoken and registrytoken in a Docker config.json"
+regex = '''(?i)"(?:auth|identitytoken|registrytoken)"\s*:\s*"((?:[^"\\]|\\.){8,})"'''
+secretGroup = 1
+label = "SECRET"
+keywords = ["\"auth\"", "identitytoken", "registrytoken"]
+
+[[rules]]
+id = "env-entry"
+description = "A \"NAME=value\" string whose name says secret (docker inspect Env, container specs)"
+regex = '''(?i)"[A-Z0-9_]*(?:PASS|PASSWD|PASSWORD|SECRET|TOKEN|KEY|PWD|CREDENTIAL)[A-Z0-9_]*=((?:[^"\\]|\\.){3,})"'''
+secretGroup = 1
+label = "SECRET"
+remember = "distinctive"
+keywords = ["pass", "secret", "token", "key", "pwd", "credential"]

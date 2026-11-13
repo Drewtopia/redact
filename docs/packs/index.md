@@ -8,6 +8,11 @@ A pack is a TOML file of rules. Each rule's `regex` finds a spot in the text, an
 | :- | :- |
 | [azure](./azure) | Tenant, subscription and identity IDs; people in Azure DevOps and Microsoft Graph records; your own Azure hosts; Azure DevOps org, project and repo names; `az account` details; pipeline variable values |
 | [identity](./identity) | Emails anywhere; git authors and `user.name`; GitHub user records |
+| [kubernetes](./kubernetes) | Secret `data:` values (YAML and JSON); kubeconfig client keys |
+| [docker](./docker) | Registry logins in `config.json`; secret-named `docker inspect` env entries |
+| [npm](./npm) | `.npmrc` `_authToken`, `_password` and `_auth`, Azure Artifacts feeds included |
+| [http](./http) | `Cookie` and `Set-Cookie` values; API key headers (`Ocp-Apim-Subscription-Key`, `x-functions-key`, `x-api-key`) |
+| [gcp](./gcp) | `ya29.` access tokens; project IDs in key files, resource paths and `--project` |
 | [credentials](./credentials) | JWTs and bearer tokens; vendor key shapes; private keys; URL passwords; values named as secrets; environment dump values |
 
 They load in that order. When two rules hide exactly the same text, the first one's label wins, so a specific Azure label beats a generic one.

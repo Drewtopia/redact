@@ -1,0 +1,48 @@
+# Built-in pack: Google Cloud.
+schema_version = 1
+id = "gcp"
+description = "Google access tokens, and project IDs in key files, resource paths and --project flags"
+keywords = ["ya29.", "project_id", "projectid", "projects/", "--project", "private_key_id"]
+
+[[rules]]
+id = "access-token"
+description = "A Google OAuth access token (ya29.)"
+regex = '''\b(ya29\.[0-9A-Za-z_-]{20,})'''
+secretGroup = 1
+label = "TOKEN"
+keywords = ["ya29."]
+
+[[rules]]
+id = "project-id-field"
+description = "project_id and projectId in a service account key file or API output"
+regex = '''(?i)"(?:project_id|projectId|quota_project_id)"\s*:\s*"([a-z][a-z0-9-]{4,28}[a-z0-9])"'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["project_id", "projectid"]
+
+[[rules]]
+id = "project-path"
+description = "The project in a resource path: projects/<id>/..."
+regex = '''\bprojects/([a-z][a-z0-9-]{4,28}[a-z0-9])\b'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["projects/"]
+
+[[rules]]
+id = "project-flag"
+description = "The project after --project (gcloud)"
+regex = '''--project[= \t]+([a-z][a-z0-9-]{4,28}[a-z0-9])\b'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["--project"]
+
+[[rules]]
+id = "private-key-id"
+description = "private_key_id in a service account key file"
+regex = '''(?i)"private_key_id"\s*:\s*"([0-9a-f]{16,})"'''
+secretGroup = 1
+label = "KEY-ID"
+keywords = ["private_key_id"]

@@ -44,6 +44,8 @@ Azure tenant, subscription and identity IDs; people in Azure DevOps and Microsof
 | `account-key-value` | `[KEY-…]` | The value of az storage account keys list and similar keyName records |  |
 | `service-key` | `[KEY-…]` | primaryKey, secondaryKey and *MasterKey fields (Cosmos DB, Service Bus, Event Hubs keys list) |  |
 | `ado-project-visualstudio` | `[PROJECT-…]` | The project in &lt;org&gt;.visualstudio.com/&lt;project&gt;/ URLs | yes |
+| `ado-org-artifacts` | `[ORG-…]` | The org in Azure Artifacts feed URLs: pkgs.dev.azure.com/&lt;org&gt;/ | yes |
+| `ado-org-artifacts-vs` | `[ORG-…]` | The org in older Azure Artifacts feed URLs: &lt;org&gt;.pkgs.visualstudio.com | yes |
 
 ## Allowed values
 

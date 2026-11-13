@@ -1,0 +1,13 @@
+# Built-in pack: npm registry credentials.
+schema_version = 1
+id = "npm"
+description = "Tokens and passwords in .npmrc (npm config list), including Azure Artifacts feeds"
+keywords = ["_authtoken", "_password", "_auth"]
+
+[[rules]]
+id = "npmrc-credential"
+description = "_authToken, _password and _auth, alone or after a registry (//host/:_authToken=...)"
+regex = '''(?im)(?:^|:)[ \t]*_(?:authToken|password|auth)[ \t]*=[ \t]*["']?([^\s"']+)'''
+secretGroup = 1
+label = "SECRET"
+remember = "distinctive"

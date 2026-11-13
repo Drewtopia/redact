@@ -40,7 +40,7 @@ An unknown setting is an error, so a typo such as `imports` is caught rather tha
 
 ## Load order
 
-1. The built-in packs: `azure`, `identity`, `credentials`.
+1. The built-in packs: `azure`, `identity`, `kubernetes`, `docker`, `npm`, `http`, `gcp`, `credentials`.
 2. Every `.toml` and `.txt` in `~/.config/redact/packs/`.
 3. The config file, and everything it imports, in order.
 4. `--file` and `--env-file` from the command line.

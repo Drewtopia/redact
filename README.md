@@ -55,6 +55,14 @@ The built-in `identity` pack hides who people are, outside any one service:
 - **git:** the names in `Author:`, `Commit:`, `Co-authored-by:` and similar lines, and `user.name` in `git config -l`.
 - **GitHub:** the login, name, company, location and bio of a user record (`gh api user`), then the login everywhere else, URLs included.
 
+Built-in packs for common tools:
+
+- **`kubernetes`:** the values of a Secret's `data:` (`kubectl get secret -o yaml` or `-o json`), and client keys in a kubeconfig.
+- **`docker`:** registry logins in `~/.docker/config.json`, and secret-named entries in `docker inspect`'s `Env` list.
+- **`npm`:** `_authToken`, `_password` and `_auth` in `.npmrc`, Azure Artifacts feeds included.
+- **`http`:** `Cookie` and `Set-Cookie` values and API key headers (`Ocp-Apim-Subscription-Key`, `x-functions-key`, `x-api-key`), as `curl -v` prints them.
+- **`gcp`:** `ya29.` access tokens, and project IDs in key files, resource paths and `--project`.
+
 The built-in `azure` pack finds things by where they sit, so you do not list them:
 
 - **IDs beside their names:** tenant, subscription, app, object and identity GUIDs. A bare GUID (a request id) stays visible.

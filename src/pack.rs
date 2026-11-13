@@ -10,6 +10,11 @@ const BUILTIN: &[(&str, &str)] = &[
     // Specific packs first: when two rules hide exactly the same text, the first label wins.
     ("azure", include_str!("../packs/azure.toml")),
     ("identity", include_str!("../packs/identity.toml")),
+    ("kubernetes", include_str!("../packs/kubernetes.toml")),
+    ("docker", include_str!("../packs/docker.toml")),
+    ("npm", include_str!("../packs/npm.toml")),
+    ("http", include_str!("../packs/http.toml")),
+    ("gcp", include_str!("../packs/gcp.toml")),
     ("credentials", include_str!("../packs/credentials.toml")),
 ];
 
