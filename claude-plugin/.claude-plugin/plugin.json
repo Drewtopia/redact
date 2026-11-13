@@ -17,7 +17,7 @@
       "type": "string",
       "title": "Tools that get real values",
       "description": "Tools that run on this machine and may receive the real value behind a placeholder, separated by commas. Never list a tool that sends its input to another model or the network (Agent, WebFetch, WebSearch)",
-      "default": "Bash,Write,Edit,MultiEdit,NotebookEdit,Read,Glob,Grep"
+      "default": "Bash,PowerShell,Write,Edit,MultiEdit,NotebookEdit,Read,Glob,Grep"
     },
     "notify": {
       "type": "boolean",

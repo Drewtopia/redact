@@ -23,14 +23,19 @@ const LIVE_TAG_TOOLS = new Set(['Agent', 'Task'])
 // Attachments that carry text from outside the engine's own prose.
 const OUTSIDE_TEXT = new Set(['file', 'edited_text_file', 'queued_command'])
 
-// A Bash command that writes into git history or posts to GitHub keeps its
+// A shell command that writes into git history or posts to GitHub keeps its
 // placeholders, so a commit message or issue body cannot carry a real value
 // off the machine.
 const PUBLISHES =
   /\bgit\b(?:[ \t]+-[cC][ \t]+\S+|[ \t]+--?[\w-]+(?:=\S+)?)*[ \t]+(?:commit|tag|notes|send-email)\b|\bgh[ \t]+(?:issue|pr|release|gist|discussion|api|repo[ \t]+(?:create|edit))\b/
 
-// A restored value holding any of these could run as code in Bash.
-const SHELL_ACTIVE = /[\s$`"'\\;&|<>()*?[\]{}#~]|[\x00-\x1f\x7f]/
+// Claude Code's shell tools, each with the characters that make a restored
+// value run as code in it. PowerShell also reads @ , % as syntax, curly
+// quotes as quotes and en/em dashes as a parameter's dash.
+const SHELL_ACTIVE: Record<string, RegExp> = {
+  Bash: /[\s$`"'\\;&|<>()*?[\]{}#~]|[\x00-\x1f\x7f]/,
+  PowerShell: /[\s$`"'\\;&|<>()*?[\]{}#~@,%\u2013-\u2015\u2018-\u201f]|[\x00-\x1f\x7f]/,
+}
 
 const MEDIA_FILE = /\.(?:png|jpe?g|gif|webp|bmp|tiff?|heic|pdf)$/i
 const looksBinary = (text: string): boolean => {
@@ -90,7 +95,7 @@ export const register: Register = (on, options) => {
   const binary = String(opts.binary || 'redact')
   const notify = opts.notify !== false && opts.notify !== 'false'
   const restoreTools = new Set(
-    String(opts.restoreTools ?? 'Bash,Write,Edit,MultiEdit,NotebookEdit,Read,Glob,Grep')
+    String(opts.restoreTools ?? 'Bash,PowerShell,Write,Edit,MultiEdit,NotebookEdit,Read,Glob,Grep')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
@@ -109,16 +114,17 @@ export const register: Register = (on, options) => {
   // 2. Every tool call. In: a placeholder becomes its real value, only for a
   //    tool that runs on this machine. Out: result, text and context.
   on('tool.call', async ($, e, next) => {
-    const command = e.tool === 'Bash' ? (e as { command?: unknown }).command : undefined
+    const command = e.tool in SHELL_ACTIVE ? (e as { command?: unknown }).command : undefined
     const publishes = typeof command === 'string' && PUBLISHES.test(command)
     const isLocal = restoreTools.has(e.tool) && !publishes
     // Real values this call was handed: whatever the tool prints of them
     // comes back hidden, even bare and short, where no rule would fire.
     const handed = new Set<string>()
     const input = isLocal ? (walk({ ...e }, (s) => restore(s, (v) => handed.add(v)), { incomplete: false }) as typeof e) : e
-    if (e.tool === 'Bash' && [...handed].some((v) => SHELL_ACTIVE.test(v))) {
+    const active = SHELL_ACTIVE[e.tool]
+    if (active && [...handed].some((v) => active.test(v))) {
       return {
-        deny: 'redact: a value in this command holds shell characters, so it was not put into Bash, where it could run as code. Write it to a file with the Write tool and have the command read that file instead.',
+        deny: 'redact: a value in this command holds shell characters, so it was not put into the shell, where it could run as code. Write it to a file with the Write tool and have the command read that file instead.',
       }
     }
     const r = await next(input)

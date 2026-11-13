@@ -34,15 +34,15 @@ Turn off any other redacting mod (such as `transcript-redactor`) first. With two
 | `@`-mentioned files | Refuses a file that holds something to hide, and points Claude to the Read tool, whose result is hidden |
 | A subagent's task | Hides each part; a workflow agent whose prompt holds one is not started |
 
-A Bash command's own text is passed on as `--command` (through `REDACT_COMMAND`), so a `command` [override](../reference/config#overrides) applies to it alone.
+A Bash or PowerShell command's own text is passed on as `--command` (through `REDACT_COMMAND`), so a `command` [override](../reference/config#overrides) applies to it alone.
 
 ## Placeholders going back in
 
 When Claude writes a placeholder into a command or a file, the mod swaps it back for the real value, so `curl -H "x-api-key: [SECRET-9692fb16]"` still works. Three rules keep that safe:
 
-- **Only local tools.** Bash, Write, Edit, MultiEdit, NotebookEdit, Read, Glob and Grep get real values. Agent, WebFetch, WebSearch and MCP tools never do. Change the list with the `restoreTools` setting.
+- **Only local tools.** Bash, PowerShell, Write, Edit, MultiEdit, NotebookEdit, Read, Glob and Grep get real values. Agent, WebFetch, WebSearch and MCP tools never do. Change the list with the `restoreTools` setting.
 - **Nothing leaves through git or GitHub.** A `git commit`, `git tag`, `gh pr`, `gh issue` or `gh api` command keeps its placeholders, so a commit message or issue body cannot carry the value off the machine.
-- **No shell code.** A value holding spaces, quotes, `$` or other shell characters is not put into a Bash command. The call is refused, and Claude is told to write the value to a file and read it from there. A person's name with a space in it is such a value.
+- **No shell code.** A value holding spaces, quotes, `$` or other shell characters is not put into a Bash or PowerShell command. The call is refused, and Claude is told to write the value to a file and read it from there. A person's name with a space in it is such a value.
 
 Whatever a tool prints of a value it was handed comes back hidden, even where no rule would find it.
 
@@ -57,7 +57,7 @@ Claude Code asks for these when you install the mod; change them later in the `/
 | Setting | Default | What it does |
 | :- | :- | :- |
 | `binary` | `redact` | The redact command to run |
-| `restoreTools` | `Bash,Write,Edit,MultiEdit,NotebookEdit,Read,Glob,Grep` | Tools that get the real value behind a placeholder |
+| `restoreTools` | `Bash,PowerShell,Write,Edit,MultiEdit,NotebookEdit,Read,Glob,Grep` | Tools that get the real value behind a placeholder |
 | `notify` | on | A count on the tool row and a toast on a prompt when something is hidden |
 
 ## Without the mod: a hook
