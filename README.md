@@ -43,6 +43,12 @@ Exit codes: 0 done, 2 bad usage, 3 a pack would not load or the scan failed. A f
 
 ## What it hides
 
+The built-in `credentials` pack hides credentials wherever they appear:
+
+- **On sight:** JWTs (such as an Azure access token), bearer tokens, GitHub, Anthropic, OpenAI, AWS, Slack, Stripe and Google keys, Azure storage keys and SAS signatures, Entra client secrets, PEM private key blocks, and the password in `scheme://user:password@host`.
+- **By name:** the value of anything named as a secret: `TOKEN=`, `"password":`, `client_secret:`, `API_KEY=`, `*_PAT=`, `Authorization:` and the like.
+- **Environment dumps:** the value on each `NAME=value` line of `env`, `mise env` or a `.env` file, except settings such as numbers, `true` and `development`.
+
 The built-in `azure` pack finds things by where they sit, so you do not list them:
 
 - **IDs beside their names:** tenant, subscription, app, object and identity GUIDs. A bare GUID (a request id) stays visible.

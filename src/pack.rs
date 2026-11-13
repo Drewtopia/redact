@@ -6,7 +6,11 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 /// Packs compiled into the binary, so `redact` works with no config at all.
-const BUILTIN: &[(&str, &str)] = &[("azure", include_str!("../packs/azure.toml"))];
+const BUILTIN: &[(&str, &str)] = &[
+    // Specific packs first: when two rules hide exactly the same text, the first label wins.
+    ("azure", include_str!("../packs/azure.toml")),
+    ("credentials", include_str!("../packs/credentials.toml")),
+];
 
 /// Whether a hidden value is also hidden wherever else it appears in the text.
 #[derive(Deserialize, Default, Clone, Copy, PartialEq, Eq, Debug)]

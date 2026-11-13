@@ -372,6 +372,98 @@ mod tests {
         hides(&format!("export AZURE_CLIENT_ID={G}"), G, "APP-ID");
     }
 
+    /// A fake key body, built at run time so no key-shaped string sits in the repo.
+    fn body(n: usize) -> String {
+        let abc = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+        (0..n)
+            .map(|i| abc.as_bytes()[(i * 7 + 3) % abc.len()] as char)
+            .collect()
+    }
+
+    #[test]
+    fn credentials_by_shape() {
+        let jwt = format!(
+            "ey{}.ey{}.{}",
+            "J".to_owned() + &body(30),
+            "J".to_owned() + &body(60),
+            body(40)
+        );
+        let gh = format!("gh{}_{}", "p", body(36));
+        let ant = format!("sk-{}-{}", "ant", body(40));
+        let aws = format!("AK{}{}", "IA", body(16).to_uppercase());
+        let pem = format!(
+            "-----BEGIN {} KEY-----\n{}\n-----END {} KEY-----",
+            "PRIVATE",
+            body(64),
+            "PRIVATE"
+        );
+        for (text, value) in [
+            (
+                format!(r#"{{"accessToken": "{jwt}", "tokenType": "Bearer"}}"#),
+                jwt.clone(),
+            ),
+            (format!("Authorization: Bearer {}", body(40)), body(40)),
+            (
+                format!("git clone https://x:{gh}@github.com/o/r"),
+                gh.clone(),
+            ),
+            (format!("key is {ant} ok"), ant.clone()),
+            (format!("aws id {aws} here"), aws.clone()),
+            (pem.clone(), body(64)),
+            (
+                format!("DefaultEndpointsProtocol=https;AccountKey={}==;", body(86)),
+                body(86),
+            ),
+            (
+                "postgres://app:hunter2pass@db.example.com/x".into(),
+                "hunter2pass".into(),
+            ),
+        ] {
+            let out = azure(&text);
+            assert!(!out.contains(&value), "still shows a secret:\n{out}");
+        }
+        // `Bearer` and `true` are settings, not secrets.
+        let out = azure(&format!(
+            r#"{{"accessToken": "{jwt}", "tokenType": "Bearer"}}"#
+        ));
+        assert!(out.contains("\"Bearer\""), "{out}");
+    }
+
+    #[test]
+    fn credentials_by_name() {
+        let secret = body(24);
+        for text in [
+            format!("export AZURE_DEVOPS_EXT_PAT={secret}"),
+            format!(r#"{{"client_secret": "{secret}"}}"#),
+            format!("password: {secret}"),
+            format!("API_KEY=\"{secret}\""),
+        ] {
+            let out = azure(&text);
+            assert!(!out.contains(&secret), "still shows a secret: {out}");
+        }
+        for kept in [
+            r#""isSecret": false"#,
+            "TOKEN=$AZURE_TOKEN",
+            "token: <placeholder>",
+        ] {
+            assert_eq!(azure(kept), kept, "a non-secret was hidden");
+        }
+    }
+
+    #[test]
+    fn env_dump_values_but_not_settings() {
+        let text = "AZURE_ORGANISATION=fabrikam-dev\nPORT=3000\nNODE_ENV=development\nexport PROJECT_NAME=\"Bluefinq Portal\"\n";
+        let out = azure(text);
+        assert!(
+            !out.contains("fabrikam-dev") && !out.contains("Bluefinq"),
+            "{out}"
+        );
+        assert!(
+            out.contains("PORT=3000") && out.contains("NODE_ENV=development"),
+            "{out}"
+        );
+    }
+
     #[test]
     fn az_ad_signed_in_user_leaves_nothing_identifying() {
         // The shape Microsoft Graph documents for /me, with fake values.
