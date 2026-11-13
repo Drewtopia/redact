@@ -16,6 +16,12 @@ Claude runs its own commands, so piping by hand does not cover them. A Claude Co
 
 redact is built to be the detector behind such a mod: `redact scan --json` returns the positions to hide, never the values, and the mod keeps the placeholders and their real values in memory for the session.
 
+The mod knows which command made the output, so it can pass it on with `--command` (or `REDACT_COMMAND`). A `command` [override](../reference/config#overrides) then changes what is hidden for that command alone:
+
+```sh
+az repos pr show --id 42 -o json | redact scan --json --command "az repos pr show --id 42"
+```
+
 ::: tip Hooks or a mod?
 Claude Code hooks can rewrite a tool's output (`updatedToolOutput`), but they cannot rewrite your prompt, and the transcript saved on disk keeps the original. A mod covers prompts, CLAUDE.md, attachments and subagent tasks as well.
 :::

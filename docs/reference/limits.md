@@ -7,7 +7,7 @@ redact will miss things. Check its output before you share anything that matters
 ## What it misses
 
 - **Free text.** A customer named in a work item's title, a pipeline's name or a commit message is hidden only if it is in a word list, an environment variable you named, or a `.env` file. No rule can tell a customer's name from any other word.
-- **Shapes no pack knows.** A service redact has no pack for shows its IDs and names. The built-in packs cover Azure, people, credentials, Kubernetes, Docker, npm, HTTP headers and Google Cloud.
+- **Shapes no pack knows.** A service redact has no pack for shows its IDs and names. The built-in packs cover Azure, people, credentials, Kubernetes, Docker, npm, HTTP headers and Google Cloud, and personal data once `pii` is on.
 - **Values without a name or shape.** A password printed on its own, with nothing like `password=` beside it, looks like any other word.
 - **Transformed values.** A key that has been base64-encoded, reversed or split across lines is not recognised.
 - **Case beyond ASCII.** Word matching ignores case for ASCII letters only: `ÄBC` does not match `äbc`.

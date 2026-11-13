@@ -37,6 +37,14 @@ fnox exec -- mise exec -- sh -c 'az repos list -o json | redact'
 
 A variable's name becomes its placeholder's label: the value of `WORK_AZ_ORG` is hidden as `[WORK-AZ-ORG-…]`. A value can hold a list, one entry per line.
 
+## Leave a value visible
+
+The same variables can say what not to hide. `allow` takes `$NAME`, so your organisation's name shows (and Azure DevOps links still open) while the config file names nothing:
+
+```toml
+allow = ["$WORK_AZ_ORG"]
+```
+
 ## Install redact with mise
 
 ```sh

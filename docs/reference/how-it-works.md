@@ -2,10 +2,10 @@
 
 ## One pass
 
-1. Load the packs, word lists and values (see [load order](./config#load-order)).
-2. For each pack whose keywords appear in the text, run each rule whose keywords appear. A rule with `within` runs only inside the JSON objects whose own fields match it, and a found value that matches its `except` is left alone.
+1. Load the packs, word lists and values (see [load order](./config#load-order)), apply the overrides that match, and drop the packs that are switched off.
+2. For each pack whose keywords appear in the text, run each rule whose keywords appear. A rule with `within` runs only inside the JSON objects whose own fields match it. A found value is left alone when it matches the rule's `except`, fails its `check` (Luhn for cards, mod-97 for IBANs), or is on an `allow` list. After each find the rule looks again from the end of the hidden part, so two values one space apart are both found.
 3. Collect what each rule found. Values marked as remembered join the word list.
-4. Find every word, remembered value and listed value in one pass ([Aho-Corasick](https://docs.rs/aho-corasick)), as whole words in any case.
+4. Find every word, remembered value and listed value in one pass ([Aho-Corasick](https://docs.rs/aho-corasick)), as whole words in any case, skipping allowed values.
 5. Where finds overlap, join them into one span that covers every byte any of them found. The earliest (then longest) gives the span its label.
 6. Swap each find for its placeholder.
 

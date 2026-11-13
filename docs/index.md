@@ -21,7 +21,9 @@ features:
   - title: Works with what you have
     details: Hides the values fnox, mise or a .env file hold, and your own git and GitHub identity, without reading their files.
   - title: Rule packs
-    details: Built-in packs for Azure, people and credentials. Write your own in TOML.
+    details: Built-in packs for Azure, people, credentials, Kubernetes, Docker, npm, HTTP headers and Google Cloud, plus an opt-in pack for personal data. Write your own in TOML.
+  - title: One config, every machine
+    details: Leave your own organisation visible, switch packs on or off, and change settings by machine, folder or command, all in config.toml.
 ---
 
 ::: warning Work in progress
