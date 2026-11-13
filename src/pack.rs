@@ -102,6 +102,8 @@ pub struct Options {
     pub builtin: bool,
     pub user: bool,
     pub config: Option<PathBuf>,
+    /// `--env-file`: dotenv files whose values to hide. A missing one is an error.
+    pub env_files: Vec<PathBuf>,
 }
 
 /// A config file lists more files to load (packs, word lists, folders of either,
@@ -111,6 +113,10 @@ pub struct Options {
 /// `env` is how redact works with fnox, mise or anything else that sets
 /// variables, without reading their files: `env = ["WORK_*"]` hides whatever
 /// the `WORK_` variables hold when redact runs, e.g. under `fnox exec -- redact`.
+///
+/// `env_files` hides every value in dotenv files, like `dotenvx run` does. Unlike
+/// imports, a relative path is relative to where redact runs, so `".env"` means
+/// the current project's; one that is not there is listed as missing, not an error.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ConfigFile {
@@ -118,6 +124,93 @@ struct ConfigFile {
     import: Vec<String>,
     #[serde(default)]
     env: Vec<String>,
+    #[serde(default)]
+    env_files: Vec<String>,
+}
+
+/// Values in a dotenv file that are settings, not secrets: hiding `true` or
+/// `3000` or `localhost` everywhere would wreck ordinary text.
+fn is_setting(v: &str) -> bool {
+    const COMMON: &[&str] = &[
+        "true",
+        "false",
+        "yes",
+        "no",
+        "on",
+        "off",
+        "null",
+        "none",
+        "localhost",
+        "development",
+        "production",
+        "staging",
+        "test",
+        "debug",
+        "info",
+        "warn",
+        "warning",
+        "error",
+        "trace",
+    ];
+    v.chars().count() < 4
+        || v.chars().all(|c| c.is_ascii_digit() || c == '.')
+        || COMMON.contains(&v.to_ascii_lowercase().as_str())
+}
+
+/// The values of a dotenv file: `KEY=value`, `export KEY=value`, single or double
+/// quotes (a double-quoted value may span lines), `#` comments. Skips empty
+/// values, settings (see `is_setting`), `encrypted:` values (ciphertext hides
+/// nothing) and `DOTENV_PUBLIC_KEY*`, as dotenvx does. The key is the label.
+fn dotenv_words(text: &str, source: &str) -> Vec<WordList> {
+    let mut out = Vec::new();
+    let mut lines = text.lines();
+    while let Some(line) = lines.next() {
+        let line = line.trim_start();
+        let line = line.strip_prefix("export ").unwrap_or(line);
+        if line.starts_with('#') {
+            continue;
+        }
+        let Some((key, raw)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let raw = raw.trim();
+        let value = if let Some(rest) = raw.strip_prefix('"') {
+            let mut v = rest.to_string();
+            while !v.trim_end().ends_with('"') {
+                match lines.next() {
+                    Some(next) => {
+                        v.push('\n');
+                        v.push_str(next);
+                    }
+                    None => break,
+                }
+            }
+            v.trim_end().trim_end_matches('"').replace("\\n", "\n")
+        } else if let Some(rest) = raw.strip_prefix('\'') {
+            rest.trim_end_matches('\'').to_string()
+        } else {
+            raw.split(" #").next().unwrap_or("").trim().to_string()
+        };
+        if key.is_empty() || key.starts_with("DOTENV_PUBLIC_KEY") || value.starts_with("encrypted:")
+        {
+            continue;
+        }
+        let words: Vec<String> = value
+            .lines()
+            .map(str::trim)
+            .filter(|w| !w.is_empty() && !is_setting(w))
+            .map(String::from)
+            .collect();
+        if !words.is_empty() {
+            out.push(WordList {
+                label: label_of(key),
+                source: source.to_string(),
+                words,
+            });
+        }
+    }
+    out
 }
 
 /// The variables an `env` list names: an exact name, or a prefix ending in `*`.
@@ -206,6 +299,9 @@ pub fn load(opts: &Options) -> Result<Loaded, String> {
     for f in &opts.files {
         l.file(f, None)?;
     }
+    for f in &opts.env_files {
+        l.env_file(f, None, true)?;
+    }
     Ok(l.loaded)
 }
 
@@ -260,6 +356,31 @@ struct Loader {
 }
 
 impl Loader {
+    /// A dotenv file's values. `required` (from `--env-file`) makes a missing file
+    /// an error; from a config's `env_files` it is listed as not found instead,
+    /// since a project may simply not have one.
+    fn env_file(&mut self, path: &Path, via: Option<&Path>, required: bool) -> Result<(), String> {
+        let shown = tilde(path);
+        let text = match std::fs::read_to_string(path) {
+            Ok(t) => t,
+            Err(e) if !required && e.kind() == std::io::ErrorKind::NotFound => {
+                self.record("dotenv", shown, "not found here".into(), via);
+                return Ok(());
+            }
+            Err(e) => return Err(format!("{shown}: {e}")),
+        };
+        let lists = dotenv_words(&text, &shown);
+        let total: usize = lists.iter().map(|w| w.words.len()).sum();
+        self.record(
+            "dotenv",
+            shown,
+            format!("{} keys, {total} values", lists.len()),
+            via,
+        );
+        self.loaded.words.extend(lists);
+        Ok(())
+    }
+
     fn record(&mut self, kind: &'static str, path: String, detail: String, via: Option<&Path>) {
         self.loaded.sources.push(Source {
             kind,
@@ -350,6 +471,13 @@ impl Loader {
                     );
                     self.loaded.words.extend(lists);
                 }
+                for raw in &cfg.env_files {
+                    let path = match raw.strip_prefix("~/").zip(home()) {
+                        Some((rest, h)) => h.join(rest),
+                        None => PathBuf::from(raw), // relative: to where redact runs
+                    };
+                    self.env_file(&path, Some(&canon), false)?;
+                }
             }
             other => {
                 return Err(format!(
@@ -437,6 +565,46 @@ mod tests {
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect::<Vec<_>>()
             .into_iter()
+    }
+
+    #[test]
+    fn dotenv_values_but_not_settings() {
+        let text = r#"
+# a comment
+export AZURE_ORGANISATION=fabrikam-dev
+PROJECT_NAME="Bluefin Portal"
+API_TOKEN='s3cr3t-value-123'
+CERT="-----BEGIN-----
+abcdefgh
+-----END-----"
+INLINE=bluefin-api # the api app
+PORT=3000
+DEBUG=true
+NODE_ENV=development
+EMPTY=
+DOTENV_PUBLIC_KEY=03abc0123456789
+SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
+"#;
+        let lists = dotenv_words(text, ".env");
+        let got: Vec<(&str, Vec<&str>)> = lists
+            .iter()
+            .map(|w| {
+                (
+                    w.label.as_str(),
+                    w.words.iter().map(String::as_str).collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("AZURE-ORGANISATION", vec!["fabrikam-dev"]),
+                ("PROJECT-NAME", vec!["Bluefin Portal"]),
+                ("API-TOKEN", vec!["s3cr3t-value-123"]),
+                ("CERT", vec!["-----BEGIN-----", "abcdefgh", "-----END-----"]),
+                ("INLINE", vec!["bluefin-api"]),
+            ]
+        );
     }
 
     #[test]

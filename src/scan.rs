@@ -298,6 +298,7 @@ mod tests {
             builtin: false,
             user: false,
             config: None,
+            env_files: vec![],
         })
     }
 
@@ -307,6 +308,7 @@ mod tests {
             builtin: true,
             user: false,
             config: None,
+            env_files: vec![],
         })
         .unwrap();
         mask(

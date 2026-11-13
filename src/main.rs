@@ -32,6 +32,10 @@ struct Cli {
     )]
     config: Option<PathBuf>,
 
+    /// Also hide every value in this dotenv file (`.env`). Repeatable.
+    #[arg(long = "env-file", global = true, value_name = "PATH")]
+    env_files: Vec<PathBuf>,
+
     /// With no command, piped input is scanned: `az account show | redact`.
     #[command(subcommand)]
     command: Option<Command>,
@@ -92,6 +96,7 @@ fn main() -> ExitCode {
         builtin: !cli.only_files,
         user: !cli.only_files,
         config: cli.config,
+        env_files: cli.env_files,
     };
     let loaded = match pack::load(&opts) {
         Ok(l) => l,

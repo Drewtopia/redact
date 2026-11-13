@@ -33,6 +33,7 @@ Or download a binary for macOS, Linux or Windows from [Releases](https://github.
 | `redact scan --json` | Prints the parts to hide as byte spans instead of masked text |
 | `redact packs` | Lists the rules that load |
 | `redact config ls` | Lists every file that loads, in order, and what imported it |
+| `redact --env-file .env` | Also hides every value in that dotenv file |
 | `redact completions zsh` | Prints a shell completion script (bash, zsh, fish, powershell, elvish) |
 
 Exit codes: 0 done, 2 bad usage, 3 a pack would not load or the scan failed. A file that will not load stops redact rather than being skipped: a redactor that quietly skips a rule hides less than you think.
@@ -57,11 +58,16 @@ Values Microsoft documents publicly (well-known app and role IDs, `AzureCloud`) 
 # Hide the values these environment variables hold. `*` matches anything.
 env = ["WORK_*", "*_TOKEN"]
 
+# Hide every value in these dotenv files, relative to where redact runs.
+env_files = [".env", ".env.local", ".env.keys"]
+
 # More packs (.toml), word lists (.txt) or folders of them, relative to this file.
 import = ["~/work/customers.txt", "packs"]
 ```
 
 `env` is how redact works with [fnox](https://github.com/jdx/fnox), [mise](https://mise.jdx.dev) or anything else that sets variables, without reading their files: `fnox exec -- redact`.
+
+`env_files` hides each value in a dotenv file, as [`dotenvx run`](https://dotenvx.com) does, including dotenvx's `.env.keys`. It skips empty values, `encrypted:` values, `DOTENV_PUBLIC_KEY*`, and settings that would wreck ordinary text if hidden everywhere: numbers, `true`/`false`, `localhost`, `development` and the like. A file that is not there is listed by `redact config ls`; `--env-file <path>` makes a missing file an error.
 
 A word list is one word or phrase per line; `#` starts a note. The file name is the label, so `customers.txt` hides each line as `[CUSTOMERS-…]`. Every `.toml` and `.txt` in `~/.config/redact/packs/` loads too.
 
