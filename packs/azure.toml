@@ -6,7 +6,7 @@
 schema_version = 1
 id = "azure"
 description = "Azure tenant, subscription and identity IDs, people in identity records, your own hosts, and Azure DevOps org, project and repo names"
-keywords = ["tenant", "subscription", "client", "app", "object", "principal", "identities", "isdefault", "uniquename", "principalname", "system.", "microsoft.vsts.", "dynamics.com", "azurewebsites", "powerappsportals", "vault.azure", "windows.net", "azurecr", "sharepoint", "onmicrosoft", "dev.azure.com", "/_git/", "wellformed", "remoteurl", "sshurl", "user", "mail", "userprincipalname", "companyname", "phone", "lastaccesseddate", "mailaddress", "issecret"]
+keywords = ["tenant", "subscription", "client", "app", "object", "principal", "identities", "isdefault", "uniquename", "principalname", "system.", "microsoft.vsts.", "dynamics.com", "azurewebsites", "powerappsportals", "vault.azure", "windows.net", "azurecr", "sharepoint", "onmicrosoft", "dev.azure.com", "/_git/", "wellformed", "remoteurl", "sshurl", "user", "mail", "userprincipalname", "companyname", "phone", "lastaccesseddate", "mailaddress", "issecret", "\"value\"", "directoryalias", "ssh.dev.azure.com"]
 
 # Public values Microsoft documents: never hidden.
 allow = [
@@ -290,10 +290,36 @@ keywords = ["lastaccesseddate"]
 
 [[rules]]
 id = "pipeline-variable"
-description = "The value of each variable in a pipeline variable group (client IDs, hosts, names, keys)"
-regex = '''"value"\s*:\s*"([^"\\]{1,2000})"'''
+description = "The value of each variable in a pipeline variable group: \"name\": {\"value\": \"…\"}, with or without isSecret"
+regex = '''"[^"]+"\s*:\s*\{[^{}]*?"value"\s*:\s*"([^"\\]{1,2000})"'''
 secretGroup = 1
 label = "PIPELINE-VAR"
-within = '''"isSecret"\s*:'''
 remember = "distinctive"
-keywords = ["issecret"]
+keywords = ["\"value\""]
+
+[[rules]]
+id = "directory-alias"
+description = "directoryAlias in an Azure DevOps user record: a short sign-in name with no @"
+regex = '''"directoryAlias"\s*:\s*"([^"\\]{2,200})"'''
+secretGroup = 1
+label = "USER"
+remember = "any"
+keywords = ["directoryalias"]
+
+[[rules]]
+id = "ado-org-ssh"
+description = "The org in an Azure Repos SSH URL: ssh.dev.azure.com:v3/<org>/..."
+regex = '''(?i)ssh\.dev\.azure\.com:v3/([^/\s"']{1,60})/'''
+secretGroup = 1
+label = "ORG"
+remember = "any"
+keywords = ["ssh.dev.azure.com"]
+
+[[rules]]
+id = "ado-project-ssh"
+description = "The project in an Azure Repos SSH URL: ssh.dev.azure.com:v3/<org>/<project>/..."
+regex = '''(?i)ssh\.dev\.azure\.com:v3/[^/\s"']{1,60}/([^/\s"']{1,64})/'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["ssh.dev.azure.com"]

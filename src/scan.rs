@@ -417,6 +417,34 @@ mod tests {
     }
 
     #[test]
+    fn second_audit_gaps() {
+        // A GitHub user record whose URLs hold braces, so `name` sits in a later record part.
+        let gh = r#"{"login":"quillfeatherq","html_url":"https://github.com/quillfeatherq","following_url":"https://api.github.com/users/quillfeatherq/following{/other_user}","type":"User","user_view_type":"public","site_admin":false,"name":"Jordan Quillfeather","company":null,"public_repos":24}"#;
+        let out = azure(gh);
+        assert!(
+            !out.contains("Quillfeather") && !out.contains("quillfeatherq"),
+            "{out}"
+        );
+        // A variable with no isSecret field.
+        let vg = r#"{"variables": {"GoogleAnalytics": {"value": "G-ABC123XYZ9"}, "webapp_pipeline_yaml_path": {"value": "pipelines/bluefinq-web.yml"}}}"#;
+        let out = azure(vg);
+        assert!(
+            !out.contains("G-ABC123XYZ9") && !out.contains("bluefinq-web"),
+            "{out}"
+        );
+        // directoryAlias, and an SSH clone URL on its own.
+        let out = azure(r#"{"user": {"directoryAlias": "jquillq", "principalName": "x"}}"#);
+        assert!(!out.contains("jquillq"), "{out}");
+        let out = azure(r#"{"sshUrl": "git@ssh.dev.azure.com:v3/fabrikamq/Bluefinq/app"}"#);
+        assert!(
+            !out.contains("fabrikamq")
+                && !out.contains("Bluefinq")
+                && out.contains("git@ssh.dev.azure.com:v3/"),
+            "{out}"
+        );
+    }
+
+    #[test]
     fn pipeline_variable_group_values() {
         let text = r#"[{"id": 7, "name": "app-settings", "type": "Vsts", "variables": {
   "sit-app-client-id": {"isReadOnly": false, "isSecret": false, "value": "0000000c-7b4d-4e8a-9c21-5d6e7f8a9b0c"},
