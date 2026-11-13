@@ -160,7 +160,9 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                     let value = m.as_str().trim_end();
                     if value.is_empty()
                         || pack.allow.contains(&value.to_lowercase())
+                        || loaded.allow.contains(&value.to_lowercase())
                         || rule.except.as_ref().is_some_and(|x| x.is_match(value))
+                        || rule.check.is_some_and(|c| !c.passes(value))
                     {
                         continue;
                     }
@@ -202,7 +204,7 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
         }
     }
     let mut hidden: HashSet<String> = words.iter().map(|w| label_key(&w.text)).collect();
-    spans.extend(find_words(text, words)?);
+    spans.extend(find_words(text, words, &loaded.allow)?);
     // A label or rule name can be a key or file name (`CONTOSO_TOKEN`,
     // `contoso.txt`), so it can hold something being hidden: a listed word, a
     // remembered value, or any value a rule found. Such a name becomes VALUE,
@@ -252,14 +254,16 @@ fn label_key(s: &str) -> String {
 /// 1 MB). Overlapping matches are all kept; `merge` then keeps the earliest and
 /// longest, so `Fabrikam Holdings` wins over `Fabrikam`. Case is ignored for
 /// ASCII letters only: `ÄBC` does not match `äbc`.
-fn find_words(text: &str, words: Vec<Word>) -> Result<Vec<Span>, String> {
+fn find_words(text: &str, words: Vec<Word>, allow: &HashSet<String>) -> Result<Vec<Span>, String> {
     if words.is_empty() {
         return Ok(Vec::new());
     }
     let mut seen = HashSet::new();
     let words: Vec<Word> = words
         .into_iter()
-        .filter(|w| seen.insert(w.text.to_ascii_lowercase()))
+        .filter(|w| {
+            !allow.contains(&w.text.to_lowercase()) && seen.insert(w.text.to_ascii_lowercase())
+        })
         .collect();
     let ac = AhoCorasick::builder()
         .ascii_case_insensitive(true)
@@ -450,6 +454,9 @@ mod tests {
             user: false,
             config: None,
             env_files: vec![],
+            command: None,
+            cwd: None,
+            host: None,
         })
     }
 
@@ -462,6 +469,9 @@ mod tests {
             user: false,
             config: None,
             env_files: vec![],
+            command: None,
+            cwd: None,
+            host: None,
         })
         .unwrap();
         let out = mask(
@@ -1056,6 +1066,9 @@ mod tests {
             user: false,
             config: None,
             env_files: vec![d.join("x.env")],
+            command: None,
+            cwd: None,
+            host: None,
         })
         .unwrap();
         let text = "the token is zq-secret-value-123";
@@ -1279,6 +1292,9 @@ mod tests {
             user: false,
             config: None,
             env_files: vec![d.join("x.env")],
+            command: None,
+            cwd: None,
+            host: None,
         })
         .unwrap();
         let text = r#"{"name": "Contosoq", "isDefault": true} and Zq8vToken42abc"#;
@@ -1456,5 +1472,292 @@ mod tests {
             "gcloud run deploy --project=bluefinq-prod-44 --region eu",
             &["bluefinq-prod-44"],
         );
+    }
+
+    // Config: allow, and turning packs on and off.
+
+    /// Masks `text` with the built-in packs plus a config file holding `config`.
+    fn with_config(name: &str, config: &str, text: &str) -> Result<String, String> {
+        with_context(name, config, text, None, None, None)
+    }
+
+    /// As `with_config`, with the machine name, folder and `--command` given.
+    fn with_context(
+        name: &str,
+        config: &str,
+        text: &str,
+        host: Option<&str>,
+        cwd: Option<&str>,
+        command: Option<&str>,
+    ) -> Result<String, String> {
+        let d = tmp(name);
+        std::fs::write(d.join("config.toml"), config).unwrap();
+        let loaded = pack::load(&pack::Options {
+            files: vec![],
+            builtin: true,
+            user: true,
+            config: Some(d.join("config.toml")),
+            env_files: vec![],
+            command: command.map(String::from),
+            cwd: cwd.map(std::path::PathBuf::from),
+            host: Some(host.unwrap_or("test-host").to_string()),
+        });
+        std::fs::remove_dir_all(&d).unwrap();
+        let loaded = loaded?;
+        let out = mask(
+            text,
+            &scan(text, &loaded).unwrap(),
+            &mut Tagger::new(None).unwrap(),
+        );
+        Ok(blank_tags(&out))
+    }
+
+    #[test]
+    fn allowed_values_stay_visible_in_any_case() {
+        let url = "https://dev.azure.com/fabrikamq/Bluefinq/_git/app and C:\\BLUEFINQ\\x";
+        let out = with_config("allow", "allow = [\"fabrikamq\", \"bluefinq\"]\n", url).unwrap();
+        assert!(
+            out.contains("dev.azure.com/fabrikamq/Bluefinq/_git/")
+                && out.contains("C:\\BLUEFINQ\\"),
+            "{out}"
+        );
+        // Not allowed: still hidden.
+        let out = with_config("allow2", "allow = [\"fabrikamq\"]\n", url).unwrap();
+        assert!(!out.contains("Bluefinq"), "{out}");
+    }
+
+    #[test]
+    fn packs_can_be_turned_on_and_off() {
+        let text = "projects/bluefinq-prod-45/locations/eu";
+        assert!(
+            !with_config("on", "", text)
+                .unwrap()
+                .contains("bluefinq-prod-45")
+        );
+        let off = with_config("off", "[packs]\ndisable = [\"gcp\"]\n", text).unwrap();
+        assert!(off.contains("bluefinq-prod-45"), "{off}");
+        let err = with_config("typo", "[packs]\ndisable = [\"gpc\"]\n", text)
+            .err()
+            .unwrap();
+        assert!(err.contains("gpc"), "{err}");
+    }
+
+    #[test]
+    fn overrides_by_machine_folder_and_command() {
+        let url = "https://dev.azure.com/fabrikamq/Bluefinq/_git/app";
+        let cfg = "[[override]]\nhost = \"work-*\"\nallow = [\"fabrikamq\"]\n\n[[override]]\ndir = \"/srv/bluefinq\"\nallow = [\"bluefinq\"]\n\n[[override]]\ncommand = \"az repos pr *\"\n[override.packs]\ndisable = [\"identity\"]\n";
+        // host matches: the org shows; folder does not: the project stays hidden.
+        let out = with_context("ov1", cfg, url, Some("WORK-LAPTOP"), Some("/tmp"), None).unwrap();
+        assert!(
+            out.contains("/fabrikamq/") && !out.contains("Bluefinq"),
+            "{out}"
+        );
+        // A folder below the one named matches too.
+        let out = with_context(
+            "ov2",
+            cfg,
+            url,
+            Some("home-mac"),
+            Some("/srv/bluefinq/api"),
+            None,
+        )
+        .unwrap();
+        assert!(
+            !out.contains("fabrikamq") && out.contains("/Bluefinq/"),
+            "{out}"
+        );
+        // command: identity is off, so an email shows; another command keeps it hidden.
+        let mail = "by jq@fabrikamq.example";
+        let on = with_context(
+            "ov3",
+            cfg,
+            mail,
+            None,
+            Some("/tmp"),
+            Some("az repos pr show --id 7"),
+        )
+        .unwrap();
+        assert!(on.contains("jq@fabrikamq.example"), "{on}");
+        let off = with_context(
+            "ov4",
+            cfg,
+            mail,
+            None,
+            Some("/tmp"),
+            Some("az boards query"),
+        )
+        .unwrap();
+        assert!(!off.contains("jq@"), "{off}");
+    }
+
+    #[test]
+    fn allow_reads_dollar_names_from_the_environment() {
+        // SAFETY: a variable only this test reads.
+        unsafe { std::env::set_var("REDACT_TEST_ALLOW_ORG_Q", "fabrikamq") };
+        let out = with_config(
+            "dollar",
+            "allow = [\"$REDACT_TEST_ALLOW_ORG_Q\", \"$REDACT_TEST_UNSET_Q\"]\n",
+            "https://dev.azure.com/fabrikamq/x",
+        )
+        .unwrap();
+        assert!(out.contains("/fabrikamq/"), "{out}");
+    }
+
+    #[test]
+    fn a_pack_can_start_switched_off() {
+        let d = tmp("offpack");
+        std::fs::write(d.join("p.toml"), "schema_version = 1\nid = \"quiet\"\ndefault = false\n[[rules]]\nid = \"r\"\nregex = \"(zqxsecret[0-9]+)\"\nsecretGroup = 1\n").unwrap();
+        std::fs::write(d.join("config.toml"), "import = [\"p.toml\"]\n").unwrap();
+        std::fs::write(
+            d.join("on.toml"),
+            "import = [\"p.toml\"]\n[packs]\nenable = [\"quiet\"]\n",
+        )
+        .unwrap();
+        let load = |c: &str| {
+            pack::load(&pack::Options {
+                files: vec![],
+                builtin: false,
+                user: true,
+                config: Some(d.join(c)),
+                env_files: vec![],
+                command: None,
+                cwd: None,
+                host: Some("h".into()),
+            })
+            .unwrap()
+        };
+        let (off, on) = (load("config.toml"), load("on.toml"));
+        std::fs::remove_dir_all(&d).unwrap();
+        assert!(scan("zqxsecret42", &off).unwrap().is_empty());
+        assert_eq!(scan("zqxsecret42", &on).unwrap().len(), 1);
+    }
+
+    /// The built-in packs with `pii` switched on, loaded once.
+    fn pii(text: &str) -> String {
+        static LOADED: OnceLock<pack::Loaded> = OnceLock::new();
+        let loaded = LOADED.get_or_init(|| {
+            let d = tmp("pii");
+            std::fs::write(d.join("config.toml"), "[packs]\nenable = [\"pii\"]\n").unwrap();
+            let l = pack::load(&pack::Options {
+                files: vec![],
+                builtin: true,
+                user: true,
+                config: Some(d.join("config.toml")),
+                env_files: vec![],
+                command: None,
+                cwd: None,
+                host: Some("test-host".into()),
+            });
+            std::fs::remove_dir_all(&d).unwrap();
+            l.unwrap()
+        });
+        mask(
+            text,
+            &scan(text, loaded).unwrap(),
+            &mut Tagger::new(None).unwrap(),
+        )
+    }
+
+    /// `card` with its last digit replaced so it passes the Luhn check:
+    /// fake gives real issuer prefixes and lengths but random check digits.
+    fn luhn_digit(card: String) -> String {
+        let body = &card[..card.len() - 1];
+        let sum: u32 = body
+            .chars()
+            .rev()
+            .map(|c| c.to_digit(10).unwrap())
+            .enumerate()
+            .map(|(i, d)| {
+                if i % 2 == 0 {
+                    2 * d - if d > 4 { 9 } else { 0 }
+                } else {
+                    d
+                }
+            })
+            .sum();
+        format!("{body}{}", (10 - sum % 10) % 10)
+    }
+
+    /// A random IBAN with correct check digits, in groups of four when `spaced`.
+    fn iban(rng: &mut fake::rand::rngs::StdRng, spaced: bool) -> String {
+        use fake::RngExt;
+        let abc = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let country = ["GB", "DE", "FR", "NL", "ES"][rng.random_range(0..5)];
+        let bban: String = (0..18)
+            .map(|_| abc[rng.random_range(0..abc.len())] as char)
+            .collect();
+        let rem = format!("{bban}{country}00").chars().fold(0u32, |r, c| {
+            let n = c.to_digit(36).unwrap();
+            if n < 10 {
+                (r * 10 + n) % 97
+            } else {
+                (r * 100 + n) % 97
+            }
+        });
+        let plain = format!("{country}{:02}{bban}", 98 - rem);
+        if !spaced {
+            return plain;
+        }
+        let chars: Vec<char> = plain.chars().collect();
+        chars
+            .chunks(4)
+            .map(|c| c.iter().collect::<String>())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[test]
+    fn pii_is_off_until_enabled() {
+        let text = "Ring +44 20 7946 0958 or 4111 1111 1111 1111 from 192.0.2.10";
+        assert_eq!(azure(text), text);
+        let out = pii(text);
+        assert!(
+            !out.contains("7946") && !out.contains("4111") && !out.contains("192.0.2.10"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn pii_hides_generated_values() {
+        use fake::Fake;
+        use fake::faker::creditcard::en::CreditCardNumber;
+        use fake::faker::internet::en::{IPv4, IPv6, MACAddress};
+        use fake::faker::phone_number::{en, fr_fr};
+        use fake::rand::SeedableRng;
+        let mut rng = fake::rand::rngs::StdRng::seed_from_u64(7);
+        for _ in 0..200 {
+            let values: Vec<(&str, String)> = vec![
+                ("en phone", en::PhoneNumber().fake_with_rng(&mut rng)),
+                ("en cell", en::CellNumber().fake_with_rng(&mut rng)),
+                ("fr phone", fr_fr::PhoneNumber().fake_with_rng(&mut rng)),
+                (
+                    "card",
+                    luhn_digit(CreditCardNumber().fake_with_rng(&mut rng)),
+                ),
+                ("ipv4", IPv4().fake_with_rng(&mut rng)),
+                ("ipv6", IPv6().fake_with_rng(&mut rng)),
+                ("mac", MACAddress().fake_with_rng(&mut rng)),
+                ("iban", iban(&mut rng, false)),
+                ("spaced iban", iban(&mut rng, true)),
+            ];
+            for (kind, v) in values {
+                // An extension after the number ("x123") is not part of it.
+                let v = v.split(" x").next().unwrap();
+                let out = pii(&format!("Use {v} today."));
+                assert!(!out.contains(v), "{kind} {v:?} still shows: {out}");
+            }
+        }
+    }
+
+    #[test]
+    fn pii_leaves_lookalikes_alone() {
+        for text in [
+            "started at 12:30:45 on 2026-11-14",
+            "card 4111 1111 1111 1112 fails the Luhn check",
+            "GB00WEST12345698765432 fails the mod-97 check",
+            "order 1234567890123 and build 20261114",
+        ] {
+            assert_eq!(pii(text), text);
+        }
     }
 }

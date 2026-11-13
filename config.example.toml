@@ -1,0 +1,53 @@
+# redact config: ~/.config/redact/config.toml (%APPDATA%\redact\config.toml on Windows).
+# Written by `redact config init`. Every setting is optional and shown switched off;
+# remove the # to use one. `redact config ls` shows what loads and why.
+# Keep names that identify you or your employer out of any public repo: use
+# `$NAME` to read them from an environment variable, or a word list you keep private.
+
+# --- Values to hide ------------------------------------------------------------
+
+# Hide whatever these environment variables hold. `*` matches anything.
+# fnox, mise or your shell set them; run redact under them: `fnox exec -- redact`.
+# env = ["WORK_*", "*_TOKEN"]
+
+# Hide every value in these dotenv files, relative to where redact runs.
+# env_files = [".env", ".env.local", ".env.keys"]
+
+# More packs (.toml), word lists (.txt) or folders of them, relative to this file.
+# import = ["packs", "customers.txt"]
+
+# Hide who you are: your git name and email, and your GitHub login.
+# me = true
+
+# --- Values to leave visible ---------------------------------------------------
+
+# Never hidden, in any case. `$NAME` reads an environment variable.
+# allow = ["Contoso", "$WORK_AZ_ORG"]
+
+# --- Packs -----------------------------------------------------------------------
+
+# Built-in packs: azure, identity, kubernetes, docker, npm, http, gcp, credentials,
+# and pii (personal data), which starts switched off.
+# [packs]
+# enable = ["pii"]        # packs that start switched off
+# disable = ["gcp"]       # packs you do not want
+
+# --- Overrides -------------------------------------------------------------------
+
+# Settings that apply only on a machine (`host`), in a folder and below (`dir`), or
+# for a command (`command`, from --command or REDACT_COMMAND). Each is a glob: `*`
+# matches anything. Every condition given must match. An override may set env,
+# env_files, allow and [override.packs].
+
+# [[override]]
+# host = "WORK-*"
+# allow = ["$WORK_AZ_ORG", "$WORK_AZ_PROJECT"]
+
+# [[override]]
+# dir = "~/dev/my-project"
+# env_files = [".env.local"]
+
+# [[override]]
+# command = "az repos pr *"
+# [override.packs]
+# disable = ["identity"]

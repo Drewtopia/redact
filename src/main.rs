@@ -36,6 +36,15 @@ struct Cli {
     #[arg(long = "env-file", global = true, value_name = "PATH")]
     env_files: Vec<PathBuf>,
 
+    /// The command whose output this is, for `[[override]] command = "..."`.
+    #[arg(
+        long = "command",
+        global = true,
+        env = "REDACT_COMMAND",
+        value_name = "COMMAND"
+    )]
+    for_command: Option<String>,
+
     /// With no command, piped input is scanned: `az account show | redact`.
     #[command(subcommand)]
     command: Option<Command>,
@@ -67,6 +76,49 @@ enum Command {
 enum ConfigAction {
     /// List every file that loads, in load order, and what imported it.
     Ls,
+    /// Write a commented starter config, every setting shown and switched off.
+    Init {
+        /// Replace an existing config file.
+        #[arg(long)]
+        force: bool,
+        /// Print the starter config instead of writing it.
+        #[arg(long)]
+        print: bool,
+    },
+}
+
+/// The starter config `redact config init` writes. A test loads it, so it can
+/// never drift into an example that does not parse.
+const STARTER_CONFIG: &str = include_str!("../config.example.toml");
+
+/// `redact config init`: writes the starter config unless one is there already.
+fn config_init(path: Option<PathBuf>, force: bool, print: bool) -> ExitCode {
+    if print {
+        print!("{STARTER_CONFIG}");
+        return ExitCode::SUCCESS;
+    }
+    let Some(path) = path.or_else(|| pack::config_home().map(|h| h.join("config.toml"))) else {
+        return fail("cannot find your config folder; pass -c <path>");
+    };
+    if path.exists() && !force {
+        eprintln!(
+            "redact: {} already exists; --force replaces it, --print shows the starter",
+            pack::tilde(&path)
+        );
+        return ExitCode::from(2);
+    }
+    if let Some(dir) = path.parent()
+        && let Err(e) = std::fs::create_dir_all(dir)
+    {
+        return fail(&format!("{}: {e}", dir.display()));
+    }
+    match std::fs::write(&path, STARTER_CONFIG) {
+        Ok(()) => {
+            println!("wrote {}", pack::tilde(&path));
+            ExitCode::SUCCESS
+        }
+        Err(e) => fail(&format!("{}: {e}", path.display())),
+    }
 }
 
 fn main() -> ExitCode {
@@ -91,12 +143,22 @@ fn main() -> ExitCode {
         );
         return ExitCode::SUCCESS;
     }
+    // Before loading, so a broken config can still be replaced.
+    if let Command::Config {
+        action: ConfigAction::Init { force, print },
+    } = &command
+    {
+        return config_init(cli.config.clone(), *force, *print);
+    }
     let opts = pack::Options {
         files: cli.files,
         builtin: !cli.only_files,
         user: !cli.only_files,
         config: cli.config,
         env_files: cli.env_files,
+        command: cli.for_command,
+        cwd: None,
+        host: None,
     };
     let loaded = match pack::load(&opts) {
         Ok(l) => l,
@@ -113,6 +175,9 @@ fn main() -> ExitCode {
             print_sources(&loaded);
             ExitCode::SUCCESS
         }
+        Command::Config {
+            action: ConfigAction::Init { .. },
+        } => unreachable!("handled before loading"),
         Command::Scan { json, explain } => {
             let mut text = String::new();
             if let Err(e) = std::io::stdin().read_to_string(&mut text) {
@@ -153,8 +218,14 @@ fn fail(message: &str) -> ExitCode {
 }
 
 fn print_packs(loaded: &pack::Loaded) {
-    for p in &loaded.packs {
-        println!("{}  {} rules  ({})", p.id, p.rules.len(), p.source);
+    let all = loaded.packs.iter().map(|p| (p, "")).chain(
+        loaded
+            .off
+            .iter()
+            .map(|p| (p, ", off: turn on with [packs] enable")),
+    );
+    for (p, off) in all {
+        println!("{}  {} rules  ({}{off})", p.id, p.rules.len(), p.source);
         if !p.description.is_empty() {
             println!("  {}", p.description);
         }
@@ -276,6 +347,46 @@ mod docs {
         out
     }
 
+    /// Every example in the starter config, uncommented, loads: the starter can
+    /// never show a setting that does not parse or a pack that does not exist.
+    #[test]
+    fn the_starter_config_examples_all_load() {
+        let setting = regex::Regex::new(r"^# (\[|[a-z_]+ = )").unwrap();
+        let live: String = STARTER_CONFIG
+            .lines()
+            .map(|l| if setting.is_match(l) { &l[2..] } else { l })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let d = std::env::temp_dir().join(format!("redact-test-{}-starter", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("packs")).unwrap();
+        std::fs::write(d.join("customers.txt"), "Contoso Pharma\n").unwrap();
+        std::fs::write(d.join("config.toml"), &live).unwrap();
+        let loaded = pack::load(&pack::Options {
+            files: vec![],
+            builtin: true,
+            user: true,
+            config: Some(d.join("config.toml")),
+            env_files: vec![],
+            command: Some("az repos pr show".into()),
+            cwd: Some(d.clone()),
+            host: Some("WORK-LAPTOP".into()),
+        });
+        std::fs::remove_dir_all(&d).unwrap();
+        let loaded = loaded.expect("the uncommented starter config loads");
+        assert!(
+            loaded.sources.iter().any(|s| s.kind == "override"),
+            "no override applied"
+        );
+        assert!(
+            STARTER_CONFIG
+                .lines()
+                .filter(|l| setting.is_match(l))
+                .count()
+                >= 10
+        );
+    }
+
     #[test]
     fn docs_are_current() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("docs");
@@ -285,10 +396,13 @@ mod docs {
             user: false,
             config: None,
             env_files: vec![],
+            command: None,
+            cwd: None,
+            host: None,
         })
         .expect("built-in packs load");
         let mut pages = vec![(root.join("reference/cli.md"), cli_page())];
-        for p in &loaded.packs {
+        for p in loaded.packs.iter().chain(&loaded.off) {
             pages.push((root.join(format!("packs/{}.md", p.id)), pack_page(p)));
         }
         let bless = std::env::var_os("REDACT_BLESS").is_some();

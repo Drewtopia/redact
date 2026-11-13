@@ -16,6 +16,7 @@ const BUILTIN: &[(&str, &str)] = &[
     ("http", include_str!("../packs/http.toml")),
     ("gcp", include_str!("../packs/gcp.toml")),
     ("credentials", include_str!("../packs/credentials.toml")),
+    ("pii", include_str!("../packs/pii.toml")),
 ];
 
 /// Whether a hidden value is also hidden wherever else it appears in the text.
@@ -45,6 +46,13 @@ struct PackFile {
     allow: Vec<String>,
     #[serde(default)]
     rules: Vec<RuleFile>,
+    /// `false`: the pack loads switched off, until `[packs] enable` names it.
+    #[serde(default = "on")]
+    default: bool,
+}
+
+fn on() -> bool {
+    true
 }
 
 #[derive(Deserialize)]
@@ -59,6 +67,8 @@ struct RuleFile {
     label: Option<String>,
     within: Option<String>,
     except: Option<String>,
+    /// A checksum the value must pass: `"luhn"` (card numbers) or `"iban"`.
+    check: Option<String>,
     #[serde(default)]
     remember: Remember,
     #[serde(default)]
@@ -77,6 +87,8 @@ pub struct Rule {
     /// `$AZURE_TOKEN`, not a secret. Rust's regex has no lookahead, so this is
     /// how a rule says "but not these".
     pub except: Option<Regex>,
+    /// A checksum the found value must pass, or it is left alone.
+    pub check: Option<Check>,
     pub remember: Remember,
     pub keywords: Vec<String>,
 }
@@ -91,6 +103,8 @@ pub struct Pack {
     /// The allow list as the pack wrote it, for the docs.
     pub allow_as_written: Vec<String>,
     pub rules: Vec<Rule>,
+    /// Off unless a config's `[packs] enable` names it (`default = false`).
+    pub on_by_default: bool,
 }
 
 pub struct WordList {
@@ -105,6 +119,11 @@ pub struct Loaded {
     pub words: Vec<WordList>,
     /// Every file that loaded, in load order: what `redact config ls` prints.
     pub sources: Vec<Source>,
+    /// Values never hidden, lower-cased: the configs' `allow` lists.
+    pub allow: HashSet<String>,
+    /// Packs switched off, by `[packs] disable` or their own `default = false`:
+    /// listed by `redact packs`, never used to scan.
+    pub off: Vec<Pack>,
 }
 
 pub struct Source {
@@ -122,6 +141,12 @@ pub struct Options {
     pub config: Option<PathBuf>,
     /// `--env-file`: dotenv files whose values to hide. A missing one is an error.
     pub env_files: Vec<PathBuf>,
+    /// `--command`: the command whose output this is, for `[[override]] command`.
+    pub command: Option<String>,
+    /// The folder and machine `[[override]] dir` and `host` match against. `None`
+    /// means the real current folder and this machine's name.
+    pub cwd: Option<PathBuf>,
+    pub host: Option<String>,
 }
 
 /// A config file lists more files to load (packs, word lists, folders of either,
@@ -147,6 +172,43 @@ struct ConfigFile {
     /// Hide who you are: your git name and email, and your GitHub login.
     #[serde(default)]
     me: bool,
+    /// Values never hidden, in any case. `$NAME` reads an environment variable.
+    #[serde(default)]
+    allow: Vec<String>,
+    #[serde(default)]
+    packs: PackSelect,
+    /// Settings that apply only on a machine, in a folder, or for a command.
+    #[serde(default, rename = "override")]
+    overrides: Vec<Override>,
+}
+
+/// `[packs]`: switch built-in or loaded packs on (`enable`) or off (`disable`) by id.
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct PackSelect {
+    #[serde(default)]
+    enable: Vec<String>,
+    #[serde(default)]
+    disable: Vec<String>,
+}
+
+/// `[[override]]`: settings that apply when every condition given matches.
+/// `host` is this machine's name, `dir` the folder redact runs in (`~/` allowed),
+/// `command` what `--command` named. Each is a glob: `*` matches anything.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Override {
+    host: Option<String>,
+    dir: Option<String>,
+    command: Option<String>,
+    #[serde(default)]
+    allow: Vec<String>,
+    #[serde(default)]
+    env: Vec<String>,
+    #[serde(default)]
+    env_files: Vec<String>,
+    #[serde(default)]
+    packs: PackSelect,
 }
 
 /// GitHub logins in gh's `hosts.yml`: each host's `user:`, and the names under
@@ -423,7 +485,16 @@ fn glob(pattern: &str, name: &str) -> bool {
 /// Any file that will not load is an error naming it: a redactor that skips a
 /// rule file would hide less than you think it does.
 pub fn load(opts: &Options) -> Result<Loaded, String> {
-    let mut l = Loader::default();
+    let mut l = Loader {
+        host: opts.host.clone().unwrap_or_else(hostname),
+        cwd: opts
+            .cwd
+            .clone()
+            .or_else(|| std::env::current_dir().ok())
+            .unwrap_or_default(),
+        command: opts.command.clone(),
+        ..Loader::default()
+    };
     if opts.builtin {
         for (name, text) in BUILTIN {
             let pack = compile(text, &format!("built-in {name}"))?;
@@ -437,14 +508,16 @@ pub fn load(opts: &Options) -> Result<Loaded, String> {
         }
     }
     if opts.user {
-        if let Some(dir) = config_home().map(|c| c.join("packs"))
-            && dir.is_dir()
-        {
-            l.file(&dir, None)?;
-        }
+        // `-c` replaces the whole user layer, as fnox's `-c` does: that file
+        // and what it imports, not the default packs folder beside it.
         match &opts.config {
             Some(c) => l.file(c, None)?,
             None => {
+                if let Some(dir) = config_home().map(|c| c.join("packs"))
+                    && dir.is_dir()
+                {
+                    l.file(&dir, None)?;
+                }
                 if let Some(c) = config_home().map(|c| c.join("config.toml"))
                     && c.is_file()
                 {
@@ -459,7 +532,75 @@ pub fn load(opts: &Options) -> Result<Loaded, String> {
     for f in &opts.env_files {
         l.env_file(f, None, true)?;
     }
+    select_packs(&mut l)?;
     Ok(l.loaded)
+}
+
+/// Applies `[packs]`: a pack runs when it is on by default and not disabled, or
+/// when enabled. A name that matches no pack is an error, so a typo is caught.
+fn select_packs(l: &mut Loader) -> Result<(), String> {
+    let ids: HashSet<&str> = l.loaded.packs.iter().map(|p| p.id.as_str()).collect();
+    let mut unknown: Vec<&String> = l
+        .enable
+        .iter()
+        .chain(&l.disable)
+        .filter(|n| !ids.contains(n.as_str()))
+        .collect();
+    if !unknown.is_empty() {
+        unknown.sort();
+        let mut known: Vec<&str> = ids.into_iter().collect();
+        known.sort();
+        return Err(format!(
+            "[packs] names no such pack: {} (packs: {})",
+            unknown
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
+            known.join(", ")
+        ));
+    }
+    let (enable, disable) = (&l.enable, &l.disable);
+    let off: Vec<String> = l
+        .loaded
+        .packs
+        .iter()
+        .filter(|p| disable.contains(&p.id) || (!p.on_by_default && !enable.contains(&p.id)))
+        .map(|p| p.id.clone())
+        .collect();
+    let (on, off_packs) = std::mem::take(&mut l.loaded.packs)
+        .into_iter()
+        .partition(|p| !off.contains(&p.id));
+    l.loaded.packs = on;
+    l.loaded.off = off_packs;
+    for s in &mut l.loaded.sources {
+        let id = if s.kind == "builtin" {
+            s.path.as_str()
+        } else {
+            s.detail.split(' ').next().unwrap_or("")
+        };
+        if matches!(s.kind, "builtin" | "pack") && off.iter().any(|o| o == id) {
+            s.detail = format!("{}, off", s.detail);
+        }
+    }
+    Ok(())
+}
+
+/// This machine's name, for `[[override]] host`: `COMPUTERNAME` on Windows,
+/// `HOSTNAME`, `/etc/hostname`, else the `hostname` command (macOS).
+fn hostname() -> String {
+    std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .ok()
+        .or_else(|| std::fs::read_to_string("/etc/hostname").ok())
+        .or_else(|| {
+            std::process::Command::new("hostname")
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        })
+        .map(|h| h.trim().to_string())
+        .unwrap_or_default()
 }
 
 /// `~/.config/redact` on Linux and macOS (or `$XDG_CONFIG_HOME/redact`), and
@@ -514,6 +655,13 @@ struct Loader {
     seen: HashSet<PathBuf>,
     /// The config files being imported right now, to catch a loop.
     stack: Vec<PathBuf>,
+    /// What `[[override]]` sections match against.
+    host: String,
+    cwd: PathBuf,
+    command: Option<String>,
+    /// `[packs]` from every config and matching override.
+    enable: HashSet<String>,
+    disable: HashSet<String>,
 }
 
 impl Loader {
@@ -554,6 +702,115 @@ impl Loader {
             found.join(", ")
         };
         self.record("me", "git config, gh hosts.yml".into(), detail, Some(via));
+    }
+
+    /// The settings a config and its matching overrides share: env, env_files,
+    /// allow and [packs].
+    fn apply(
+        &mut self,
+        env: &[String],
+        env_files: &[String],
+        allow: &[String],
+        packs: &PackSelect,
+        via: &Path,
+    ) -> Result<(), String> {
+        if !env.is_empty() {
+            let (lists, missing) = env_words(env, std::env::vars());
+            let total: usize = lists.iter().map(|w| w.words.len()).sum();
+            let unset = if missing.is_empty() {
+                String::new()
+            } else {
+                format!("; not set: {}", missing.join(", "))
+            };
+            self.record(
+                "env",
+                env.join(", "),
+                format!("{} variables, {total} words{unset}", lists.len()),
+                Some(via),
+            );
+            self.loaded.words.extend(lists);
+        }
+        for raw in env_files {
+            let path = match raw.strip_prefix("~/").zip(home()) {
+                Some((rest, h)) => h.join(rest),
+                None => PathBuf::from(raw), // relative: to where redact runs
+            };
+            self.env_file(&path, Some(via), false)?;
+        }
+        if !allow.is_empty() {
+            // `$NAME` reads an environment variable, so the value need not sit in the file.
+            let mut unset = Vec::new();
+            let mut n = 0;
+            for a in allow {
+                match a.strip_prefix('$') {
+                    Some(name) => match std::env::var(name) {
+                        Ok(v) if !v.trim().is_empty() => {
+                            self.loaded.allow.insert(v.trim().to_lowercase());
+                            n += 1;
+                        }
+                        _ => unset.push(a.clone()),
+                    },
+                    None => {
+                        self.loaded.allow.insert(a.to_lowercase());
+                        n += 1;
+                    }
+                }
+            }
+            let unset = if unset.is_empty() {
+                String::new()
+            } else {
+                format!("; not set: {}", unset.join(", "))
+            };
+            self.record(
+                "allow",
+                format!("{} entries", allow.len()),
+                format!("{n} values{unset}"),
+                Some(via),
+            );
+        }
+        self.enable.extend(packs.enable.iter().cloned());
+        self.disable.extend(packs.disable.iter().cloned());
+        Ok(())
+    }
+
+    /// Why an override applies (`host=…, dir=…`), or `None` when one of its
+    /// conditions does not match. An override with no condition always applies.
+    fn matches(&self, o: &Override) -> Option<String> {
+        let mut why = Vec::new();
+        if let Some(h) = &o.host {
+            if !glob(&h.to_lowercase(), &self.host.to_lowercase()) {
+                return None;
+            }
+            why.push(format!("host={h}"));
+        }
+        if let Some(d) = &o.dir {
+            let d_expanded = match d.strip_prefix("~/").zip(home()) {
+                Some((rest, h)) => h.join(rest).display().to_string(),
+                None => d.clone(),
+            };
+            // Compare with `/` on every system, so one config works on Windows too.
+            let (d_expanded, cwd) = (
+                d_expanded.replace('\\', "/"),
+                self.cwd.display().to_string().replace('\\', "/"),
+            );
+            // `dir = "~/x"` matches ~/x and everything below it.
+            let below = format!("{}/*", d_expanded.trim_end_matches(['/', '*']));
+            if !glob(&d_expanded, &cwd) && !glob(&below, &cwd) {
+                return None;
+            }
+            why.push(format!("dir={d}"));
+        }
+        if let Some(c) = &o.command {
+            if !self.command.as_deref().is_some_and(|cmd| glob(c, cmd)) {
+                return None;
+            }
+            why.push(format!("command={c}"));
+        }
+        Some(if why.is_empty() {
+            "always".into()
+        } else {
+            why.join(", ")
+        })
     }
 
     /// A dotenv file's values. `required` (from `--env-file`) makes a missing file
@@ -675,31 +932,15 @@ impl Loader {
                     self.file(&resolve(raw, &canon), Some(&canon))?;
                 }
                 self.stack.pop();
-                if !cfg.env.is_empty() {
-                    let (lists, missing) = env_words(&cfg.env, std::env::vars());
-                    let total: usize = lists.iter().map(|w| w.words.len()).sum();
-                    let unset = if missing.is_empty() {
-                        String::new()
-                    } else {
-                        format!("; not set: {}", missing.join(", "))
-                    };
-                    self.record(
-                        "env",
-                        cfg.env.join(", "),
-                        format!("{} variables, {total} words{unset}", lists.len()),
-                        Some(&canon),
-                    );
-                    self.loaded.words.extend(lists);
-                }
-                for raw in &cfg.env_files {
-                    let path = match raw.strip_prefix("~/").zip(home()) {
-                        Some((rest, h)) => h.join(rest),
-                        None => PathBuf::from(raw), // relative: to where redact runs
-                    };
-                    self.env_file(&path, Some(&canon), false)?;
-                }
+                self.apply(&cfg.env, &cfg.env_files, &cfg.allow, &cfg.packs, &canon)?;
                 if cfg.me {
                     self.me(&canon);
+                }
+                for o in &cfg.overrides {
+                    if let Some(why) = self.matches(o) {
+                        self.record("override", why, "applies".into(), Some(&canon));
+                        self.apply(&o.env, &o.env_files, &o.allow, &o.packs, &canon)?;
+                    }
                 }
             }
             other => {
@@ -780,6 +1021,17 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             }
             None => None,
         };
+        let check = match r.check.as_deref() {
+            None => None,
+            Some("luhn") => Some(Check::Luhn),
+            Some("iban") => Some(Check::Iban),
+            Some(other) => {
+                return Err(format!(
+                    "{source}: rule {} check \"{other}\": use \"luhn\" or \"iban\"",
+                    r.id
+                ));
+            }
+        };
         rules.push(Rule {
             label: label_of(r.label.as_deref().unwrap_or(&r.id)),
             id: r.id,
@@ -788,6 +1040,7 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             group: r.secret_group,
             within,
             except,
+            check,
             remember: r.remember,
             keywords: lower(r.keywords),
         });
@@ -800,6 +1053,7 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
         allow: f.allow.iter().map(|a| a.to_lowercase()).collect(),
         allow_as_written: f.allow,
         rules,
+        on_by_default: f.default,
     })
 }
 
@@ -967,5 +1221,60 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
             ["EMPLOYER"],
             "an exact name that is not set is reported"
         );
+    }
+}
+
+/// A checksum a found value must pass. Without one, any long run of digits
+/// would read as a card number.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Check {
+    /// Card numbers: 13 to 19 digits (spaces and dashes ignored) passing Luhn.
+    Luhn,
+    /// IBANs: 15 to 34 characters (spaces ignored) passing ISO 7064 mod 97.
+    Iban,
+}
+
+impl Check {
+    pub fn passes(self, value: &str) -> bool {
+        match self {
+            Check::Luhn => {
+                let digits: Vec<u32> = value.chars().filter_map(|c| c.to_digit(10)).collect();
+                if !(13..=19).contains(&digits.len())
+                    || value
+                        .chars()
+                        .any(|c| !c.is_ascii_digit() && c != ' ' && c != '-')
+                {
+                    return false;
+                }
+                let sum: u32 = digits
+                    .iter()
+                    .rev()
+                    .enumerate()
+                    .map(|(i, &d)| {
+                        if i % 2 == 1 {
+                            (d * 2) % 9 + if d == 9 { 9 } else { 0 }
+                        } else {
+                            d
+                        }
+                    })
+                    .sum();
+                sum.is_multiple_of(10)
+            }
+            Check::Iban => {
+                let s: String = value.chars().filter(|c| !c.is_whitespace()).collect();
+                if !(15..=34).contains(&s.len()) || !s.chars().all(|c| c.is_ascii_alphanumeric()) {
+                    return false;
+                }
+                let (head, tail) = s.split_at(4);
+                let mut rem: u32 = 0;
+                for c in tail.chars().chain(head.chars()) {
+                    let n = c.to_digit(36).expect("checked alphanumeric");
+                    for d in n.to_string().chars() {
+                        rem = (rem * 10 + d.to_digit(10).expect("a digit")) % 97;
+                    }
+                }
+                rem == 1
+            }
+        }
     }
 }

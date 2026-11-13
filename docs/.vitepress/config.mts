@@ -35,6 +35,7 @@ export default defineConfig({
           { text: 'http', link: '/packs/http' },
           { text: 'gcp', link: '/packs/gcp' },
           { text: 'credentials', link: '/packs/credentials' },
+          { text: 'pii', link: '/packs/pii' },
           { text: 'Writing a pack', link: '/packs/writing' },
         ],
       },

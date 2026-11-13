@@ -35,6 +35,7 @@ remember = "distinctive"
 | `description` | One line on what the pack hides |
 | `keywords` | The pack runs only when one of these appears (any case). A cheap test before any regex runs |
 | `allow` | Values never to hide, such as public IDs |
+| `default` | `false` makes the pack start switched off, for a user to turn on with `[packs] enable`. Defaults to `true` |
 
 ### Rule
 
@@ -49,6 +50,7 @@ remember = "distinctive"
 | `except` | Leave a found value alone when it matches this regex: a reference such as `$TOKEN` or `<placeholder>`, not a secret. Rust's `regex` has no lookahead, so this is how a rule says "but not these" |
 | `remember` | `"distinctive"`: also hide the value everywhere else when it reads as a name (a space, `-`, `_`, `.`, a digit or an inner capital). `"any"`: any value with a capital letter or of 5+ characters |
 | `keywords` | The rule runs only when one of these appears |
+| `check` | Hide a found value only when it passes a checksum: `"luhn"` for card numbers, `"iban"` for the IBAN mod-97 check. Keeps long runs of digits that are not cards visible |
 
 ## Regex syntax
 

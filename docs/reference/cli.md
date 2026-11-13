@@ -31,6 +31,11 @@ Options:
       --env-file <PATH>
           Also hide every value in this dotenv file (`.env`). Repeatable
 
+      --command <COMMAND>
+          The command whose output this is, for `[[override]] command = "..."`
+          
+          [env: REDACT_COMMAND=]
+
   -h, --help
           Print help
 
@@ -66,6 +71,11 @@ Options:
       --env-file <PATH>
           Also hide every value in this dotenv file (`.env`). Repeatable
 
+      --command <COMMAND>
+          The command whose output this is, for `[[override]] command = "..."`
+          
+          [env: REDACT_COMMAND=]
+
   -h, --help
           Print help
 ```
@@ -92,6 +102,11 @@ Options:
       --env-file <PATH>
           Also hide every value in this dotenv file (`.env`). Repeatable
 
+      --command <COMMAND>
+          The command whose output this is, for `[[override]] command = "..."`
+          
+          [env: REDACT_COMMAND=]
+
   -h, --help
           Print help
 ```
@@ -105,6 +120,7 @@ Usage: config [OPTIONS] <COMMAND>
 
 Commands:
   ls    List every file that loads, in load order, and what imported it
+  init  Write a commented starter config, every setting shown and switched off
   help  Print this message or the help of the given subcommand(s)
 
 Options:
@@ -121,6 +137,11 @@ Options:
 
       --env-file <PATH>
           Also hide every value in this dotenv file (`.env`). Repeatable
+
+      --command <COMMAND>
+          The command whose output this is, for `[[override]] command = "..."`
+          
+          [env: REDACT_COMMAND=]
 
   -h, --help
           Print help
@@ -151,6 +172,11 @@ Options:
 
       --env-file <PATH>
           Also hide every value in this dotenv file (`.env`). Repeatable
+
+      --command <COMMAND>
+          The command whose output this is, for `[[override]] command = "..."`
+          
+          [env: REDACT_COMMAND=]
 
   -h, --help
           Print help

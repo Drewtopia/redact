@@ -62,6 +62,7 @@ Built-in packs for common tools:
 - **`npm`:** `_authToken`, `_password` and `_auth` in `.npmrc`, Azure Artifacts feeds included.
 - **`http`:** `Cookie` and `Set-Cookie` values and API key headers (`Ocp-Apim-Subscription-Key`, `x-functions-key`, `x-api-key`), as `curl -v` prints them.
 - **`gcp`:** `ya29.` access tokens, and project IDs in key files, resource paths and `--project`.
+- **`pii`, off by default:** phone numbers, card numbers and IBANs that pass their checksums, IP and MAC addresses, US Social Security and UK National Insurance numbers. Turn it on with `[packs] enable = ["pii"]`.
 
 The built-in `azure` pack finds things by where they sit, so you do not list them:
 
@@ -90,7 +91,20 @@ import = ["~/work/customers.txt", "packs"]
 
 # Hide who you are: your git name and email, and your GitHub login.
 me = true
+
+# Never hidden, in any case. `$NAME` reads an environment variable.
+allow = ["$WORK_AZ_ORG"]
+
+[packs]
+enable = ["pii"]     # phone numbers, cards, IBANs, IPs: off by default
+
+# Settings for one machine, folder (`dir`) or command (`--command`).
+[[override]]
+host = "WORK-*"
+allow = ["$WORK_AZ_PROJECT"]
 ```
+
+`redact config init` writes a starter file with every setting switched off. The [config reference](https://drewtopia.github.io/redact/reference/config) covers each one.
 
 `me` asks git for your `user.name` and `user.email` (in the repo you run it from, and globally: a work email set by an `includeIf` counts when you run redact inside that repo) and reads your GitHub logins from gh's `hosts.yml`. They are hidden everywhere as `[ME-NAME-…]`, `[ME-EMAIL-…]` and `[ME-GITHUB-…]`, so your username stops showing in GitHub URLs and remotes. Nothing to keep in sync: change your git name and redact follows.
 
@@ -124,6 +138,8 @@ label = "CUSTOMER-ID"
 | `remember` | `"distinctive"`: also hide the value everywhere else when it reads as a name (a space, `-`, `_`, `.`, a digit or an inner capital); `"any"`: any capitalised or 5+ character value |
 | `keywords` | On a rule: run it only when one of these appears |
 | `allow` | On a pack: values never to hide |
+| `default` | On a pack: `false` starts it switched off |
+| `check` | On a rule: `"luhn"` or `"iban"`, hide a value only when it passes that checksum |
 
 Regexes use the Rust [`regex`](https://docs.rs/regex) syntax, which runs in linear time and has no lookaround.
 

@@ -1,0 +1,99 @@
+# Built-in pack: personal data. Off by default; turn it on in config.toml:
+#   [packs]
+#   enable = ["pii"]
+# It hides more than people expect (any IP address, any phone-shaped number), so
+# it is a choice, not a default. Several patterns follow the recognisers in
+# Microsoft Presidio (github.com/microsoft/presidio, MIT licence).
+schema_version = 1
+id = "pii"
+description = "Personal data: phone numbers, card numbers (Luhn-checked), IBANs (mod-97-checked), IP and MAC addresses, US Social Security and UK National Insurance numbers. Off by default"
+default = false
+
+[[rules]]
+id = "phone-international"
+description = "A phone number written with its country code: +44 20 7946 0958, +1 (555) 010-0199"
+regex = '''(?:^|[^0-9A-Za-z+])(\+[1-9][0-9]{0,2}[ .-]?\(?[0-9]{1,4}\)?(?:[ .-]?[0-9]{2,4}){2,4})(?:[^0-9]|$)'''
+secretGroup = 1
+label = "PHONE"
+keywords = ["+"]
+
+[[rules]]
+id = "phone-north-america"
+description = "A US or Canadian number: (555) 010-0199, 555-010-0199, 555.010.0199, 1-555-010-0199"
+regex = '''(?:^|[^0-9A-Za-z])((?:1[ .-])?\(?[1-9][0-9]{2}\)?[ .-]?[0-9]{3}[ .-][0-9]{4})(?:[^0-9]|$)'''
+secretGroup = 1
+label = "PHONE"
+
+[[rules]]
+id = "phone-uk"
+description = "A UK number without the country code: 020 7946 0958, 07700 900123"
+regex = '''(?:^|[^0-9A-Za-z])(0[1-9][0-9]{2,4} ?[0-9]{3} ?[0-9]{3,4})(?:[^0-9]|$)'''
+secretGroup = 1
+label = "PHONE"
+
+[[rules]]
+id = "phone-pairs"
+description = "A number written in pairs after a leading 0, as in France: 01 23 45 67 89, 06.12.34.56.78"
+regex = '''(?:^|[^0-9A-Za-z])(0[1-9](?:[ .][0-9]{2}){4})(?:[^0-9]|$)'''
+secretGroup = 1
+label = "PHONE"
+
+[[rules]]
+id = "phone-named"
+description = "Any number after a name that says phone: phone, tel, mobile, cell, fax"
+regex = '''(?i)\b(?:phone|tel|telephone|mobile|cell|fax)[a-z_ ]{0,12}[:=][ \t]*["']?(\+?[0-9][0-9 ().-]{5,20}[0-9])'''
+secretGroup = 1
+label = "PHONE"
+keywords = ["phone", "tel", "mobile", "cell", "fax"]
+
+[[rules]]
+id = "card-number"
+description = "A payment card number: 13 to 19 digits, spaces or dashes allowed, passing the Luhn check"
+regex = '''(?:^|[^0-9])([0-9](?:[ -]?[0-9]){12,18})(?:[^0-9]|$)'''
+secretGroup = 1
+label = "CARD"
+check = "luhn"
+
+[[rules]]
+id = "iban"
+description = "An IBAN, spaces allowed, passing the mod-97 check"
+regex = '''\b([A-Z]{2}[0-9]{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?)\b'''
+secretGroup = 1
+label = "IBAN"
+check = "iban"
+
+[[rules]]
+id = "ipv4"
+description = "An IPv4 address"
+regex = '''(?:^|[^0-9.])((?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(?:\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3})(?:[^0-9.]|$)'''
+secretGroup = 1
+label = "IP"
+
+[[rules]]
+id = "ipv6"
+description = "An IPv6 address, full or with :: (four or more groups, so a time such as 12:30:45 is not one)"
+regex = '''(?i)(?:^|[^0-9a-f:])((?:[0-9a-f]{1,4}:){3,7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,6}:(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,5})?|::(?:[0-9a-f]{1,4}:){1,6}[0-9a-f]{1,4})(?:[^0-9a-f:]|$)'''
+secretGroup = 1
+label = "IP"
+keywords = [":"]
+
+[[rules]]
+id = "mac-address"
+description = "A MAC address: aa:bb:cc:dd:ee:ff or AA-BB-CC-DD-EE-FF"
+regex = '''(?i)\b((?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2})\b'''
+secretGroup = 1
+label = "MAC"
+
+[[rules]]
+id = "us-ssn"
+description = "A US Social Security number: 123-45-6789"
+regex = '''(?:^|[^0-9-])([0-9]{3}-[0-9]{2}-[0-9]{4})(?:[^0-9-]|$)'''
+secretGroup = 1
+label = "SSN"
+
+[[rules]]
+id = "uk-nino"
+description = "A UK National Insurance number: QQ 12 34 56 C"
+regex = '''\b([A-CEGHJ-PR-TW-Z][A-CEGHJ-NPR-TW-Z] ?[0-9]{2} ?[0-9]{2} ?[0-9]{2} ?[A-D])\b'''
+secretGroup = 1
+label = "NINO"
