@@ -291,7 +291,7 @@ keywords = ["lastaccesseddate"]
 [[rules]]
 id = "pipeline-variable"
 description = "The value of each variable in a pipeline variable group: \"name\": {\"value\": \"…\"}, with or without isSecret"
-regex = '''"[^"]+"\s*:\s*\{[^{}]*?"value"\s*:\s*"([^"\\]{1,2000})"'''
+regex = '''"[^"]+"\s*:\s*\{[^{}]*?"value"\s*:\s*"((?:[^"\\]|\\.)+)"'''
 secretGroup = 1
 label = "PIPELINE-VAR"
 remember = "distinctive"

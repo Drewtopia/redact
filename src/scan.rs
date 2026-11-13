@@ -279,12 +279,10 @@ mod tests {
 
     #[test]
     fn a_short_key_is_refused() {
-        assert!(
-            Tagger::new(Some("short"))
-                .err()
-                .unwrap()
-                .contains("at least 16")
-        );
+        assert!(Tagger::new(Some("short"))
+            .err()
+            .unwrap()
+            .contains("at least 16"));
         assert!(
             Tagger::new(Some("")).is_ok(),
             "an empty REDACT_KEY means no key"
@@ -426,10 +424,10 @@ mod tests {
             "{out}"
         );
         // A variable with no isSecret field.
-        let vg = r#"{"variables": {"GoogleAnalytics": {"value": "G-ABC123XYZ9"}, "webapp_pipeline_yaml_path": {"value": "pipelines/bluefinq-web.yml"}}}"#;
+        let vg = r#"{"variables": {"GoogleAnalytics": {"value": "G-ABC123XYZ9"}, "webapp_pipeline_yaml_path": {"isSecret": false, "value": "pipelines\\bluefinq\\web.yml"}}}"#;
         let out = azure(vg);
         assert!(
-            !out.contains("G-ABC123XYZ9") && !out.contains("bluefinq-web"),
+            !out.contains("G-ABC123XYZ9") && !out.contains("bluefinq"),
             "{out}"
         );
         // directoryAlias, and an SSH clone URL on its own.
