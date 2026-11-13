@@ -188,9 +188,6 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    if let Command::Init { shell } = &command {
-        print!("{}", init_helper(*shell));
-    }
     if let Command::Completions { shell } | Command::Init { shell } = &command {
         clap_complete::generate(
             *shell,
@@ -198,6 +195,11 @@ fn main() -> ExitCode {
             "redact",
             &mut std::io::stdout(),
         );
+        // After the completions: PowerShell's open with `using namespace`,
+        // which must come before any other statement.
+        if let Command::Init { shell } = &command {
+            print!("{}", init_helper(*shell));
+        }
         return ExitCode::SUCCESS;
     }
     // Before loading, so a broken config can still be replaced.
