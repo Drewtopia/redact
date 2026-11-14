@@ -93,6 +93,9 @@ Options:
   -f, --file <PATH>
           Also load this pack (.toml) or word list (.txt). Repeatable
 
+      --json
+          Print the packs and word lists as JSON
+
       --only-files
           Load only --file: skip the built-in packs and everything in ~/.config/redact
 
@@ -121,7 +124,7 @@ Show the config files and what they load
 Usage: config [OPTIONS] <COMMAND>
 
 Commands:
-  ls    List every file that loads, in load order, and what imported it
+  ls    List every file that loads, in load order, and what imported it. A file redact looks for and does not find is listed as missing
   init  Write a starter config: `minimal` by default
   help  Print this message or the help of the given subcommand(s)
 

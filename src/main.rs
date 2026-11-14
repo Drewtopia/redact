@@ -62,7 +62,11 @@ enum Command {
         explain: bool,
     },
     /// List the packs and word lists that load, and where each comes from.
-    Packs,
+    Packs {
+        /// Print the packs and word lists as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Show the config files and what they load.
     Config {
         #[command(subcommand)]
@@ -128,8 +132,13 @@ fn redacted {|@a| var rest = $a[1..]; (external $a[0]) $@rest 2>&1 | redact scan
 
 #[derive(Subcommand)]
 enum ConfigAction {
-    /// List every file that loads, in load order, and what imported it.
-    Ls,
+    /// List every file that loads, in load order, and what imported it. A file
+    /// redact looks for and does not find is listed as missing.
+    Ls {
+        /// Print one JSON object per file: kind, path, detail, via, found.
+        #[arg(long)]
+        json: bool,
+    },
     /// Write a starter config: `minimal` by default.
     Init {
         /// Which starter to write.
@@ -249,10 +258,10 @@ fn main() -> ExitCode {
         Err(e) => return fail(&e),
     };
     match command {
-        Command::Packs => emit(print_packs(&mut std::io::stdout().lock(), &loaded)),
+        Command::Packs { json } => emit(print_packs(&mut std::io::stdout().lock(), &loaded, json)),
         Command::Config {
-            action: ConfigAction::Ls,
-        } => emit(print_sources(&mut std::io::stdout().lock(), &loaded)),
+            action: ConfigAction::Ls { json },
+        } => emit(print_sources(&mut std::io::stdout().lock(), &loaded, json)),
         Command::Config {
             action: ConfigAction::Init { .. },
         } => unreachable!("handled before loading"),
@@ -308,7 +317,38 @@ fn fail(message: &str) -> ExitCode {
     ExitCode::from(3)
 }
 
-fn print_packs(w: &mut impl Write, loaded: &pack::Loaded) -> std::io::Result<()> {
+fn print_packs(w: &mut impl Write, loaded: &pack::Loaded, json: bool) -> std::io::Result<()> {
+    if json {
+        let on = loaded.packs.iter().map(|p| (p, true));
+        let packs: Vec<_> = on
+            .chain(loaded.off.iter().map(|p| (p, false)))
+            .map(|(p, on)| {
+                serde_json::json!({
+                    "id": p.id,
+                    "description": p.description,
+                    "source": p.source,
+                    "on": on,
+                    "rules": p.rules.iter().map(|r| serde_json::json!({
+                        "id": r.id,
+                        "label": r.label,
+                        "description": r.description,
+                    })).collect::<Vec<_>>(),
+                    "allow": p.allow_as_written,
+                })
+            })
+            .collect();
+        let words: Vec<_> = loaded
+            .words
+            .iter()
+            .map(|l| serde_json::json!({"label": l.label, "entries": l.words.len(), "source": l.source}))
+            .collect();
+        let v = serde_json::json!({"packs": packs, "words": words});
+        return writeln!(
+            w,
+            "{}",
+            serde_json::to_string_pretty(&v).expect("packs serialise")
+        );
+    }
     let all = loaded.packs.iter().map(|p| (p, "")).chain(
         loaded
             .off
@@ -350,7 +390,11 @@ fn print_packs(w: &mut impl Write, loaded: &pack::Loaded) -> std::io::Result<()>
     Ok(())
 }
 
-fn print_sources(w: &mut impl Write, loaded: &pack::Loaded) -> std::io::Result<()> {
+fn print_sources(w: &mut impl Write, loaded: &pack::Loaded, json: bool) -> std::io::Result<()> {
+    if json {
+        let v = serde_json::to_string_pretty(&loaded.sources).expect("sources serialise");
+        return writeln!(w, "{v}");
+    }
     let width = loaded
         .sources
         .iter()
@@ -549,6 +593,71 @@ mod docs {
                 .count()
                 >= 10
         );
+    }
+
+    fn builtin() -> pack::Loaded {
+        pack::load(&pack::Options {
+            files: vec![],
+            builtin: true,
+            user: false,
+            config: None,
+            env_files: vec![],
+            command: None,
+            cwd: None,
+            host: None,
+        })
+        .expect("built-in packs load")
+    }
+
+    fn json(print: impl Fn(&mut Vec<u8>) -> std::io::Result<()>) -> serde_json::Value {
+        let mut out = Vec::new();
+        print(&mut out).unwrap();
+        serde_json::from_slice(&out).expect("valid JSON, and nothing else")
+    }
+
+    #[test]
+    fn config_ls_json_has_one_object_per_file() {
+        let mut loaded = builtin();
+        loaded.sources.push(pack::Source {
+            kind: "config",
+            path: "~/x/config.toml".into(),
+            detail: "missing".into(),
+            via: None,
+            found: false,
+        });
+        let v = json(|w| print_sources(w, &loaded, true));
+        assert_eq!(
+            v[0],
+            serde_json::json!({"kind": "builtin", "path": "azure", "detail": v[0]["detail"], "via": null, "found": true})
+        );
+        assert_eq!(
+            v.as_array().unwrap().last().unwrap(),
+            &serde_json::json!({"kind": "config", "path": "~/x/config.toml", "detail": "missing", "via": null, "found": false})
+        );
+    }
+
+    #[test]
+    fn packs_json_says_which_packs_are_on() {
+        let loaded = builtin();
+        let v = json(|w| print_packs(w, &loaded, true));
+        let on = |id: &str| {
+            v["packs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|p| p["id"] == id)
+                .unwrap_or_else(|| panic!("{id} listed"))["on"]
+                .clone()
+        };
+        assert_eq!(on("azure"), true);
+        assert_eq!(on("pii"), false);
+        let azure = &v["packs"][0];
+        assert_eq!(
+            azure["rules"].as_array().unwrap().len(),
+            loaded.packs[0].rules.len()
+        );
+        assert!(azure["rules"][0]["label"].is_string());
+        assert!(v["words"].is_array());
     }
 
     #[test]
