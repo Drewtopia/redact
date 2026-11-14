@@ -729,6 +729,26 @@ mod tests {
     }
 
     #[test]
+    fn not_a_name_tells_camel_case_from_random() {
+        let c = pack::Check::NotAName;
+        for name in [
+            "cacheCreationEphemeral5mInputTokens",
+            "convertUtf8ToUtf16StringBuffer",
+            "ISO8601DateTimeFormatterImpl",
+            "k8sClusterAutoscalerV2Beta1",
+        ] {
+            assert!(!c.passes(name), "{name} read as random");
+        }
+        for key in [
+            "u8jzPde0IgxLd6GncfBAepfJBd0Kh8oO",
+            "OL8dKLzdocJ2isAjIhKtJ0RlgLKOmxgJ",
+            "50Nzegy93wBT823M2ggyoSLd",
+        ] {
+            assert!(c.passes(key), "{key} read as a name");
+        }
+    }
+
+    #[test]
     fn entropy_counts_bits_per_character() {
         assert_eq!(pack::entropy("aaaa"), 0.0);
         assert_eq!(pack::entropy("abcd"), 2.0);
@@ -789,6 +809,10 @@ mod tests {
             format!("commit {sha} and {}", sha.to_uppercase()),
             format!("request {G} done"),
             "fn playerEventBatchV1Schema() and handleUser2FactorAuthentication".into(),
+            // Claude Code usage fields, in every transcript.
+            r#"{"cacheCreationEphemeral5mInputTokens":0,"cacheCreationEphemeral1hInputTokens":9}"#
+                .into(),
+            "convertUtf8ToUtf16StringBuffer(getHTTPServer2ConfigForTests)".into(),
             "Aa1Aa1Aa1Aa1Aa1Aa1Aa1Aa1 repeats".into(),
             format!("path /srv/{}/x and a_{}_b", body(30), body(30)),
             format!(

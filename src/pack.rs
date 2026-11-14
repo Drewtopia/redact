@@ -1044,9 +1044,10 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             None => None,
             Some("luhn") => Some(Check::Luhn),
             Some("iban") => Some(Check::Iban),
+            Some("not-a-name") => Some(Check::NotAName),
             Some(other) => {
                 return Err(format!(
-                    "{source}: rule {} check \"{other}\": use \"luhn\" or \"iban\"",
+                    "{source}: rule {} check \"{other}\": use \"luhn\", \"iban\" or \"not-a-name\"",
                     r.id
                 ));
             }
@@ -1276,6 +1277,9 @@ pub enum Check {
     Luhn,
     /// IBANs: 15 to 34 characters (spaces ignored) passing ISO 7064 mod 97.
     Iban,
+    /// Random tokens: not a camelCase name, whose words of 3+ letters
+    /// (`Ephemeral`, `cache`) cover 70% or more of it.
+    NotAName,
 }
 
 impl Check {
@@ -1318,6 +1322,39 @@ impl Check {
                     }
                 }
                 rem == 1
+            }
+            Check::NotAName => {
+                // Split at case and digit boundaries: `HTTPServer` is `HTTP`, `Server`.
+                let b = value.as_bytes();
+                let (mut i, mut words) = (0, 0);
+                while i < b.len() {
+                    let start = i;
+                    let run = |i: usize, f: fn(&u8) -> bool| {
+                        i + b[i..].iter().take_while(|c| f(c)).count()
+                    };
+                    i = if b[i].is_ascii_digit() {
+                        run(i, u8::is_ascii_digit)
+                    } else if b[i].is_ascii_lowercase() {
+                        run(i, u8::is_ascii_lowercase)
+                    } else {
+                        let caps = run(i, u8::is_ascii_uppercase);
+                        match (caps - i, b.get(caps).is_some_and(u8::is_ascii_lowercase)) {
+                            (1, true) => run(caps, u8::is_ascii_lowercase),
+                            (_, true) => caps - 1,
+                            _ => caps,
+                        }
+                    };
+                    let lower = b[start..i]
+                        .iter()
+                        .filter(|c| c.is_ascii_lowercase())
+                        .count();
+                    let capital_word = b[start].is_ascii_uppercase() && lower == i - start - 1;
+                    let first_word = start == 0 && lower == i;
+                    if (capital_word || first_word) && lower >= 2 {
+                        words += i - start;
+                    }
+                }
+                words * 10 < b.len() * 7
             }
         }
     }
