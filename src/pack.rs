@@ -69,6 +69,8 @@ struct RuleFile {
     except: Option<String>,
     /// A checksum the value must pass: `"luhn"` (card numbers) or `"iban"`.
     check: Option<String>,
+    /// Minimum Shannon entropy, in bits per character, the value must exceed.
+    entropy: Option<f64>,
     #[serde(default)]
     remember: Remember,
     #[serde(default)]
@@ -89,6 +91,8 @@ pub struct Rule {
     pub except: Option<Regex>,
     /// A checksum the found value must pass, or it is left alone.
     pub check: Option<Check>,
+    /// The found value is hidden only when its entropy is above this (gitleaks' `entropy`).
+    pub entropy: Option<f64>,
     pub remember: Remember,
     pub keywords: Vec<String>,
 }
@@ -1047,6 +1051,14 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
                 ));
             }
         };
+        if let Some(e) = r.entropy
+            && !(e.is_finite() && e >= 0.0)
+        {
+            return Err(format!(
+                "{source}: rule {} entropy {e}: use a number of bits per character, such as 3.5",
+                r.id
+            ));
+        }
         rules.push(Rule {
             label: label_of(r.label.as_deref().unwrap_or(&r.id)),
             id: r.id,
@@ -1056,6 +1068,7 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             within,
             except,
             check,
+            entropy: r.entropy,
             remember: r.remember,
             keywords: lower(r.keywords),
         });
@@ -1237,6 +1250,22 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
             "an exact name that is not set is reported"
         );
     }
+}
+
+/// Shannon entropy in bits per character, as gitleaks counts it.
+pub fn entropy(value: &str) -> f64 {
+    let mut counts = std::collections::HashMap::new();
+    for c in value.chars() {
+        *counts.entry(c).or_insert(0usize) += 1;
+    }
+    let n = value.chars().count() as f64;
+    counts
+        .values()
+        .map(|&k| {
+            let p = k as f64 / n;
+            -p * p.log2()
+        })
+        .sum()
 }
 
 /// A checksum a found value must pass. Without one, any long run of digits

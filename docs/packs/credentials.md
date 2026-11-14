@@ -31,6 +31,7 @@ Tokens, keys and passwords: JWTs, bearer tokens, common vendor key shapes, priva
 | `secret-flag` | `[SECRET-…]` | The value of --password, --client-secret, --token and similar command-line flags | when it reads as a name |
 | `docker-login-password` | `[SECRET-…]` | The password after -p in docker login (and podman login) | when it reads as a name |
 | `mysql-password` | `[SECRET-…]` | The password joined to -p in mysql, mysqldump and mysqladmin (-pSECRET) | when it reads as a name |
+| `random-token` | `[SECRET-…]` | A long random-looking token with no known prefix: 24+ letters and digits, mixed case, above 3.6 bits of entropy per character |  |
 
 ## Allowed values
 

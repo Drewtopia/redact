@@ -51,6 +51,7 @@ remember = "distinctive"
 | `remember` | `"distinctive"`: also hide the value everywhere else when it reads as a name (a space, `-`, `_`, `.`, a digit or an inner capital). `"any"`: any value with a capital letter or of 5+ characters |
 | `keywords` | The rule runs only when one of these appears |
 | `check` | Hide a found value only when it passes a checksum: `"luhn"` for card numbers, `"iban"` for the IBAN mod-97 check. Keeps long runs of digits that are not cards visible |
+| `entropy` | Hide a found value only when its Shannon entropy is above this many bits per character, as in gitleaks: `entropy = 3.5`. Equal is not enough. Random keys score near 4 or more; words and repeated text score lower |
 
 ## Regex syntax
 

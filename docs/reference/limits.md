@@ -16,6 +16,7 @@ redact will miss things. Check its output before you share anything that matters
 - **Over-hiding with `pii` on.** Any four dotted numbers read as an IP address, so a version such as `1.2.3.4` is hidden; so is any number shaped like a phone number.
 - **PDFs named with `@` in Claude Code.** The mod cannot read a PDF's text, so an `@`-mentioned PDF goes to Claude unscanned. Images too, since they reach Claude as pictures.
 - **An `allow` added mid-session in Claude Code.** The mod keeps hiding a value it hid earlier in the session, wherever it turns up. Start a new session for the `allow` to take effect.
+- **Random tokens with no prefix.** The `random-token` rule hides 24+ letters and digits that mix lower case, capitals and digits and score above 3.6 bits of entropy a character. It misses a token joined to a symbol (`key_…`, a path, a URL, base64 with `+` or `/`, a JSON `\n` escape), a token alone on a 64- or 76-character line (it reads as wrapped base64), and a few random tokens that happen to read as a camelCase name. It can hide a long camelCase name with two-letter words and digits, such as `convertUtf8ToUtf16StringBuffer`.
 - **Over-hiding on command lines.** `PGPASSWORD=secret psql -h db -U admin` on one line hides everything after the `=`, command included, since a dump line and a command line look the same.
 
 ## What it is not

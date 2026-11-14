@@ -1,6 +1,6 @@
 //! Finding the parts of a text to hide, and swapping them for placeholders.
 
-use crate::pack::{Loaded, Remember};
+use crate::pack::{Loaded, Remember, entropy};
 use aho_corasick::AhoCorasick;
 use hmac::{Hmac, KeyInit, Mac};
 use regex::Regex;
@@ -178,6 +178,7 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                         || loaded.allow.contains(&value.to_lowercase())
                         || rule.except.as_ref().is_some_and(|x| x.is_match(value))
                         || rule.check.is_some_and(|c| !c.passes(value))
+                        || rule.entropy.is_some_and(|min| entropy(value) <= min)
                     {
                         continue;
                     }
@@ -725,6 +726,85 @@ mod tests {
         keeps("n = 1//batch_size_per_device_for_training_run");
         keeps("pip install xai-grok-sdk-python-integration-helpers");
         keeps("gsk_client_settings and glpat-docs");
+    }
+
+    #[test]
+    fn entropy_counts_bits_per_character() {
+        assert_eq!(pack::entropy("aaaa"), 0.0);
+        assert_eq!(pack::entropy("abcd"), 2.0);
+        assert_eq!(pack::entropy("aabb"), 1.0);
+    }
+
+    #[test]
+    fn a_rule_hides_only_values_above_its_entropy() {
+        let d = tmp("entropy");
+        let path = d.join("e.toml");
+        // aabbccdd is exactly 2 bits a character: like gitleaks, equal is not enough.
+        std::fs::write(&path, "schema_version = 1\nid = \"e\"\n[[rules]]\nid = \"r\"\nregex = '\\b([a-z]{8})\\b'\nsecretGroup = 1\nentropy = 2.0\n").unwrap();
+        let loaded = only(std::slice::from_ref(&path)).unwrap();
+        let text = "aaaaaaaa aabbccdd abcdefgh";
+        let out = mask(
+            text,
+            &scan(text, &loaded).unwrap(),
+            &mut Tagger::new(None).unwrap(),
+        );
+        assert!(out.starts_with("aaaaaaaa aabbccdd ["), "{out}");
+        assert!(!out.contains("abcdefgh"), "{out}");
+
+        std::fs::write(
+            &path,
+            "schema_version = 1\nid = \"e\"\n[[rules]]\nid = \"r\"\nregex = 'a'\nentropy = -1.0\n",
+        )
+        .unwrap();
+        let err = only(std::slice::from_ref(&path)).err().unwrap();
+        assert!(err.contains("e.toml") && err.contains("entropy"), "{err}");
+    }
+
+    #[test]
+    fn random_tokens_with_no_prefix() {
+        let (a, b) = (
+            "u8jzPde0IgxLd6GncfBAepfJBd0Kh8oO",
+            "OL8dKLzdocJ2isAjIhKtJ0RlgLKOmxgJ",
+        );
+        for text in [
+            format!("token {a} ok"),
+            format!("{}\n", &b[..24]),
+            format!(r#"{{"k":"{a}"}}"#),
+        ] {
+            let out = azure(&text);
+            assert!(!out.contains(&a[..24]) && !out.contains(&b[..24]), "{out}");
+        }
+        // Two tokens one space apart are both hidden.
+        let out = azure(&format!("{a} {b}"));
+        assert_eq!(out.matches("[SECRET-").count(), 2, "{out}");
+
+        let sha = "3f2a9c1e0b7d4f6a8e5c2b1d9f0a7e6c4b3d2a1f";
+        let wrapped = format!(
+            "-----BEGIN CERTIFICATE-----\n{}\n{}\n{}\n-----END CERTIFICATE-----",
+            body(64),
+            body(64),
+            body(40)
+        );
+        for text in [
+            format!("commit {sha} and {}", sha.to_uppercase()),
+            format!("request {G} done"),
+            "fn playerEventBatchV1Schema() and handleUser2FactorAuthentication".into(),
+            "Aa1Aa1Aa1Aa1Aa1Aa1Aa1Aa1 repeats".into(),
+            format!("path /srv/{}/x and a_{}_b", body(30), body(30)),
+            format!(
+                "img data:image/png;base64,{}+{}/{}==",
+                body(30),
+                body(30),
+                body(30)
+            ),
+            // A JSON `\n` escape is never taken into a token; nor is a cert in JSON or YAML.
+            format!(r#"{{"c":"line\n{a}"}}"#),
+            format!(r#"{{"pem":"{}"}}"#, wrapped.replace('\n', r"\n")),
+            format!("ca.crt: |\n    {}", wrapped.replace('\n', "\n    ")),
+            wrapped,
+        ] {
+            keeps(&text);
+        }
     }
 
     // Regressions from the independent review of 2026-11-14.
