@@ -700,6 +700,33 @@ mod tests {
         assert!(out.contains("\"Bearer\""), "{out}");
     }
 
+    #[test]
+    fn vendor_keys_by_shape() {
+        // Real lengths, split so no key-shaped string sits in the repo.
+        for (key, label) in [
+            (format!("{}_test_{}", "sk", body(24)), "API-KEY"),
+            (format!("{}_live_{}", "rk", body(24)), "API-KEY"),
+            (format!("{}_test_{}", "rk", body(24)), "API-KEY"),
+            (format!("wh{}_{}", "sec", body(32)), "API-KEY"),
+            (format!("gs{}_{}", "k", body(52)), "API-KEY"),
+            (format!("xa{}-{}", "i", body(80)), "API-KEY"),
+            (format!("gl{}-{}", "pat", body(20)), "TOKEN"),
+            (format!("gl{}-{}.01a2b3c4d", "pat", body(27)), "TOKEN"),
+            (format!("GOC{}-{}", "SPX", body(28)), "CLIENT-SECRET"),
+            (format!("1//0{}", body(100)), "TOKEN"),
+        ] {
+            let text = format!("here it is: {key} ok");
+            hides(&text, &key[key.len() - 12..], label);
+            assert!(azure(&text).ends_with(" ok"), "{}", azure(&text));
+        }
+        // A Stripe publishable key is public, and these only share a prefix.
+        keeps(&format!("stripe.js gets {}_live_{} ok", "pk", body(24)));
+        keeps(&format!("stripe.js gets {}_test_{} ok", "pk", body(24)));
+        keeps("n = 1//batch_size_per_device_for_training_run");
+        keeps("pip install xai-grok-sdk-python-integration-helpers");
+        keeps("gsk_client_settings and glpat-docs");
+    }
+
     // Regressions from the independent review of 2026-11-14.
 
     #[test]
