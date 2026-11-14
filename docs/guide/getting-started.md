@@ -69,8 +69,11 @@ redact config ls
  7  builtin gcp                           5 rules
  8  builtin credentials                   22 rules
  9  builtin pii                           12 rules, off
-10  config  ~/.config/redact/config.toml  0 imports
+10  folder  ~/.config/redact/packs        missing
+11  config  ~/.config/redact/config.toml  0 imports
 ```
+
+A file redact looks for and does not find is listed as `missing`. `redact config ls --json` and `redact packs --json` print the same as JSON, for scripts.
 
 `pii` (phone numbers, cards, IP addresses) starts switched off; `[packs] enable = ["pii"]` turns it on.
 

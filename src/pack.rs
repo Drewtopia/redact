@@ -1,7 +1,7 @@
 //! Loading packs (.toml rule files) and word lists (.txt, one word per line).
 
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -121,7 +121,7 @@ pub struct WordList {
 pub struct Loaded {
     pub packs: Vec<Pack>,
     pub words: Vec<WordList>,
-    /// Every file that loaded, in load order: what `redact config ls` prints.
+    /// Every file that loaded or was looked for, in load order: what `redact config ls` prints.
     pub sources: Vec<Source>,
     /// Values never hidden, lower-cased: the configs' `allow` lists.
     pub allow: HashSet<String>,
@@ -130,11 +130,14 @@ pub struct Loaded {
     pub off: Vec<Pack>,
 }
 
+#[derive(Serialize)]
 pub struct Source {
     pub kind: &'static str,
     pub path: String,
     pub detail: String,
     pub via: Option<String>,
+    /// `false`: redact looked for this file and it was not there.
+    pub found: bool,
 }
 
 /// Where to load from. `config` replaces the default `~/.config/redact/config.toml`.
@@ -516,18 +519,7 @@ pub fn load(opts: &Options) -> Result<Loaded, String> {
         // and what it imports, not the default packs folder beside it.
         match &opts.config {
             Some(c) => l.file(c, None)?,
-            None => {
-                if let Some(dir) = config_home().map(|c| c.join("packs"))
-                    && dir.is_dir()
-                {
-                    l.file(&dir, None)?;
-                }
-                if let Some(c) = config_home().map(|c| c.join("config.toml"))
-                    && c.is_file()
-                {
-                    l.file(&c, None)?;
-                }
-            }
+            None => user_layer(&mut l, config_home())?,
         }
     }
     for f in &opts.files {
@@ -538,6 +530,24 @@ pub fn load(opts: &Options) -> Result<Loaded, String> {
     }
     select_packs(&mut l)?;
     Ok(l.loaded)
+}
+
+/// The packs folder and config file in `home`, each listed as missing when it is not there.
+fn user_layer(l: &mut Loader, home: Option<PathBuf>) -> Result<(), String> {
+    let Some(home) = home else { return Ok(()) };
+    let dir = home.join("packs");
+    if dir.is_dir() {
+        l.file(&dir, None)?;
+    } else {
+        l.missing("folder", tilde(&dir), "missing", None);
+    }
+    let config = home.join("config.toml");
+    if config.is_file() {
+        l.file(&config, None)?;
+    } else {
+        l.missing("config", tilde(&config), "missing", None);
+    }
+    Ok(())
 }
 
 /// Applies `[packs]`: a pack runs when it is on by default and not disabled, or
@@ -840,7 +850,7 @@ impl Loader {
         let text = match read_text(path) {
             Ok(t) => t,
             Err(e) if !required && e.kind() == std::io::ErrorKind::NotFound => {
-                self.record("dotenv", shown, "not found here".into(), via);
+                self.missing("dotenv", shown, "not found here", via);
                 return Ok(());
             }
             Err(e) => return Err(format!("{shown}: {e}")),
@@ -863,7 +873,15 @@ impl Loader {
             path,
             detail,
             via: via.map(tilde),
+            found: true,
         });
+    }
+
+    fn missing(&mut self, kind: &'static str, path: String, detail: &str, via: Option<&Path>) {
+        self.record(kind, path, detail.into(), via);
+        if let Some(s) = self.loaded.sources.last_mut() {
+            s.found = false;
+        }
     }
 
     fn file(&mut self, path: &Path, via: Option<&Path>) -> Result<(), String> {
@@ -1246,6 +1264,89 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
             missing,
             ["EMPLOYER"],
             "an exact name that is not set is reported"
+        );
+    }
+
+    fn found(l: &Loader) -> Vec<(&str, String, &str, bool)> {
+        l.loaded
+            .sources
+            .iter()
+            .map(|s| (s.kind, s.path.clone(), s.detail.as_str(), s.found))
+            .collect()
+    }
+
+    #[test]
+    fn the_user_layer_lists_what_it_did_not_find() {
+        let d = std::env::temp_dir().join(format!("redact-test-{}-layers", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let mut l = Loader::default();
+        user_layer(&mut l, Some(d.clone())).unwrap();
+        let (packs, config) = (tilde(&d.join("packs")), tilde(&d.join("config.toml")));
+        assert_eq!(
+            found(&l),
+            [
+                ("folder", packs.clone(), "missing", false),
+                ("config", config.clone(), "missing", false),
+            ]
+        );
+        std::fs::create_dir_all(d.join("packs")).unwrap();
+        std::fs::write(d.join("config.toml"), "").unwrap();
+        let mut l = Loader::default();
+        user_layer(&mut l, Some(d.clone())).unwrap();
+        std::fs::remove_dir_all(&d).unwrap();
+        assert_eq!(
+            found(&l),
+            [
+                ("folder", packs, "0 files and folders", true),
+                ("config", config, "0 imports", true),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_missing_config_named_on_the_command_line_is_an_error() {
+        let opts = Options {
+            files: vec![],
+            builtin: false,
+            user: true,
+            config: Some(std::env::temp_dir().join("redact-test-no-such-config.toml")),
+            env_files: vec![],
+            command: None,
+            cwd: None,
+            host: None,
+        };
+        assert!(load(&opts).is_err());
+    }
+
+    #[test]
+    fn only_files_looks_for_no_user_layer() {
+        let opts = Options {
+            files: vec![],
+            builtin: false,
+            user: false,
+            config: None,
+            env_files: vec![],
+            command: None,
+            cwd: None,
+            host: None,
+        };
+        assert!(load(&opts).unwrap().sources.is_empty());
+    }
+
+    #[test]
+    fn a_missing_dotenv_file_is_not_found() {
+        let mut l = Loader::default();
+        l.env_file(Path::new("redact-test-no-such.env"), None, false)
+            .unwrap();
+        assert_eq!(
+            found(&l),
+            [(
+                "dotenv",
+                "redact-test-no-such.env".into(),
+                "not found here",
+                false
+            )]
         );
     }
 }
