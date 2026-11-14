@@ -1,0 +1,34 @@
+name: redact hid too much
+description: Text that is fine to show was replaced with a placeholder.
+labels: [needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `redact scan --explain` prints which rule hid each part (never the value). Paste its lines below. Use made-up values: this issue is public.
+  - type: textarea
+    id: input
+    attributes:
+      label: Input
+      description: The smallest text that shows it.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: explain
+    attributes:
+      label: Output of `redact scan --explain`
+      description: The `pack:rule -> [LABEL-…]` lines it printed on stderr.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it should stay visible
+  - type: input
+    id: version
+    attributes:
+      label: redact --version
+    validations:
+      required: true

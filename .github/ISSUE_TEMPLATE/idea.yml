@@ -1,0 +1,16 @@
+name: Idea or new rule
+description: A new pack or rule, a setting, or another change.
+labels: [needs-triage]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What you want
+      description: For a new rule, the tool or service whose output it covers, and a made-up sample of that output.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: What you are doing today without it.

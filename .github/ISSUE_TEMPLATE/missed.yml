@@ -1,0 +1,34 @@
+name: redact missed something
+description: Text that should have been hidden came through visible.
+labels: [needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Use a made-up value, never the real one.** This issue is public. Keep the shape (length, prefix, characters) and change every character that matters. A way around the Claude Code mod goes to a [private report](https://github.com/Drewtopia/redact/security/advisories/new) instead.
+  - type: textarea
+    id: input
+    attributes:
+      label: Input
+      description: The smallest text that shows it, with a fake value. Pasted as plain text.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should be hidden
+      description: Which part, and what it is (an Azure SAS token, a customer name, ...).
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: How you ran it
+      placeholder: "az storage account show ... | redact"
+  - type: input
+    id: version
+    attributes:
+      label: redact --version
+    validations:
+      required: true
