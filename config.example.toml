@@ -30,7 +30,7 @@
 # and pii (personal data), which starts switched off.
 # [packs]
 # enable = ["pii"]        # packs that start switched off
-# disable = ["gcp"]       # packs you do not want
+# disable = ["gcp"]       # packs you do not want, or one rule as pack:rule ("pii:ipv4")
 
 # --- Overrides -------------------------------------------------------------------
 

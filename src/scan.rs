@@ -1558,6 +1558,25 @@ mod tests {
     }
 
     #[test]
+    fn disable_takes_one_rule_as_pack_colon_rule() {
+        let text = "host 203.0.113.9 card 4111 1111 1111 1111";
+        let on = with_config("rule-on", "[packs]\nenable = [\"pii\"]\n", text).unwrap();
+        assert!(
+            !on.contains("203.0.113.9") && !on.contains("4111 1111"),
+            "{on}"
+        );
+        let cfg = "[packs]\nenable = [\"pii\"]\ndisable = [\"pii:ipv4\"]\n";
+        let off = with_config("rule-off", cfg, text).unwrap();
+        assert!(
+            off.contains("203.0.113.9") && !off.contains("4111 1111"),
+            "{off}"
+        );
+        let cfg = "[packs]\nenable = [\"pii\"]\ndisable = [\"pii:ipv5\"]\n";
+        let err = with_config("rule-typo", cfg, text).err().unwrap();
+        assert!(err.contains("pii:ipv5"), "{err}");
+    }
+
+    #[test]
     fn dir_overrides_match_windows_paths() {
         let url = "https://dev.azure.com/fabrikamq/Bluefinq/_git/app";
         let cfg = "[[override]]\ndir = \"C:/Users/x/dev\"\nallow = [\"bluefinq\"]\n";
