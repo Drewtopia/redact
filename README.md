@@ -164,3 +164,5 @@ Several credential patterns are adapted from Ray Amjad's [transcript-redactor](h
 ## Licence
 
 MIT or Apache-2.0, at your option. Third-party portions retain the notices in [LICENSE-THIRD-PARTY](LICENSE-THIRD-PARTY).
+
+redact is a hobby project, provided "as is" with no warranty of any kind. The authors are not liable for any leak, loss or damage that comes from using it, including values it fails to hide. See the warranty and liability sections of [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE) (sections 7 and 8).
