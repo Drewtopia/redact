@@ -75,6 +75,9 @@ struct RuleFile {
     remember: Remember,
     #[serde(default)]
     keywords: Vec<String>,
+    /// Clue words: a found value is hidden only when one is near it.
+    #[serde(default)]
+    context: Vec<String>,
 }
 
 // The compiled forms the scanner uses.
@@ -95,6 +98,9 @@ pub struct Rule {
     pub entropy: Option<f64>,
     pub remember: Remember,
     pub keywords: Vec<String>,
+    /// Clue words, lower-cased: a found value is hidden only when one of them
+    /// is a whole word on its line or the line before (Presidio's context words).
+    pub context: Vec<String>,
 }
 
 pub struct Pack {
@@ -1060,6 +1066,12 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
                 r.id
             ));
         }
+        if r.context.iter().any(|w| w.trim().is_empty()) {
+            return Err(format!(
+                "{source}: rule {} context: a clue word is empty, so it would match everywhere",
+                r.id
+            ));
+        }
         rules.push(Rule {
             label: label_of(r.label.as_deref().unwrap_or(&r.id)),
             id: r.id,
@@ -1072,6 +1084,7 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             entropy: r.entropy,
             remember: r.remember,
             keywords: lower(r.keywords),
+            context: lower(r.context),
         });
     }
     Ok(Pack {

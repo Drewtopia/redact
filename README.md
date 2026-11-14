@@ -73,7 +73,7 @@ Built-in packs for common tools:
 - **`npm`:** `_authToken`, `_password` and `_auth` in `.npmrc`, for any registry.
 - **`http`:** `Cookie` and `Set-Cookie` values and API key headers such as `x-api-key`, as `curl -v` prints them.
 - **`gcp`:** `ya29.` access tokens, and project IDs in key files, resource paths and `--project`.
-- **`pii`, off by default:** phone numbers, card numbers and IBANs that pass their checksums, IP and MAC addresses, US Social Security and UK National Insurance numbers. Turn it on with `[packs] enable = ["pii"]`.
+- **`pii`, off by default:** card numbers and IBANs that pass their checksums, IP and MAC addresses, and phone numbers, US Social Security and UK National Insurance numbers beside a clue word such as `phone` or `ssn` on the same line or the line before. Turn it on with `[packs] enable = ["pii"]`.
 
 - **`azure`:** tenant, subscription and identity IDs beside their names, people in Azure DevOps and Microsoft Graph records, your own Azure hosts, and Azure DevOps org, project and repo names. Public values Microsoft documents stay visible. See [the azure pack](https://drewtopia.github.io/redact/packs/azure).
 

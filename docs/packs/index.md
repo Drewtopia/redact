@@ -16,7 +16,7 @@ A pack is a TOML file of rules. Each rule's `regex` finds a spot in the text, an
 | [credentials](./credentials) | JWTs and bearer tokens; vendor key shapes; private keys; URL passwords; values named as secrets; environment dump values |
 | [pii](./pii) | **Off by default.** Phone numbers; card numbers and IBANs that pass their checksums; IP and MAC addresses; US Social Security and UK National Insurance numbers |
 
-They load in that order. `pii` hides any IP address and any phone-shaped number, which is more than most people want, so it starts switched off: turn it on with `[packs] enable = ["pii"]` in your [config](../reference/config#packs). When two rules hide exactly the same text, the first one's label wins, so a specific Azure label beats a generic one.
+They load in that order. `pii` hides any IP address, which is more than most people want, so it starts switched off: turn it on with `[packs] enable = ["pii"]` in your [config](../reference/config#packs). When two rules hide exactly the same text, the first one's label wins, so a specific Azure label beats a generic one.
 
 ## Your own packs
 
