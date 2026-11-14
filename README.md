@@ -56,7 +56,7 @@ Exit codes: 0 done, 2 bad usage, 3 a pack would not load or the scan failed. A f
 
 The built-in `credentials` pack hides credentials wherever they appear:
 
-- **On sight:** JWTs, bearer tokens, GitHub, Anthropic, OpenAI, AWS, Slack, Stripe, Google and Azure keys, PEM private key blocks, and the password in `scheme://user:password@host`.
+- **On sight:** JWTs, bearer tokens, GitHub, GitLab, Anthropic, OpenAI, Groq, xAI, AWS, Slack, Stripe (webhook secrets too), Google and Azure keys, PEM private key blocks, the password in `scheme://user:password@host`, and random 24+ character tokens with no prefix.
 - **By name:** the value of anything named as a secret: `TOKEN=`, `"password":`, `client_secret:`, `API_KEY=`, `*_PAT=`, `Authorization:` and the like.
 - **Environment dumps:** the value on each `NAME=value` line of `env`, `mise env` or a `.env` file, except settings such as numbers, `true` and `development`.
 
