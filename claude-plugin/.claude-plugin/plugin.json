@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "redact",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Runs everything that enters the conversation through the redact binary: each hidden part becomes a placeholder, and the real value goes back into a tool that runs on this machine",
   "author": { "name": "Drew" },
   "repository": "https://github.com/Drewtopia/redact",
