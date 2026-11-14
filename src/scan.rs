@@ -260,14 +260,20 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
     Ok(merge(spans))
 }
 
+/// How far, in bytes, `clue_near` looks either side of a value. Without a
+/// limit, every match on one long line of JSON rescans the whole line.
+const CLUE_REACH: usize = 100;
+
 /// Whether one of `words` (lower case) is a whole word on the line holding
-/// byte `at` of `text`, or on the line before.
+/// byte `at` of `text`, or on the line before, within `CLUE_REACH` bytes.
 fn clue_near(text: &str, at: usize, words: &[String]) -> bool {
-    let line = text[..at].rfind('\n').map_or(0, |i| i + 1);
-    let from = text[..line.saturating_sub(1)]
+    let lo = text.floor_char_boundary(at.saturating_sub(CLUE_REACH));
+    let hi = text.floor_char_boundary(at + CLUE_REACH);
+    let line = text[lo..at].rfind('\n').map_or(lo, |i| lo + i + 1);
+    let from = text[lo..line.saturating_sub(1).max(lo)]
         .rfind('\n')
-        .map_or(0, |i| i + 1);
-    let to = text[at..].find('\n').map_or(text.len(), |i| at + i);
+        .map_or(lo, |i| lo + i + 1);
+    let to = text[at..hi].find('\n').map_or(hi, |i| at + i);
     let window = &text[from..to];
     // ASCII lower case keeps every byte offset where it was in `window`.
     let low = window.to_ascii_lowercase();
@@ -2163,11 +2169,13 @@ mod tests {
             assert!(!run(t).contains("123456"), "{t:?}");
         }
         // Not whole words, or too far away.
+        let far = format!("badge {}123456", "word ".repeat(25));
         for t in [
             "badges 123456",
             "rebadge 123456",
             "badge\n\n123456",
             "123456",
+            &far,
         ] {
             assert_eq!(run(t), t);
         }

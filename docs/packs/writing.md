@@ -56,7 +56,7 @@ remember = "distinctive"
 
 ## Clue words
 
-`context` looks at the value's own line and the line before it. That covers the shapes personal data comes in: `Phone: …`, `"homePhone": "…"`, `… (mobile)`, a YAML list under `phone:`, and a label on the line above. It misses a value further below its label, such as the rows under a table or CSV header. It can also over-hide: in `phone: …` followed by `order: 555-010-0200`, the order number reads as a phone number.
+`context` looks at the value's own line and the line before it, up to 100 bytes either side of where the value starts. That covers the shapes personal data comes in: `Phone: …`, `"homePhone": "…"`, `… (mobile)`, a YAML list under `phone:`, and a label on the line above. It misses a value further below its label, such as the rows under a table or CSV header. It can also over-hide: in `phone: …` followed by `order: 555-010-0200`, the order number reads as a phone number.
 
 ## Regex syntax
 
