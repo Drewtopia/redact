@@ -54,12 +54,22 @@ export function restore(text: string, onValue?: (v: string) => void): string {
   return text.replace(TAG, (t) => {
     const v = byTag.get(t)
     if (v === undefined) return t
-    if (!t.startsWith(`[${LITERAL}-`)) onValue?.(v)
+    if (!isLiteral(t)) onValue?.(v)
     return v
   })
 }
 
-export const isLiteral = (tag: string): boolean => tag.startsWith(`[${LITERAL}-`)
+export const isLiteral = (tag: string): boolean => /^\[LITERAL-[0-9a-f]{8}\]$/.test(tag)
+
+// The real value behind each live placeholder in `text`, with its placeholder.
+export function valuesIn(text: string): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const t of text.match(TAG) ?? []) {
+    const v = byTag.get(t)
+    if (v !== undefined && !isLiteral(t)) out.set(v, t)
+  }
+  return out
+}
 
 function escapeLiteralTags(text: string, tags: Set<string>): string {
   if (byTag.size === 0 || !text.includes('[')) return text
@@ -70,12 +80,23 @@ function escapeLiteralTags(text: string, tags: Set<string>): string {
 // no rule fires: a tool that echoes a key it was handed must not print it.
 // `extra` are values this call handed to a tool, hidden down to 4 characters.
 // shortcut: one includes() per known value; index them if sessions reach many thousands.
-function hideKnown(text: string, extra: Set<string>, tags: Set<string>): string {
+function knownValues(extra: Set<string>): string[] {
   const known = [...byValue.keys()].filter((v) => v.length >= ECHO_MIN && !isLiteral(byValue.get(v)!))
-  const all = [...new Set([...known, ...[...extra].filter((v) => v.length >= 4)])].sort((a, b) => b.length - a.length)
+  return [...new Set([...known, ...[...extra].filter((v) => v.length >= 4)])].sort((a, b) => b.length - a.length)
+}
+
+function hideKnown(text: string, all: string[], tags: Set<string>): string {
   let out = text
   for (const v of all) if (out.includes(v)) out = out.split(v).join(mint(labelOf(byValue.get(v)) ?? 'SECRET', v, tags))
   return out
+}
+
+// A word list's label is its file name, so it can be anything (`123-customers`,
+// `v1.2`): fold it into the placeholder's shape. One named literal.txt must not
+// mint the hook's own LITERAL tags.
+function tagLabel(label: string): string {
+  const t = label.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^[-0-9]+|-+$/g, '') || 'HIDDEN'
+  return t === LITERAL ? `${LITERAL}-LIST` : t
 }
 
 const labelOf = (tag: string | undefined): string | undefined => tag?.slice(1, -10)
@@ -146,7 +167,7 @@ export async function scrub($: any, texts: string[], o: ScanOptions): Promise<{ 
   // Spans of another shape would hide nothing and pass the text raw.
   const size = byteLength(joined)
   const ok = (s: any): s is Span =>
-    Number.isInteger(s?.start) && Number.isInteger(s?.end) && s.start >= 0 && s.start < s.end && s.end <= size && typeof s.label === 'string' && /^[A-Z][A-Z0-9-]*$/.test(s.label)
+    Number.isInteger(s?.start) && Number.isInteger(s?.end) && s.start >= 0 && s.start < s.end && s.end <= size && typeof s.label === 'string'
   if (!Array.isArray(spans) || !spans.every(ok)) {
     const why = `\`${o.binary} scan --json\` printed spans of an unknown shape`
     o.onBroken?.(why)
@@ -171,7 +192,7 @@ export async function scrub($: any, texts: string[], o: ScanOptions): Promise<{ 
     }
   }
 
-  const masked = parts.map(({ text, spans: list }) => {
+  const minted = parts.map(({ text, spans: list }) => {
     // Overlapping spans merge into one, under the first one's label.
     list.sort((x, y) => x.start - y.start || y.end - x.end)
     const merged: Span[] = []
@@ -183,11 +204,14 @@ export async function scrub($: any, texts: string[], o: ScanOptions): Promise<{ 
     let out = ''
     let cur = 0
     for (const s of merged) {
-      out += text.slice(cur, s.start) + mint(s.label, text.slice(s.start, s.end), tags)
+      const label = tagLabel(s.label)
+      out += text.slice(cur, s.start) + mint(label, text.slice(s.start, s.end), tags)
       cur = s.end
     }
     out += text.slice(cur)
-    return hideKnown(out, o.handed ?? new Set(), tags)
+    return out
   })
-  return { masked, tags }
+  // Built once all pieces minted, so a value found in one is hidden in the rest.
+  const all = knownValues(o.handed ?? new Set())
+  return { masked: minted.map((t) => hideKnown(t, all, tags)), tags }
 }
