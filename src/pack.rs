@@ -537,21 +537,33 @@ pub fn load(opts: &Options) -> Result<Loaded, String> {
 }
 
 /// Applies `[packs]`: a pack runs when it is on by default and not disabled, or
-/// when enabled. A name that matches no pack is an error, so a typo is caught.
+/// when enabled. `disable` also takes one rule as `pack.rule`; that pack stays on.
+/// A name that matches no pack or rule is an error, so a typo is caught.
 fn select_packs(l: &mut Loader) -> Result<(), String> {
+    if let Some(r) = l.enable.iter().find(|n| n.contains('.')) {
+        return Err(format!(
+            "[packs] enable takes a pack, not a rule: {r}. Enable the pack and disable the rules you do not want"
+        ));
+    }
     let ids: HashSet<&str> = l.loaded.packs.iter().map(|p| p.id.as_str()).collect();
+    let rules: HashSet<String> = l
+        .loaded
+        .packs
+        .iter()
+        .flat_map(|p| p.rules.iter().map(|r| format!("{}.{}", p.id, r.id)))
+        .collect();
     let mut unknown: Vec<&String> = l
         .enable
         .iter()
         .chain(&l.disable)
-        .filter(|n| !ids.contains(n.as_str()))
+        .filter(|n| !ids.contains(n.as_str()) && !rules.contains(*n))
         .collect();
     if !unknown.is_empty() {
         unknown.sort();
         let mut known: Vec<&str> = ids.into_iter().collect();
         known.sort();
         return Err(format!(
-            "[packs] names no such pack: {} (packs: {})",
+            "[packs] names no such pack or rule: {} (packs: {})",
             unknown
                 .iter()
                 .map(|s| s.as_str())
@@ -572,6 +584,10 @@ fn select_packs(l: &mut Loader) -> Result<(), String> {
         .into_iter()
         .partition(|p| !off.contains(&p.id));
     l.loaded.packs = on;
+    for p in &mut l.loaded.packs {
+        p.rules
+            .retain(|r| !disable.contains(&format!("{}.{}", p.id, r.id)));
+    }
     l.loaded.off = off_packs;
     for s in &mut l.loaded.sources {
         let id = if s.kind == "builtin" {

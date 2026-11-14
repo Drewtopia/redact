@@ -1558,6 +1558,50 @@ mod tests {
     }
 
     #[test]
+    fn disable_takes_one_rule_as_pack_dot_rule() {
+        let text = "Author: Pemberly Quixote <pemq@quixotemail.io>\nmail pemq@quixotemail.io";
+        let on = with_config("rule-on", "", text).unwrap();
+        assert!(!on.contains("pemq@"), "{on}");
+        // The email rule is off; identity's git-person rule still hides the author.
+        let cfg = "[packs]\ndisable = [\"identity.email\", \"pii.ipv4\"]\n";
+        let out = with_config("rule-off", cfg, text).unwrap();
+        assert!(
+            out.contains("mail pemq@quixotemail.io") && !out.contains("Pemberly"),
+            "{out}"
+        );
+        // A rule off in a pack that is on: pii hides the phone, not the address.
+        let ips = "at 81.2.69.160 call +44 20 7946 0958";
+        let pii = "[packs]\nenable = [\"pii\"]\n";
+        assert!(
+            !with_config("ip-on", pii, ips)
+                .unwrap()
+                .contains("81.2.69.160")
+        );
+        let cfg = "[packs]\nenable = [\"pii\"]\ndisable = [\"pii.ipv4\"]\n";
+        let out = with_config("ip-off", cfg, ips).unwrap();
+        assert!(
+            out.contains("81.2.69.160") && !out.contains("7946"),
+            "{out}"
+        );
+        // From an override too.
+        let ov = "[[override]]\n[override.packs]\ndisable = [\"identity.email\"]\n";
+        let out = with_config("rule-ov", ov, text).unwrap();
+        assert!(out.contains("mail pemq@quixotemail.io"), "{out}");
+        let err = with_config(
+            "rule-typo",
+            "[packs]\ndisable = [\"identity.emial\"]\n",
+            text,
+        )
+        .err()
+        .unwrap();
+        assert!(err.contains("identity.emial"), "{err}");
+        let err = with_config("rule-enable", "[packs]\nenable = [\"pii.ipv4\"]\n", text)
+            .err()
+            .unwrap();
+        assert!(err.contains("enable takes a pack"), "{err}");
+    }
+
+    #[test]
     fn dir_overrides_match_windows_paths() {
         let url = "https://dev.azure.com/fabrikamq/Bluefinq/_git/app";
         let cfg = "[[override]]\ndir = \"C:/Users/x/dev\"\nallow = [\"bluefinq\"]\n";

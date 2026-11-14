@@ -70,7 +70,7 @@ disable = ["identity"]
 | `import` | Packs, word lists, folders and other config files to load, relative to this file (for a symlinked config, the file it points to). `~/` is your home folder | [Packs](../packs/) |
 | `me` | Hide your git `user.name` and `user.email` and your GitHub logins | [Hiding yourself](../guide/me) |
 | `allow` | Values never to hide, matched in any case. `$NAME` reads one from an environment variable | [Allow](#allow) |
-| `[packs]` | `enable` and `disable` lists of pack ids | [Packs](#packs) |
+| `[packs]` | `enable` and `disable` lists of pack ids; `disable` also takes `pack.rule` | [Packs](#packs) |
 | `[[override]]` | Settings for one machine, folder or command | [Overrides](#overrides) |
 
 An unknown setting is an error, so a typo such as `imports` is caught rather than ignored.
@@ -97,7 +97,16 @@ enable = ["pii"]
 disable = ["gcp"]
 ```
 
-`disable` wins over `enable`. A name that is no pack is an error that lists the packs there are. `redact packs` shows switched-off packs too, marked `off`.
+`disable` also takes one rule as `pack.rule`, with the rule ids each [pack page](../packs/) lists. The rest of the pack stays on:
+
+```toml
+[packs]
+disable = ["identity.email", "pii.ipv4"]
+```
+
+`enable` takes only packs: enable the pack and disable the rules you do not want.
+
+`disable` wins over `enable`. A name that is no pack or rule is an error that lists the packs there are. `redact packs` shows switched-off packs too, marked `off`.
 
 ## Overrides
 
