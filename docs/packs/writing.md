@@ -48,7 +48,7 @@ remember = "distinctive"
 | `label` | What the placeholder says; defaults to the rule id |
 | `within` | Run only inside a JSON object whose own fields match this regex, whatever their order and wherever nested objects sit |
 | `except` | Leave a found value alone when it matches this regex: a reference such as `$TOKEN` or `<placeholder>`, not a secret. Rust's `regex` has no lookahead, so this is how a rule says "but not these" |
-| `exceptMatch` | Leave a find alone when the whole match, not just the value, matches this regex. Use it when the name decides: the paging cursor in `nextPageToken: …` is not a secret, though `token` is in its name. Anchor it with `^` so the value cannot trigger it |
+| `exceptMatch` | Leave a find alone when the whole match, not just the value, matches this regex. Use it when the name decides: the paging cursor in `nextPageToken: …` is not a secret, though `token` is in its name. Anchor it with `^` so the value cannot trigger it. With `within`, it is also tested against each JSON object's own fields, and an object it matches is skipped whole: `{"name": "nextPageToken", "value": …}` |
 | `remember` | `"distinctive"`: also hide the value everywhere else when it reads as a name (a space, `-`, `_`, `.`, a digit or an inner capital). `"any"`: any value with a capital letter or of 5+ characters |
 | `keywords` | The rule runs only when one of these appears |
 | `check` | Hide a found value only when it passes a checksum: `"luhn"` for card numbers, `"iban"` for the IBAN mod-97 check. Keeps long runs of digits that are not cards visible |

@@ -146,7 +146,15 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                 Some(w) => recs
                     .get_or_init(|| records(text))
                     .iter()
-                    .filter(|r| w.is_match(&r.joined))
+                    // `exceptMatch` also skips a whole record: the name that decides
+                    // sits in a field beside the match, not in it.
+                    .filter(|r| {
+                        w.is_match(&r.joined)
+                            && !rule
+                                .except_match
+                                .as_ref()
+                                .is_some_and(|x| x.is_match(&r.joined))
+                    })
                     .flat_map(|r| r.pieces.iter().copied())
                     .collect(),
             };
@@ -1751,6 +1759,9 @@ mod tests {
             "x-ms-continuationtoken: abc123def456\n",
             "- name: nextPageToken\n  value: abc123def456\n",
             "nextLink: https://api.example.com/items?continuationToken=abc123def456\n",
+            r#"{"name": "continuationToken", "value": "abc123def456"}"#,
+            r#"{"Name": "NextPageToken", "Value": "abc123def456"}"#,
+            "{\n  \"name\": \"next_token\",\n  \"value\": \"abc123def456\"\n}\n",
         ] {
             assert_eq!(azure(kept), kept, "a paging cursor was hidden");
         }
@@ -1765,6 +1776,18 @@ mod tests {
             ),
             (
                 r#"{"nextPageToken": "abc123def456", "accessToken": "Zq8vR2mK9pL4xW"}"#,
+                "Zq8vR2mK9pL4xW",
+            ),
+            (
+                r#"{"name": "accessToken", "value": "Zq8vR2mK9pL4xW"}"#,
+                "Zq8vR2mK9pL4xW",
+            ),
+            (
+                r#"{"name": "client_secret", "value": "Zq8vR2mK9pL4xW"}"#,
+                "Zq8vR2mK9pL4xW",
+            ),
+            (
+                r#"[{"name": "nextPageToken", "value": "abc123def456"}, {"name": "accessToken", "value": "Zq8vR2mK9pL4xW"}]"#,
                 "Zq8vR2mK9pL4xW",
             ),
         ] {
