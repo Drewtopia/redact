@@ -1928,7 +1928,7 @@ mod tests {
 
     #[test]
     fn pii_is_off_until_enabled() {
-        let text = "Ring +44 20 7946 0958 or 4111 1111 1111 1111 from 192.0.2.10";
+        let text = "Call +44 20 7946 0958 or pay with 4111 1111 1111 1111 from 192.0.2.10";
         assert_eq!(azure(text), text);
         let out = pii(text);
         assert!(
@@ -1937,19 +1937,137 @@ mod tests {
         );
     }
 
+    /// A random US Social Security number: no 000, 666 or 9xx area, no 00 group, no 0000 serial.
+    fn ssn(rng: &mut fake::rand::rngs::StdRng) -> String {
+        use fake::RngExt;
+        let area = loop {
+            let a = rng.random_range(1..900);
+            if a != 666 {
+                break a;
+            }
+        };
+        format!(
+            "{area:03}-{:02}-{:04}",
+            rng.random_range(1..100),
+            rng.random_range(1..10000)
+        )
+    }
+
+    /// A random UK National Insurance number, `QQ 12 34 56 C` when `spaced`.
+    fn nino(rng: &mut fake::rand::rngs::StdRng, spaced: bool) -> String {
+        use fake::RngExt;
+        let first = b"ABCEGHJKLMNOPRSTWXYZ";
+        let second = b"ABCEGHJKLMNPRSTWXYZ";
+        let pick = |rng: &mut fake::rand::rngs::StdRng, set: &[u8]| {
+            set[rng.random_range(0..set.len())] as char
+        };
+        let (a, b) = (pick(rng, first), pick(rng, second));
+        let d: Vec<u32> = (0..3).map(|_| rng.random_range(0..100)).collect();
+        let end = pick(rng, b"ABCD");
+        let sep = if spaced { " " } else { "" };
+        format!(
+            "{a}{b}{sep}{:02}{sep}{:02}{sep}{:02}{sep}{end}",
+            d[0], d[1], d[2]
+        )
+    }
+
     #[test]
     fn pii_hides_generated_values() {
         use fake::Fake;
         use fake::faker::creditcard::en::CreditCardNumber;
         use fake::faker::internet::en::{IPv4, IPv6, MACAddress};
-        use fake::faker::phone_number::{en, fr_fr};
+        use fake::faker::phone_number::{cy_gb, en, fr_fr, it_it, nl_nl};
         use fake::rand::SeedableRng;
         let mut rng = fake::rand::rngs::StdRng::seed_from_u64(7);
+        // Each way a clue word sits on the value's line or the line before.
+        let phone_clues = [
+            "Phone: {}",
+            "{\"homePhone\": \"{}\"}",
+            "{} (mobile)",
+            "phone:\n  - {}",
+            "Call me on\n{}",
+            "tel_no={}",
+        ];
+        let ssn_clues = ["SSN: {}", "{\"ssn\": \"{}\"}", "Social Security\n{}"];
+        let nino_clues = [
+            "NI number: {}",
+            "{\"nino\": \"{}\"}",
+            "National Insurance\n{}",
+        ];
         for _ in 0..200 {
-            let values: Vec<(&str, String)> = vec![
-                ("en phone", en::PhoneNumber().fake_with_rng(&mut rng)),
-                ("en cell", en::CellNumber().fake_with_rng(&mut rng)),
-                ("fr phone", fr_fr::PhoneNumber().fake_with_rng(&mut rng)),
+            // Ambiguous shapes: hidden beside a clue word, shown without one.
+            let clued: Vec<(&str, String, &[&str], &str)> = vec![
+                (
+                    "en phone",
+                    en::PhoneNumber().fake_with_rng(&mut rng),
+                    &phone_clues,
+                    "[PHONE-",
+                ),
+                (
+                    "en cell",
+                    en::CellNumber().fake_with_rng(&mut rng),
+                    &phone_clues,
+                    "[PHONE-",
+                ),
+                (
+                    "fr phone",
+                    fr_fr::PhoneNumber().fake_with_rng(&mut rng),
+                    &phone_clues,
+                    "[PHONE-",
+                ),
+                (
+                    "fr cell",
+                    fr_fr::CellNumber().fake_with_rng(&mut rng),
+                    &phone_clues,
+                    "[PHONE-",
+                ),
+                (
+                    "uk phone",
+                    cy_gb::PhoneNumber().fake_with_rng(&mut rng),
+                    &phone_clues,
+                    "[PHONE-",
+                ),
+                (
+                    "it phone",
+                    it_it::PhoneNumber().fake_with_rng(&mut rng),
+                    &phone_clues,
+                    "[PHONE-",
+                ),
+                (
+                    "nl cell",
+                    nl_nl::CellNumber().fake_with_rng(&mut rng),
+                    &phone_clues,
+                    "[PHONE-",
+                ),
+                ("ssn", ssn(&mut rng), &ssn_clues, "[SSN-"),
+                ("nino", nino(&mut rng, false), &nino_clues, "[NINO-"),
+                ("spaced nino", nino(&mut rng, true), &nino_clues, "[NINO-"),
+            ];
+            for (kind, v, clues, tag) in clued {
+                // An extension after the number ("x123") is not part of it.
+                let v = v.split(" x").next().unwrap();
+                // fake's Cardiff format `029 #### ######` has two digits too many.
+                if v.starts_with("029 ") {
+                    continue;
+                }
+                for clue in clues {
+                    let out = pii(&clue.replace("{}", v));
+                    assert!(
+                        !out.contains(v),
+                        "{kind} {v:?} in {clue:?} still shows: {out}"
+                    );
+                }
+                // A card or IBAN rule may still take the digits; the shape rule may not.
+                for text in [format!("Use {v} today."), format!("Phone list\n\n{v}")] {
+                    let out = pii(&text);
+                    assert!(
+                        !out.contains(tag),
+                        "{kind} {v:?} hidden with no clue: {out}"
+                    );
+                }
+            }
+            // Unambiguous shapes: hidden with no clue word at all.
+            let bare: Vec<(&str, String)> = vec![
                 (
                     "card",
                     luhn_digit(CreditCardNumber().fake_with_rng(&mut rng)),
@@ -1960,25 +2078,45 @@ mod tests {
                 ("iban", iban(&mut rng, false)),
                 ("spaced iban", iban(&mut rng, true)),
             ];
-            for (kind, v) in values {
-                // An extension after the number ("x123") is not part of it.
-                let v = v.split(" x").next().unwrap();
+            for (kind, v) in bare {
                 let out = pii(&format!("Use {v} today."));
-                assert!(!out.contains(v), "{kind} {v:?} still shows: {out}");
+                assert!(!out.contains(&v), "{kind} {v:?} still shows: {out}");
             }
         }
     }
 
     #[test]
     fn pii_leaves_lookalikes_alone() {
+        use fake::Fake;
+        use fake::faker::filesystem::en::Semver;
+        use fake::rand::SeedableRng;
         for text in [
             "started at 12:30:45 on 2026-11-14",
             "card 4111 1111 1111 1112 fails the Luhn check",
             "GB00WEST12345698765432 fails the mod-97 check",
             "order 1234567890123 and build 20261114",
             "telemetry: 2026-11-14 10:30, cells: 1234567, mobileAppVersion: 1.2.3.4567",
+            // Each of these was hidden before phone, SSN and NINO rules needed a clue word.
+            "+2026 11 14\n+100 200 300 400\n+12025550143",
+            "order 123-456-7890, Order #555 010 0199",
+            "build 0123 456 789, ref 07700 900123",
+            "hexdump: 01 23 45 67 89 ab",
+            "part 123-45-6789 in bin AB 12 34 56 C",
+            "phone firmware 2.10.3, build 20261114",
         ] {
             assert_eq!(pii(text), text);
+        }
+        // A clue word reaches one line down, not three.
+        let out = pii("phone: 555-010-0199\n\n\norder: 555-010-0200");
+        assert!(
+            !out.contains("0199") && out.contains("order: 555-010-0200"),
+            "{out}"
+        );
+        let mut rng = fake::rand::rngs::StdRng::seed_from_u64(7);
+        for _ in 0..200 {
+            let v: String = Semver().fake_with_rng(&mut rng);
+            let text = format!("Phone app {v} released");
+            assert_eq!(pii(&text), text);
         }
         // Epoch milliseconds pass the Luhn check one time in ten.
         for ms in (1_731_542_400_000u64..).step_by(86_400_123).take(50) {
@@ -1992,9 +2130,9 @@ mod tests {
         for (text, gone) in [
             ("10.0.0.1 10.0.0.2", "10.0.0.2"),
             ("10.0.0.1\n10.0.0.2", "10.0.0.2"),
-            ("+44 20 7946 0958\n+44 20 7946 0959", "0959"),
-            ("555-010-0199 555-010-0198", "0198"),
-            ("123-45-6789 123-45-6788", "6788"),
+            ("Phone: +44 20 7946 0958\n+44 20 7946 0959", "0959"),
+            ("tel 555-010-0199 555-010-0198", "0198"),
+            ("SSNs 123-45-6789 123-45-6788", "6788"),
         ] {
             let out = pii(text);
             assert!(!out.contains(gone), "{text:?} -> {out}");
@@ -2002,6 +2140,7 @@ mod tests {
         let out = pii("\"phoneNumber\": \"+1 555 010 0199\", \"fax_no\": \"0207 946 0958\"");
         assert!(!out.contains("0199") && !out.contains("0958"), "{out}");
     }
+
     #[test]
     fn a_context_rule_hides_only_beside_its_clue_words() {
         let d = tmp("context");
