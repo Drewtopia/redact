@@ -1,0 +1,12 @@
+# redact config: ~/.config/redact/config.toml (%APPDATA%\redact\config.toml on Windows).
+# Written by `redact config init`. `redact config ls` shows what loads and why;
+# `redact config init --preset commented --print` shows every setting.
+
+# Hide who you are: your git name and email, and your GitHub login.
+me = true
+
+# Hide whatever these environment variables hold. `*` matches anything.
+env = ["*_TOKEN", "*_KEY", "*_SECRET", "*_PASSWORD"]
+
+# Hide every value in these dotenv files, relative to where redact runs.
+env_files = [".env", ".env.local"]

@@ -80,7 +80,7 @@ redact config ls
 redact config init
 ```
 
-writes `~/.config/redact/config.toml` with every setting shown and switched off. Remove the `#` from the ones you want: values to hide, values to leave visible, packs to turn on or off, and overrides for one machine, folder or command. See [Configuration](../reference/config).
+writes `~/.config/redact/config.toml` with a short config that is already on: it hides you, environment variables named like `*_TOKEN` or `*_PASSWORD`, and `.env` files. `--preset full` also turns on the `pii` pack; `--preset commented` writes every setting shown and switched off, to read and pick from: values to hide, values to leave visible, packs to turn on or off, and overrides for one machine, folder or command. See [Configuration](../reference/config).
 
 ## Next
 

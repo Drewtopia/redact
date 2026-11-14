@@ -122,7 +122,7 @@ Usage: config [OPTIONS] <COMMAND>
 
 Commands:
   ls    List every file that loads, in load order, and what imported it
-  init  Write a commented starter config, every setting shown and switched off
+  init  Write a starter config: `minimal` by default
   help  Print this message or the help of the given subcommand(s)
 
 Options:

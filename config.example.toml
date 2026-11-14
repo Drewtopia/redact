@@ -1,5 +1,5 @@
 # redact config: ~/.config/redact/config.toml (%APPDATA%\redact\config.toml on Windows).
-# Written by `redact config init`. Every setting is optional and shown switched off;
+# Written by `redact config init --preset commented`. Every setting is optional and shown switched off;
 # remove the # to use one. `redact config ls` shows what loads and why.
 # Keep names that identify you or your employer out of any public repo: use
 # `$NAME` to read them from an environment variable, or a word list you keep private.
