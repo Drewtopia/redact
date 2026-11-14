@@ -67,6 +67,7 @@ struct RuleFile {
     label: Option<String>,
     within: Option<String>,
     except: Option<String>,
+    except_match: Option<String>,
     /// A checksum the value must pass: `"luhn"` (card numbers) or `"iban"`.
     check: Option<String>,
     #[serde(default)]
@@ -87,6 +88,9 @@ pub struct Rule {
     /// `$AZURE_TOKEN`, not a secret. Rust's regex has no lookahead, so this is
     /// how a rule says "but not these".
     pub except: Option<Regex>,
+    /// A whole match that matches this is left alone: `except` sees only the
+    /// value, this sees the name beside it too (`nextPageToken: …`).
+    pub except_match: Option<Regex>,
     /// A checksum the found value must pass, or it is left alone.
     pub check: Option<Check>,
     pub remember: Remember,
@@ -1036,6 +1040,12 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             }
             None => None,
         };
+        let except_match = match &r.except_match {
+            Some(x) => Some(
+                Regex::new(x).map_err(|e| format!("{source}: rule {} exceptMatch: {e}", r.id))?,
+            ),
+            None => None,
+        };
         let check = match r.check.as_deref() {
             None => None,
             Some("luhn") => Some(Check::Luhn),
@@ -1055,6 +1065,7 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             group: r.secret_group,
             within,
             except,
+            except_match,
             check,
             remember: r.remember,
             keywords: lower(r.keywords),

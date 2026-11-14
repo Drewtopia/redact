@@ -170,6 +170,16 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                     let Some(m) = caps.get(rule.group) else {
                         continue;
                     };
+                    // A name the rule must leave alone: look again inside its value,
+                    // which may hold a real secret further along the line.
+                    if rule
+                        .except_match
+                        .as_ref()
+                        .is_some_and(|x| x.is_match(whole.as_str()))
+                    {
+                        pos = m.start();
+                        continue;
+                    }
                     // Trailing whitespace is not part of a value: on a CRLF line
                     // the `\r` would otherwise stick to a remembered name.
                     let value = m.as_str().trim_end();
@@ -1723,6 +1733,40 @@ mod tests {
             ("token=REDACTEDbutReal99", "REDACTEDbutReal99"),
             ("write to ada@notexample.com", "ada@"),
             ("write to ada@example.com.evil.io", "ada@"),
+        ] {
+            let out = azure(text);
+            assert!(!out.contains(gone), "{text:?} -> {out}");
+        }
+    }
+
+    #[test]
+    fn paging_cursors_stay_but_tokens_beside_them_do_not() {
+        for kept in [
+            "continuationToken: abc123def456\n",
+            "next_token: abc123def456\n",
+            r#"{"nextPageToken": "abc123def456"}"#,
+            "{'pageToken': 'abc123def456'}",
+            "NextToken=abc123def456",
+            "page-token: abc123def456\n",
+            "x-ms-continuationtoken: abc123def456\n",
+            "- name: nextPageToken\n  value: abc123def456\n",
+            "nextLink: https://api.example.com/items?continuationToken=abc123def456\n",
+        ] {
+            assert_eq!(azure(kept), kept, "a paging cursor was hidden");
+        }
+        for (text, gone) in [
+            ("accessToken: Zq8vR2mK9pL4xW\n", "Zq8vR2mK9pL4xW"),
+            ("refresh_token=Zq8vR2mK9pL4xW", "Zq8vR2mK9pL4xW"),
+            ("x-api-token: Zq8vR2mK9pL4xW\n", "Zq8vR2mK9pL4xW"),
+            ("apiToken: nextToken=Zq8vR2mK9pL4xW", "Zq8vR2mK9pL4xW"),
+            (
+                "nextPageToken: x accessToken: Zq8vR2mK9pL4xW",
+                "Zq8vR2mK9pL4xW",
+            ),
+            (
+                r#"{"nextPageToken": "abc123def456", "accessToken": "Zq8vR2mK9pL4xW"}"#,
+                "Zq8vR2mK9pL4xW",
+            ),
         ] {
             let out = azure(text);
             assert!(!out.contains(gone), "{text:?} -> {out}");
