@@ -22,3 +22,32 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+
+  # The Claude Code mod's own tests, run by the engine itself. Needs no account.
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: npm install -g @anthropic-ai/claude-code@2.1.325
+      - run: claude plugin validate claude-plugin
+      - run: claude plugin test claude-plugin
+
+  # A change to what redact or the mod does comes with a docs change, or the
+  # `no-docs` label saying why none is needed.
+  docs:
+    if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'no-docs')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Code changed without docs
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE"...HEAD)
+          if echo "$changed" | grep -qE '^(src|packs|claude-plugin)/' &&
+             ! echo "$changed" | grep -qE '^(docs/|README\.md$)'; then
+            echo "::error::This PR changes src/, packs/ or claude-plugin/ but no page under docs/ or README.md. Update the docs, or add the no-docs label if nothing a reader sees changed."
+            exit 1
+          fi

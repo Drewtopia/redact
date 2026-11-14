@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: A way around the Claude Code mod, or a real value leaked
+    url: https://github.com/Drewtopia/redact/security/advisories/new
+    about: Report it privately, not in a public issue. See SECURITY.md.
