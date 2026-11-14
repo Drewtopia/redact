@@ -138,7 +138,7 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
             continue;
         }
         for rule in &pack.rules {
-            if !has(&rule.keywords) {
+            if !has(&rule.keywords) || !has(&rule.context) {
                 continue;
             }
             let segments: Vec<(usize, &str)> = match &rule.within {
@@ -179,6 +179,8 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                         || rule.except.as_ref().is_some_and(|x| x.is_match(value))
                         || rule.check.is_some_and(|c| !c.passes(value))
                         || rule.entropy.is_some_and(|min| entropy(value) <= min)
+                        || !rule.context.is_empty()
+                            && !clue_near(text, offset + m.start(), &rule.context)
                     {
                         continue;
                     }
@@ -256,6 +258,34 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
         s.rule = clean(&s.rule);
     }
     Ok(merge(spans))
+}
+
+/// Whether one of `words` (lower case) is a whole word on the line holding
+/// byte `at` of `text`, or on the line before.
+fn clue_near(text: &str, at: usize, words: &[String]) -> bool {
+    let line = text[..at].rfind('\n').map_or(0, |i| i + 1);
+    let from = text[..line.saturating_sub(1)]
+        .rfind('\n')
+        .map_or(0, |i| i + 1);
+    let to = text[at..].find('\n').map_or(text.len(), |i| at + i);
+    let window = &text[from..to];
+    // ASCII lower case keeps every byte offset where it was in `window`.
+    let low = window.to_ascii_lowercase();
+    words.iter().any(|w| {
+        low.match_indices(w.as_str())
+            .any(|(i, _)| word_edge(window, i) && word_edge(window, i + w.len()))
+    })
+}
+
+/// Byte `i` of `s` is a word edge: not between two letters or digits, unless
+/// it is a camelCase hump (`home|Phone`).
+fn word_edge(s: &str, i: usize) -> bool {
+    match (s[..i].chars().next_back(), s[i..].chars().next()) {
+        (Some(b), Some(a)) if b.is_alphanumeric() && a.is_alphanumeric() => {
+            b.is_lowercase() && a.is_uppercase()
+        }
+        _ => true,
+    }
 }
 
 /// Lower case with `-`, `_` and spaces folded together, to compare labels and words.
@@ -1971,5 +2001,40 @@ mod tests {
         }
         let out = pii("\"phoneNumber\": \"+1 555 010 0199\", \"fax_no\": \"0207 946 0958\"");
         assert!(!out.contains("0199") && !out.contains("0958"), "{out}");
+    }
+    #[test]
+    fn a_context_rule_hides_only_beside_its_clue_words() {
+        let d = tmp("context");
+        let path = d.join("c.toml");
+        std::fs::write(&path, "schema_version = 1\nid = \"c\"\n[[rules]]\nid = \"r\"\nregex = '\\b([0-9]{6})\\b'\nsecretGroup = 1\ncontext = [\"Badge\", \"pass no\"]\n").unwrap();
+        let loaded = only(std::slice::from_ref(&path)).unwrap();
+        let run = |t: &str| {
+            mask(
+                t,
+                &scan(t, &loaded).unwrap(),
+                &mut Tagger::new(None).unwrap(),
+            )
+        };
+        for t in [
+            "badge 123456",
+            "BADGE:\n123456",
+            "staffBadge=123456",
+            "pass no. 123456",
+        ] {
+            assert!(!run(t).contains("123456"), "{t:?}");
+        }
+        // Not whole words, or too far away.
+        for t in [
+            "badges 123456",
+            "rebadge 123456",
+            "badge\n\n123456",
+            "123456",
+        ] {
+            assert_eq!(run(t), t);
+        }
+        std::fs::write(&path, "schema_version = 1\nid = \"c\"\n[[rules]]\nid = \"r\"\nregex = 'a'\ncontext = [\" \"]\n").unwrap();
+        let err = only(std::slice::from_ref(&path)).err().unwrap();
+        std::fs::remove_dir_all(&d).unwrap();
+        assert!(err.contains("c.toml") && err.contains("context"), "{err}");
     }
 }
