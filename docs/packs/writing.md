@@ -53,7 +53,9 @@ remember = "distinctive"
 | `exceptMatch` | Leave a find alone when the whole match matches this regex. See [Exceptions](#exceptions) |
 | `remember` | Also hide the value everywhere else in the text: `"distinctive"` or `"any"`. See [Remember](#remember) |
 | `keywords` | The rule runs only when one of these appears |
-| `check` | Hide a found value only when it passes a checksum: `"luhn"` for card numbers, or `"iban"` for the IBAN mod-97 check. Long runs of digits that are not cards stay visible |
+| `context` | Clue words. Hide a found value only when one of these is near it. See [Clue words](#clue-words) |
+| `check` | Hide a found value only when it passes a check: `"luhn"` for card numbers, `"iban"` for the IBAN mod-97 check, or `"not-a-name"` for a token that is not a camelCase name (words of 3+ letters cover under 70% of it). Long runs of digits that are not cards stay visible |
+| `entropy` | Hide a found value only when its Shannon entropy is above this many bits per character, as in gitleaks: `entropy = 3.5`. Equal is not enough. Random keys score near 4 or more, and words and repeated text score lower |
 
 ### Exceptions
 
@@ -67,6 +69,14 @@ With `within`, redact also tests `exceptMatch` against each JSON object's own fi
 
 - `"distinctive"` hides the value everywhere else when it reads as a name: it holds a space, `-`, `_`, `.`, a digit, or an inner capital.
 - `"any"` hides any value that has a capital letter or 5 or more characters.
+
+### Clue words
+
+`context` lists clue words, as in Microsoft Presidio. redact hides a found value only when one of these words is on its line or the line before. Use it for shapes that mean nothing alone, such as `123-45-6789`: `context = ["ssn", "social security"]`.
+
+Matching ignores case and takes whole words. `_`, `-`, and a camelCase hump count as word edges, so `phone` is found in `mobile_phone` and `homePhone`, but not in `phones`.
+
+redact looks up to 100 bytes either side of where the value starts. That covers the shapes personal data comes in: `Phone: …`, `"homePhone": "…"`, `… (mobile)`, a YAML list under `phone:`, and a label on the line above. It misses a value further below its label, such as the rows under a table or CSV header. It can also hide too much: in `phone: …` followed by `order: 555-010-0200`, the order number reads as a phone number.
 
 ## Regex syntax
 

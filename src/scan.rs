@@ -1,6 +1,6 @@
 //! Finding the parts of a text to hide, and swapping them for placeholders.
 
-use crate::pack::{Loaded, Remember};
+use crate::pack::{Loaded, Remember, entropy};
 use aho_corasick::AhoCorasick;
 use hmac::{Hmac, KeyInit, Mac};
 use regex::Regex;
@@ -138,7 +138,7 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
             continue;
         }
         for rule in &pack.rules {
-            if !has(&rule.keywords) {
+            if !has(&rule.keywords) || !has(&rule.context) {
                 continue;
             }
             let segments: Vec<(usize, &str)> = match &rule.within {
@@ -197,6 +197,9 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                         || rule.except.as_ref().is_some_and(|x| x.is_match(value))
                         || is_tag(value)
                         || rule.check.is_some_and(|c| !c.passes(value))
+                        || rule.entropy.is_some_and(|min| entropy(value) <= min)
+                        || !rule.context.is_empty()
+                            && !clue_near(text, offset + m.start(), &rule.context)
                     {
                         continue;
                     }
@@ -274,6 +277,40 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
         s.rule = clean(&s.rule);
     }
     Ok(merge(spans))
+}
+
+/// How far, in bytes, `clue_near` looks either side of a value. Without a
+/// limit, every match on one long line of JSON rescans the whole line.
+const CLUE_REACH: usize = 100;
+
+/// Whether one of `words` (lower case) is a whole word on the line holding
+/// byte `at` of `text`, or on the line before, within `CLUE_REACH` bytes.
+fn clue_near(text: &str, at: usize, words: &[String]) -> bool {
+    let lo = text.floor_char_boundary(at.saturating_sub(CLUE_REACH));
+    let hi = text.floor_char_boundary(at + CLUE_REACH);
+    let line = text[lo..at].rfind('\n').map_or(lo, |i| lo + i + 1);
+    let from = text[lo..line.saturating_sub(1).max(lo)]
+        .rfind('\n')
+        .map_or(lo, |i| lo + i + 1);
+    let to = text[at..hi].find('\n').map_or(hi, |i| at + i);
+    let window = &text[from..to];
+    // ASCII lower case keeps every byte offset where it was in `window`.
+    let low = window.to_ascii_lowercase();
+    words.iter().any(|w| {
+        low.match_indices(w.as_str())
+            .any(|(i, _)| word_edge(window, i) && word_edge(window, i + w.len()))
+    })
+}
+
+/// Byte `i` of `s` is a word edge: not between two letters or digits, unless
+/// it is a camelCase hump (`home|Phone`).
+fn word_edge(s: &str, i: usize) -> bool {
+    match (s[..i].chars().next_back(), s[i..].chars().next()) {
+        (Some(b), Some(a)) if b.is_alphanumeric() && a.is_alphanumeric() => {
+            b.is_lowercase() && a.is_uppercase()
+        }
+        _ => true,
+    }
 }
 
 /// A placeholder this tool wrote, such as `[SECRET-a1b2c3d4]`: hiding it again
@@ -725,6 +762,136 @@ mod tests {
             r#"{{"accessToken": "{jwt}", "tokenType": "Bearer"}}"#
         ));
         assert!(out.contains("\"Bearer\""), "{out}");
+    }
+
+    #[test]
+    fn vendor_keys_by_shape() {
+        // Real lengths, split so no key-shaped string sits in the repo.
+        for (key, label) in [
+            (format!("{}_test_{}", "sk", body(24)), "API-KEY"),
+            (format!("{}_live_{}", "rk", body(24)), "API-KEY"),
+            (format!("{}_test_{}", "rk", body(24)), "API-KEY"),
+            (format!("wh{}_{}", "sec", body(32)), "API-KEY"),
+            (format!("gs{}_{}", "k", body(52)), "API-KEY"),
+            (format!("xa{}-{}", "i", body(80)), "API-KEY"),
+            (format!("gl{}-{}", "pat", body(20)), "TOKEN"),
+            (format!("gl{}-{}.01a2b3c4d", "pat", body(27)), "TOKEN"),
+            (format!("GOC{}-{}", "SPX", body(28)), "CLIENT-SECRET"),
+            (format!("1//0{}", body(100)), "TOKEN"),
+        ] {
+            let text = format!("here it is: {key} ok");
+            hides(&text, &key[key.len() - 12..], label);
+            assert!(azure(&text).ends_with(" ok"), "{}", azure(&text));
+        }
+        // A Stripe publishable key is public, and these only share a prefix.
+        keeps(&format!("stripe.js gets {}_live_{} ok", "pk", body(24)));
+        keeps(&format!("stripe.js gets {}_test_{} ok", "pk", body(24)));
+        keeps("n = 1//batch_size_per_device_for_training_run");
+        keeps("pip install xai-grok-sdk-python-integration-helpers");
+        keeps("gsk_client_settings and glpat-docs");
+    }
+
+    #[test]
+    fn not_a_name_tells_camel_case_from_random() {
+        let c = pack::Check::NotAName;
+        for name in [
+            "cacheCreationEphemeral5mInputTokens",
+            "convertUtf8ToUtf16StringBuffer",
+            "ISO8601DateTimeFormatterImpl",
+            "k8sClusterAutoscalerV2Beta1",
+        ] {
+            assert!(!c.passes(name), "{name} read as random");
+        }
+        for key in [
+            "u8jzPde0IgxLd6GncfBAepfJBd0Kh8oO",
+            "OL8dKLzdocJ2isAjIhKtJ0RlgLKOmxgJ",
+            "50Nzegy93wBT823M2ggyoSLd",
+        ] {
+            assert!(c.passes(key), "{key} read as a name");
+        }
+    }
+
+    #[test]
+    fn entropy_counts_bits_per_character() {
+        assert_eq!(pack::entropy("aaaa"), 0.0);
+        assert_eq!(pack::entropy("abcd"), 2.0);
+        assert_eq!(pack::entropy("aabb"), 1.0);
+    }
+
+    #[test]
+    fn a_rule_hides_only_values_above_its_entropy() {
+        let d = tmp("entropy");
+        let path = d.join("e.toml");
+        // aabbccdd is exactly 2 bits a character: like gitleaks, equal is not enough.
+        std::fs::write(&path, "schema_version = 1\nid = \"e\"\n[[rules]]\nid = \"r\"\nregex = '\\b([a-z]{8})\\b'\nsecretGroup = 1\nentropy = 2.0\n").unwrap();
+        let loaded = only(std::slice::from_ref(&path)).unwrap();
+        let text = "aaaaaaaa aabbccdd abcdefgh";
+        let out = mask(
+            text,
+            &scan(text, &loaded).unwrap(),
+            &mut Tagger::new(None).unwrap(),
+        );
+        assert!(out.starts_with("aaaaaaaa aabbccdd ["), "{out}");
+        assert!(!out.contains("abcdefgh"), "{out}");
+
+        std::fs::write(
+            &path,
+            "schema_version = 1\nid = \"e\"\n[[rules]]\nid = \"r\"\nregex = 'a'\nentropy = -1.0\n",
+        )
+        .unwrap();
+        let err = only(std::slice::from_ref(&path)).err().unwrap();
+        assert!(err.contains("e.toml") && err.contains("entropy"), "{err}");
+    }
+
+    #[test]
+    fn random_tokens_with_no_prefix() {
+        let (a, b) = (
+            "u8jzPde0IgxLd6GncfBAepfJBd0Kh8oO",
+            "OL8dKLzdocJ2isAjIhKtJ0RlgLKOmxgJ",
+        );
+        for text in [
+            format!("token {a} ok"),
+            format!("{}\n", &b[..24]),
+            format!(r#"{{"k":"{a}"}}"#),
+        ] {
+            let out = azure(&text);
+            assert!(!out.contains(&a[..24]) && !out.contains(&b[..24]), "{out}");
+        }
+        // Two tokens one space apart are both hidden.
+        let out = azure(&format!("{a} {b}"));
+        assert_eq!(out.matches("[SECRET-").count(), 2, "{out}");
+
+        let sha = "3f2a9c1e0b7d4f6a8e5c2b1d9f0a7e6c4b3d2a1f";
+        let wrapped = format!(
+            "-----BEGIN CERTIFICATE-----\n{}\n{}\n{}\n-----END CERTIFICATE-----",
+            body(64),
+            body(64),
+            body(40)
+        );
+        for text in [
+            format!("commit {sha} and {}", sha.to_uppercase()),
+            format!("request {G} done"),
+            "fn playerEventBatchV1Schema() and handleUser2FactorAuthentication".into(),
+            // Claude Code usage fields, in every transcript.
+            r#"{"cacheCreationEphemeral5mInputTokens":0,"cacheCreationEphemeral1hInputTokens":9}"#
+                .into(),
+            "convertUtf8ToUtf16StringBuffer(getHTTPServer2ConfigForTests)".into(),
+            "Aa1Aa1Aa1Aa1Aa1Aa1Aa1Aa1 repeats".into(),
+            format!("path /srv/{}/x and a_{}_b", body(30), body(30)),
+            format!(
+                "img data:image/png;base64,{}+{}/{}==",
+                body(30),
+                body(30),
+                body(30)
+            ),
+            // A JSON `\n` escape is never taken into a token; nor is a cert in JSON or YAML.
+            format!(r#"{{"c":"line\n{a}"}}"#),
+            format!(r#"{{"pem":"{}"}}"#, wrapped.replace('\n', r"\n")),
+            format!("ca.crt: |\n    {}", wrapped.replace('\n', "\n    ")),
+            wrapped,
+        ] {
+            keeps(&text);
+        }
     }
 
     // Regressions from the independent review of 2026-11-14.
@@ -1894,7 +2061,7 @@ mod tests {
 
     #[test]
     fn pii_is_off_until_enabled() {
-        let text = "Ring +44 20 7946 0958 or 4111 1111 1111 1111 from 192.0.2.10";
+        let text = "Call +44 20 7946 0958 or pay with 4111 1111 1111 1111 from 192.0.2.10";
         assert_eq!(azure(text), text);
         let out = pii(text);
         assert!(
@@ -1903,19 +2070,137 @@ mod tests {
         );
     }
 
+    /// A random US Social Security number: no 000, 666 or 9xx area, no 00 group, no 0000 serial.
+    fn ssn(rng: &mut fake::rand::rngs::StdRng) -> String {
+        use fake::RngExt;
+        let area = loop {
+            let a = rng.random_range(1..900);
+            if a != 666 {
+                break a;
+            }
+        };
+        format!(
+            "{area:03}-{:02}-{:04}",
+            rng.random_range(1..100),
+            rng.random_range(1..10000)
+        )
+    }
+
+    /// A random UK National Insurance number, `QQ 12 34 56 C` when `spaced`.
+    fn nino(rng: &mut fake::rand::rngs::StdRng, spaced: bool) -> String {
+        use fake::RngExt;
+        let first = b"ABCEGHJKLMNOPRSTWXYZ";
+        let second = b"ABCEGHJKLMNPRSTWXYZ";
+        let pick = |rng: &mut fake::rand::rngs::StdRng, set: &[u8]| {
+            set[rng.random_range(0..set.len())] as char
+        };
+        let (a, b) = (pick(rng, first), pick(rng, second));
+        let d: Vec<u32> = (0..3).map(|_| rng.random_range(0..100)).collect();
+        let end = pick(rng, b"ABCD");
+        let sep = if spaced { " " } else { "" };
+        format!(
+            "{a}{b}{sep}{:02}{sep}{:02}{sep}{:02}{sep}{end}",
+            d[0], d[1], d[2]
+        )
+    }
+
     #[test]
     fn pii_hides_generated_values() {
         use fake::Fake;
         use fake::faker::creditcard::en::CreditCardNumber;
         use fake::faker::internet::en::{IPv4, IPv6, MACAddress};
-        use fake::faker::phone_number::{en, fr_fr};
+        use fake::faker::phone_number::{cy_gb, en, fr_fr, it_it, nl_nl};
         use fake::rand::SeedableRng;
         let mut rng = fake::rand::rngs::StdRng::seed_from_u64(7);
+        // Each way a clue word sits on the value's line or the line before.
+        let phone_clues = [
+            "Phone: {}",
+            "{\"homePhone\": \"{}\"}",
+            "{} (mobile)",
+            "phone:\n  - {}",
+            "Call me on\n{}",
+            "tel_no={}",
+        ];
+        let ssn_clues = ["SSN: {}", "{\"ssn\": \"{}\"}", "Social Security\n{}"];
+        let nino_clues = [
+            "NI number: {}",
+            "{\"nino\": \"{}\"}",
+            "National Insurance\n{}",
+        ];
         for _ in 0..200 {
-            let values: Vec<(&str, String)> = vec![
-                ("en phone", en::PhoneNumber().fake_with_rng(&mut rng)),
-                ("en cell", en::CellNumber().fake_with_rng(&mut rng)),
-                ("fr phone", fr_fr::PhoneNumber().fake_with_rng(&mut rng)),
+            // Ambiguous shapes: hidden beside a clue word, shown without one.
+            let clued: Vec<(&str, String, &[&str], &str)> = vec![
+                (
+                    "en phone",
+                    en::PhoneNumber().fake_with_rng(&mut rng),
+                    &phone_clues,
+                    "[PHONE-",
+                ),
+                (
+                    "en cell",
+                    en::CellNumber().fake_with_rng(&mut rng),
+                    &phone_clues,
+                    "[PHONE-",
+                ),
+                (
+                    "fr phone",
+                    fr_fr::PhoneNumber().fake_with_rng(&mut rng),
+                    &phone_clues,
+                    "[PHONE-",
+                ),
+                (
+                    "fr cell",
+                    fr_fr::CellNumber().fake_with_rng(&mut rng),
+                    &phone_clues,
+                    "[PHONE-",
+                ),
+                (
+                    "uk phone",
+                    cy_gb::PhoneNumber().fake_with_rng(&mut rng),
+                    &phone_clues,
+                    "[PHONE-",
+                ),
+                (
+                    "it phone",
+                    it_it::PhoneNumber().fake_with_rng(&mut rng),
+                    &phone_clues,
+                    "[PHONE-",
+                ),
+                (
+                    "nl cell",
+                    nl_nl::CellNumber().fake_with_rng(&mut rng),
+                    &phone_clues,
+                    "[PHONE-",
+                ),
+                ("ssn", ssn(&mut rng), &ssn_clues, "[SSN-"),
+                ("nino", nino(&mut rng, false), &nino_clues, "[NINO-"),
+                ("spaced nino", nino(&mut rng, true), &nino_clues, "[NINO-"),
+            ];
+            for (kind, v, clues, tag) in clued {
+                // An extension after the number ("x123") is not part of it.
+                let v = v.split(" x").next().unwrap();
+                // fake's Cardiff format `029 #### ######` has two digits too many.
+                if v.starts_with("029 ") {
+                    continue;
+                }
+                for clue in clues {
+                    let out = pii(&clue.replace("{}", v));
+                    assert!(
+                        !out.contains(v),
+                        "{kind} {v:?} in {clue:?} still shows: {out}"
+                    );
+                }
+                // A card or IBAN rule may still take the digits; the shape rule may not.
+                for text in [format!("Use {v} today."), format!("Phone list\n\n{v}")] {
+                    let out = pii(&text);
+                    assert!(
+                        !out.contains(tag),
+                        "{kind} {v:?} hidden with no clue: {out}"
+                    );
+                }
+            }
+            // Unambiguous shapes: hidden with no clue word at all.
+            let bare: Vec<(&str, String)> = vec![
                 (
                     "card",
                     luhn_digit(CreditCardNumber().fake_with_rng(&mut rng)),
@@ -1926,25 +2211,45 @@ mod tests {
                 ("iban", iban(&mut rng, false)),
                 ("spaced iban", iban(&mut rng, true)),
             ];
-            for (kind, v) in values {
-                // An extension after the number ("x123") is not part of it.
-                let v = v.split(" x").next().unwrap();
+            for (kind, v) in bare {
                 let out = pii(&format!("Use {v} today."));
-                assert!(!out.contains(v), "{kind} {v:?} still shows: {out}");
+                assert!(!out.contains(&v), "{kind} {v:?} still shows: {out}");
             }
         }
     }
 
     #[test]
     fn pii_leaves_lookalikes_alone() {
+        use fake::Fake;
+        use fake::faker::filesystem::en::Semver;
+        use fake::rand::SeedableRng;
         for text in [
             "started at 12:30:45 on 2026-11-14",
             "card 4111 1111 1111 1112 fails the Luhn check",
             "GB00WEST12345698765432 fails the mod-97 check",
             "order 1234567890123 and build 20261114",
             "telemetry: 2026-11-14 10:30, cells: 1234567, mobileAppVersion: 1.2.3.4567",
+            // Each of these was hidden before phone, SSN and NINO rules needed a clue word.
+            "+2026 11 14\n+100 200 300 400\n+12025550143",
+            "order 123-456-7890, Order #555 010 0199",
+            "build 0123 456 789, ref 07700 900123",
+            "hexdump: 01 23 45 67 89 ab",
+            "part 123-45-6789 in bin AB 12 34 56 C",
+            "phone firmware 2.10.3, build 20261114",
         ] {
             assert_eq!(pii(text), text);
+        }
+        // A clue word reaches one line down, not three.
+        let out = pii("phone: 555-010-0199\n\n\norder: 555-010-0200");
+        assert!(
+            !out.contains("0199") && out.contains("order: 555-010-0200"),
+            "{out}"
+        );
+        let mut rng = fake::rand::rngs::StdRng::seed_from_u64(7);
+        for _ in 0..200 {
+            let v: String = Semver().fake_with_rng(&mut rng);
+            let text = format!("Phone app {v} released");
+            assert_eq!(pii(&text), text);
         }
         // Epoch milliseconds pass the Luhn check one time in ten.
         for ms in (1_731_542_400_000u64..).step_by(86_400_123).take(50) {
@@ -1958,14 +2263,52 @@ mod tests {
         for (text, gone) in [
             ("10.0.0.1 10.0.0.2", "10.0.0.2"),
             ("10.0.0.1\n10.0.0.2", "10.0.0.2"),
-            ("+44 20 7946 0958\n+44 20 7946 0959", "0959"),
-            ("555-010-0199 555-010-0198", "0198"),
-            ("123-45-6789 123-45-6788", "6788"),
+            ("Phone: +44 20 7946 0958\n+44 20 7946 0959", "0959"),
+            ("tel 555-010-0199 555-010-0198", "0198"),
+            ("SSNs 123-45-6789 123-45-6788", "6788"),
         ] {
             let out = pii(text);
             assert!(!out.contains(gone), "{text:?} -> {out}");
         }
         let out = pii("\"phoneNumber\": \"+1 555 010 0199\", \"fax_no\": \"0207 946 0958\"");
         assert!(!out.contains("0199") && !out.contains("0958"), "{out}");
+    }
+
+    #[test]
+    fn a_context_rule_hides_only_beside_its_clue_words() {
+        let d = tmp("context");
+        let path = d.join("c.toml");
+        std::fs::write(&path, "schema_version = 1\nid = \"c\"\n[[rules]]\nid = \"r\"\nregex = '\\b([0-9]{6})\\b'\nsecretGroup = 1\ncontext = [\"Badge\", \"pass no\"]\n").unwrap();
+        let loaded = only(std::slice::from_ref(&path)).unwrap();
+        let run = |t: &str| {
+            mask(
+                t,
+                &scan(t, &loaded).unwrap(),
+                &mut Tagger::new(None).unwrap(),
+            )
+        };
+        for t in [
+            "badge 123456",
+            "BADGE:\n123456",
+            "staffBadge=123456",
+            "pass no. 123456",
+        ] {
+            assert!(!run(t).contains("123456"), "{t:?}");
+        }
+        // Not whole words, or too far away.
+        let far = format!("badge {}123456", "word ".repeat(25));
+        for t in [
+            "badges 123456",
+            "rebadge 123456",
+            "badge\n\n123456",
+            "123456",
+            &far,
+        ] {
+            assert_eq!(run(t), t);
+        }
+        std::fs::write(&path, "schema_version = 1\nid = \"c\"\n[[rules]]\nid = \"r\"\nregex = 'a'\ncontext = [\" \"]\n").unwrap();
+        let err = only(std::slice::from_ref(&path)).err().unwrap();
+        std::fs::remove_dir_all(&d).unwrap();
+        assert!(err.contains("c.toml") && err.contains("context"), "{err}");
     }
 }

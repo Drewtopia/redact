@@ -18,7 +18,7 @@ A pack is a TOML file of rules. Each rule's `regex` finds a spot in the text, an
 
 The packs load in the order of this table.
 
-`pii` hides any IP address and any phone-shaped number, which is more than most people want, so it starts switched off. To turn it on, add `[packs] enable = ["pii"]` to your [config](../reference/config#packs).
+`pii` hides any IP address, which is more than most people want, so it starts switched off. To turn it on, add `[packs] enable = ["pii"]` to your [config](../reference/config#packs).
 
 When two rules hide exactly the same text, the first rule's label wins. A specific Azure label therefore beats a generic one.
 
