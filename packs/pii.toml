@@ -1,9 +1,11 @@
 # Built-in pack: personal data. Off by default; turn it on in config.toml:
 #   [packs]
 #   enable = ["pii"]
-# It hides more than people expect (any IP address, any phone-shaped number), so
-# it is a choice, not a default. Several patterns follow the recognisers in
-# Microsoft Presidio (github.com/microsoft/presidio, MIT licence).
+# It hides more than people expect (any IP address), so it is a choice, not a
+# default. Phone numbers, SSNs and NI numbers are hidden only beside a clue word
+# (`context`), the way Presidio's context words raise its confidence.
+# Several patterns follow the recognisers in Microsoft Presidio
+# (github.com/microsoft/presidio, MIT licence).
 schema_version = 1
 id = "pii"
 description = "Personal data: phone numbers, card numbers (Luhn-checked), IBANs (mod-97-checked), IP and MAC addresses, US Social Security and UK National Insurance numbers. Off by default"
@@ -11,32 +13,36 @@ default = false
 
 [[rules]]
 id = "phone-international"
-description = "A phone number written with its country code: +44 20 7946 0958, +1 (555) 010-0199"
+description = "A phone number written with its country code: +44 20 7946 0958, +1 (555) 010-0199. Only beside a phone word such as phone, tel, mobile, cell, call or fax"
 regex = '''(?:^|[^0-9A-Za-z+])(\+[1-9][0-9]{0,2}[ .-]?\(?[0-9]{1,4}\)?(?:[ .-]?[0-9]{2,4}){2,4})(?:[^0-9]|$)'''
 secretGroup = 1
 label = "PHONE"
+context = ["phone", "telephone", "tel", "mobile", "cell", "cellphone", "call", "fax", "sms", "whatsapp", "tél", "téléphone", "telefon", "telefono", "teléfono"]
 keywords = ["+"]
 
 [[rules]]
 id = "phone-north-america"
-description = "A US or Canadian number: (555) 010-0199, 555-010-0199, 555.010.0199, 1-555-010-0199"
+description = "A US or Canadian number: (555) 010-0199, 555-010-0199, 555.010.0199, 1-555-010-0199. Only beside a phone word such as phone, tel, mobile, cell, call or fax"
 regex = '''(?:^|[^0-9A-Za-z])((?:1[ .-])?\(?[1-9][0-9]{2}\)?[ .-]?[0-9]{3}[ .-][0-9]{4})(?:[^0-9]|$)'''
 secretGroup = 1
 label = "PHONE"
+context = ["phone", "telephone", "tel", "mobile", "cell", "cellphone", "call", "fax", "sms", "whatsapp", "tél", "téléphone", "telefon", "telefono", "teléfono"]
 
 [[rules]]
 id = "phone-uk"
-description = "A UK number without the country code: 020 7946 0958, 07700 900123"
+description = "A UK number without the country code: 020 7946 0958, 07700 900123. Only beside a phone word such as phone, tel, mobile, cell, call or fax"
 regex = '''(?:^|[^0-9A-Za-z])(0[1-9][0-9]{2,4} ?[0-9]{3} ?[0-9]{3,4})(?:[^0-9]|$)'''
 secretGroup = 1
 label = "PHONE"
+context = ["phone", "telephone", "tel", "mobile", "cell", "cellphone", "call", "fax", "sms", "whatsapp", "tél", "téléphone", "telefon", "telefono", "teléfono"]
 
 [[rules]]
 id = "phone-pairs"
-description = "A number written in pairs after a leading 0, as in France: 01 23 45 67 89, 06.12.34.56.78"
+description = "A number written in pairs after a leading 0, as in France: 01 23 45 67 89, 06.12.34.56.78. Only beside a phone word such as phone, tel, mobile, cell, call or fax"
 regex = '''(?:^|[^0-9A-Za-z])(0[1-9](?:[ .][0-9]{2}){4})(?:[^0-9]|$)'''
 secretGroup = 1
 label = "PHONE"
+context = ["phone", "telephone", "tel", "mobile", "cell", "cellphone", "call", "fax", "sms", "whatsapp", "tél", "téléphone", "telefon", "telefono", "teléfono"]
 
 [[rules]]
 id = "phone-named"
@@ -86,14 +92,16 @@ label = "MAC"
 
 [[rules]]
 id = "us-ssn"
-description = "A US Social Security number: 123-45-6789"
+description = "A US Social Security number: 123-45-6789. Only beside SSN, SS# or social security"
 regex = '''(?:^|[^0-9-])([0-9]{3}-[0-9]{2}-[0-9]{4})(?:[^0-9-]|$)'''
 secretGroup = 1
 label = "SSN"
+context = ["ssn", "ssns", "ss#", "social security"]
 
 [[rules]]
 id = "uk-nino"
-description = "A UK National Insurance number: QQ 12 34 56 C"
+description = "A UK National Insurance number: QQ 12 34 56 C. Only beside NINO, NI number or national insurance"
 regex = '''\b([A-CEGHJ-PR-TW-Z][A-CEGHJ-NPR-TW-Z] ?[0-9]{2} ?[0-9]{2} ?[0-9]{2} ?[A-D])\b'''
 secretGroup = 1
 label = "NINO"
+context = ["nino", "ni number", "ni no", "national insurance"]

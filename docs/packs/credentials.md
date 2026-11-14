@@ -9,9 +9,12 @@ Tokens, keys and passwords: JWTs, bearer tokens, common vendor key shapes, priva
 | `jwt` | `[JWT-…]` | A JSON Web Token (header.payload.signature), e.g. an Azure access token |  |
 | `bearer` | `[TOKEN-…]` | The token after Bearer in an Authorization header |  |
 | `github-token` | `[TOKEN-…]` | GitHub personal, OAuth, app and fine-grained tokens |  |
-| `ai-key` | `[API-KEY-…]` | Anthropic and OpenAI API keys |  |
+| `ai-key` | `[API-KEY-…]` | Anthropic, OpenAI, Groq and xAI API keys |  |
 | `aws-key` | `[API-KEY-…]` | AWS access key IDs |  |
-| `vendor-key` | `[API-KEY-…]` | Slack, Stripe and Google API keys |  |
+| `vendor-key` | `[API-KEY-…]` | Slack and Google API keys, and Stripe secret, restricted and webhook keys (not the public pk_ key) |  |
+| `gitlab-token` | `[TOKEN-…]` | GitLab personal access tokens, classic and routable |  |
+| `google-oauth-secret` | `[CLIENT-SECRET-…]` | A Google OAuth client secret (GOCSPX-) |  |
+| `google-refresh-token` | `[TOKEN-…]` | A Google OAuth refresh token (1//0) |  |
 | `azure-storage-key` | `[STORAGE-KEY-…]` | AccountKey= and SharedAccessKey= in Azure connection strings |  |
 | `azure-sas` | `[SAS-SIG-…]` | The signature of an Azure SAS URL |  |
 | `entra-client-secret` | `[CLIENT-SECRET-…]` | An Entra ID (Azure AD) app client secret |  |
@@ -28,6 +31,7 @@ Tokens, keys and passwords: JWTs, bearer tokens, common vendor key shapes, priva
 | `secret-flag` | `[SECRET-…]` | The value of --password, --client-secret, --token and similar command-line flags | when it reads as a name |
 | `docker-login-password` | `[SECRET-…]` | The password after -p in docker login (and podman login) | when it reads as a name |
 | `mysql-password` | `[SECRET-…]` | The password joined to -p in mysql, mysqldump and mysqladmin (-pSECRET) | when it reads as a name |
+| `random-token` | `[SECRET-…]` | A long random-looking token with no known prefix: 24+ letters and digits, mixed case, above 3.6 bits of entropy per character |  |
 
 ## Allowed values
 

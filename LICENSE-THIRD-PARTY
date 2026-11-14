@@ -33,6 +33,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+redact-transcripts
+------------------
+The Groq, xAI and Google OAuth key lengths in packs/credentials.toml follow the
+scrub rules in crossvault/redact-transcripts, version 0.2.0.
+Source: https://github.com/crossvault/redact-transcripts/blob/9124199939a2c5519f484fbd46b1a77b076094ba/src/redact_transcripts/_scrub_rules.py
+It is licensed under the Apache License, Version 2.0; the full text is in
+LICENSE-APACHE. Its NOTICE file reads:
+
+redact-transcripts
+https://github.com/crossvault/redact-transcripts
+Copyright 2026 crossVault GmbH
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
 fnox
 ----
 The dotenv unescape helper in src/pack.rs closely matches fnox's

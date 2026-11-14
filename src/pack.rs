@@ -70,10 +70,15 @@ struct RuleFile {
     except_match: Option<String>,
     /// A checksum the value must pass: `"luhn"` (card numbers) or `"iban"`.
     check: Option<String>,
+    /// Minimum Shannon entropy, in bits per character, the value must exceed.
+    entropy: Option<f64>,
     #[serde(default)]
     remember: Remember,
     #[serde(default)]
     keywords: Vec<String>,
+    /// Clue words: a found value is hidden only when one is near it.
+    #[serde(default)]
+    context: Vec<String>,
 }
 
 // The compiled forms the scanner uses.
@@ -93,8 +98,13 @@ pub struct Rule {
     pub except_match: Option<Regex>,
     /// A checksum the found value must pass, or it is left alone.
     pub check: Option<Check>,
+    /// The found value is hidden only when its entropy is above this (gitleaks' `entropy`).
+    pub entropy: Option<f64>,
     pub remember: Remember,
     pub keywords: Vec<String>,
+    /// Clue words, lower-cased: a found value is hidden only when one of them
+    /// is a whole word on its line or the line before (Presidio's context words).
+    pub context: Vec<String>,
 }
 
 pub struct Pack {
@@ -1068,13 +1078,28 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             None => None,
             Some("luhn") => Some(Check::Luhn),
             Some("iban") => Some(Check::Iban),
+            Some("not-a-name") => Some(Check::NotAName),
             Some(other) => {
                 return Err(format!(
-                    "{source}: rule {} check \"{other}\": use \"luhn\" or \"iban\"",
+                    "{source}: rule {} check \"{other}\": use \"luhn\", \"iban\" or \"not-a-name\"",
                     r.id
                 ));
             }
         };
+        if let Some(e) = r.entropy
+            && !(e.is_finite() && e >= 0.0)
+        {
+            return Err(format!(
+                "{source}: rule {} entropy {e}: use a number of bits per character, such as 3.5",
+                r.id
+            ));
+        }
+        if r.context.iter().any(|w| w.trim().is_empty()) {
+            return Err(format!(
+                "{source}: rule {} context: a clue word is empty, so it would match everywhere",
+                r.id
+            ));
+        }
         rules.push(Rule {
             label: label_of(r.label.as_deref().unwrap_or(&r.id)),
             id: r.id,
@@ -1085,8 +1110,10 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             except,
             except_match,
             check,
+            entropy: r.entropy,
             remember: r.remember,
             keywords: lower(r.keywords),
+            context: lower(r.context),
         });
     }
     Ok(Pack {
@@ -1351,6 +1378,22 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
     }
 }
 
+/// Shannon entropy in bits per character, as gitleaks counts it.
+pub fn entropy(value: &str) -> f64 {
+    let mut counts = std::collections::HashMap::new();
+    for c in value.chars() {
+        *counts.entry(c).or_insert(0usize) += 1;
+    }
+    let n = value.chars().count() as f64;
+    counts
+        .values()
+        .map(|&k| {
+            let p = k as f64 / n;
+            -p * p.log2()
+        })
+        .sum()
+}
+
 /// A checksum a found value must pass. Without one, any long run of digits
 /// would read as a card number.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1359,6 +1402,9 @@ pub enum Check {
     Luhn,
     /// IBANs: 15 to 34 characters (spaces ignored) passing ISO 7064 mod 97.
     Iban,
+    /// Random tokens: not a camelCase name, whose words of 3+ letters
+    /// (`Ephemeral`, `cache`) cover 70% or more of it.
+    NotAName,
 }
 
 impl Check {
@@ -1401,6 +1447,39 @@ impl Check {
                     }
                 }
                 rem == 1
+            }
+            Check::NotAName => {
+                // Split at case and digit boundaries: `HTTPServer` is `HTTP`, `Server`.
+                let b = value.as_bytes();
+                let (mut i, mut words) = (0, 0);
+                while i < b.len() {
+                    let start = i;
+                    let run = |i: usize, f: fn(&u8) -> bool| {
+                        i + b[i..].iter().take_while(|c| f(c)).count()
+                    };
+                    i = if b[i].is_ascii_digit() {
+                        run(i, u8::is_ascii_digit)
+                    } else if b[i].is_ascii_lowercase() {
+                        run(i, u8::is_ascii_lowercase)
+                    } else {
+                        let caps = run(i, u8::is_ascii_uppercase);
+                        match (caps - i, b.get(caps).is_some_and(u8::is_ascii_lowercase)) {
+                            (1, true) => run(caps, u8::is_ascii_lowercase),
+                            (_, true) => caps - 1,
+                            _ => caps,
+                        }
+                    };
+                    let lower = b[start..i]
+                        .iter()
+                        .filter(|c| c.is_ascii_lowercase())
+                        .count();
+                    let capital_word = b[start].is_ascii_uppercase() && lower == i - start - 1;
+                    let first_word = start == 0 && lower == i;
+                    if (capital_word || first_word) && lower >= 2 {
+                        words += i - start;
+                    }
+                }
+                words * 10 < b.len() * 7
             }
         }
     }
