@@ -281,7 +281,13 @@ fn main() -> ExitCode {
                     }
                 }
             };
-            emit(std::io::stdout().write_all(out.as_bytes()))
+            // Flushed here: an error writing the last line at exit would go unseen.
+            let mut stdout = std::io::stdout();
+            emit(
+                stdout
+                    .write_all(out.as_bytes())
+                    .and_then(|()| stdout.flush()),
+            )
         }
         Command::Completions { .. } | Command::Init { .. } => unreachable!("handled above"),
     }
