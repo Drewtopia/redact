@@ -14,6 +14,8 @@ redact will miss things. Check its output before you share anything that matters
 - **Very short values.** To avoid hiding ordinary words everywhere, some values are skipped when short: word-list entries under 3 characters, `.env` values under 4, and values named as secrets under 6 (`password: Ab3$x` shows). A short secret needs a word list, or a longer secret.
 - **Over-hiding in YAML.** A `password: |` block hides every indented line after it, which can take in the next key when that key is indented too.
 - **Over-hiding with `pii` on.** Any four dotted numbers read as an IP address, so a version such as `1.2.3.4` is hidden; so is any number shaped like a phone number.
+- **PDFs named with `@` in Claude Code.** The mod cannot read a PDF's text, so an `@`-mentioned PDF goes to Claude unscanned. Images too, since they reach Claude as pictures.
+- **An `allow` added mid-session in Claude Code.** The mod keeps hiding a value it hid earlier in the session, wherever it turns up. Start a new session for the `allow` to take effect.
 - **Over-hiding on command lines.** `PGPASSWORD=secret psql -h db -U admin` on one line hides everything after the `=`, command included, since a dump line and a command line look the same.
 
 ## What it is not
