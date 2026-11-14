@@ -29,3 +29,5 @@ redact will miss things. Check its output before you share anything that matters
 - Public values a pack knows, such as the app IDs and hosts Microsoft documents for Azure.
 - Settings in `.env` files: numbers, `true`, `localhost`, `development`.
 - Service addresses such as `git@github.com`.
+- Email addresses at `example.com`, `example.org` and `example.net`, which RFC 2606 keeps for documentation.
+- Values already hidden: a mask such as `********`, a marker such as `[REDACTED]`, and redact's own tags, so redacting redacted text changes nothing.

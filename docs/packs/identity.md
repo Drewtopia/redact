@@ -6,7 +6,7 @@ Email addresses anywhere, git commit authors and git config user lines, and the 
 
 | Rule | Hides as | What it finds | Hidden everywhere after |
 | :- | :- | :- | :- |
-| `email` | `[EMAIL-…]` | An email address, anywhere |  |
+| `email` | `[EMAIL-…]` | An email address, anywhere, except at the documentation domains example.com, example.org and example.net |  |
 | `git-person` | `[PERSON-…]` | The name in Author:, Commit:, Tagger:, Signed-off-by: and Co-authored-by: lines | when it reads as a name |
 | `git-config-user` | `[PERSON-…]` | user.name in git config -l | when it reads as a name |
 | `github-login` | `[GITHUB-USER-…]` | The login of a GitHub user record, then the same login everywhere else | yes |
