@@ -96,6 +96,16 @@ test('a binary that fails withholds the result instead of passing it raw', async
   expect(JSON.stringify(r)).toContain('withheld')
 })
 
+test('an errored result is withheld as a refusal when the scan fails', async ($, on) => {
+  on('ui.notice', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('process.run', () => ({ value: { exitCode: 3, stdout: '', stderr: 'pack would not load', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('tool.call', () => ({ isError: true, result: { stdout: `TOKEN=${TOKEN}`, stderr: '', interrupted: false, isImage: false } }))
+  const r = await call($, { tool: 'Bash', command: 'cat .env' })
+  expect(r.deny).toContain('withheld')
+  expect(JSON.stringify(r)).not.toContain(TOKEN)
+})
+
 test('a result nested too deep to scan is withheld, even with nothing else hidden', async ($, on) => {
   let deep: unknown = `TOKEN=${TOKEN}`
   for (let i = 0; i < 70; i++) deep = { deep }
