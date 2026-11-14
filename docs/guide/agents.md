@@ -48,16 +48,16 @@ pbpaste | redact | pbcopy
 
 ## Git and CI
 
-`redact scan --json` prints `[]` when it finds nothing, so `jq -e` turns it into a check. This fails when a staged change holds anything redact would hide:
+`redact scan --json` prints `[]` when it finds nothing, so `jq -e` turns it into a check. This fails when a line the staged change adds holds anything redact would hide; `grep '^+'` keeps only added lines, so a commit that removes a leaked value still goes through:
 
 ```sh
-git diff --cached | redact scan --json | jq -e 'length == 0' > /dev/null
+git diff --cached -U0 | grep '^+' | redact scan --json | jq -e 'length == 0' > /dev/null
 ```
 
 Put it in `.git/hooks/pre-commit`, or run it in CI against a log or an artifact before it is uploaded. Add `--explain` to a second run to see which rule fired, never the value:
 
 ```sh
-git diff --cached | redact scan --explain > /dev/null
+git diff --cached -U0 | grep '^+' | redact scan --explain > /dev/null
 ```
 
 ## Any other tool
