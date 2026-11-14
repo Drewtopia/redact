@@ -1,6 +1,6 @@
 # Prior art and thanks
 
-redact draws on the projects below. The credential patterns adapted from transcript-redactor and redact-transcripts, and the implementation overlap with fnox are identified separately. Thank you to their authors.
+redact draws on the projects below. Thank you to their authors. [Third-party notices](#third-party-notices) covers the credential patterns adapted from transcript-redactor and redact-transcripts, and the code that overlaps with fnox.
 
 | Project | Contribution |
 | :- | :- |

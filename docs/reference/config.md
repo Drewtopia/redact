@@ -1,31 +1,27 @@
 # Configuration
 
-redact runs with no config at all: the built-in packs load on their own. A config file adds your own values, leaves others visible, picks packs, and changes settings by machine, folder or command.
+redact needs no config file. Without one, the built-in packs load on their own. A config file can add values to hide, leave values visible, pick packs, and change settings for one machine, folder, or command.
 
 ## Where it lives
 
 | System | Path |
 | :- | :- |
-| Linux, macOS | `~/.config/redact/config.toml` (or `$XDG_CONFIG_HOME/redact/config.toml`) |
+| Linux, macOS | `~/.config/redact/config.toml`, or `$XDG_CONFIG_HOME/redact/config.toml` |
 | Windows | `%APPDATA%\redact\config.toml` |
 
-`-c <path>` or `REDACT_CONFIG` uses another file instead of your config and your `packs/` folder, so a project or a test can run with only what it names.
+`-c <path>` or `REDACT_CONFIG` replaces both your config file and your `packs/` folder. A project or a test then runs with only what that file names.
 
 ## Start one
 
-```sh
-redact config init
-```
-
-writes a starter file. `--preset` picks which:
+`redact config init` writes a starter file. `--preset` picks which one:
 
 | Preset | What it holds |
 | :- | :- |
-| `minimal` (default) | `me`, secret-named environment variables, `.env` files: on |
-| `full` | the same plus `.env.keys` and the `pii` pack: on |
-| `commented` | every setting shown and switched off |
+| `minimal` (default) | `me`, secret-named environment variables, and `.env` files, switched on |
+| `full` | Everything in `minimal`, plus `.env.keys` and the `pii` pack |
+| `commented` | Every setting, shown and switched off |
 
-`--print` shows it without writing; `--force` replaces a file that is already there.
+`--print` prints the file instead of writing it. `--force` replaces a file that is already there.
 
 ## A full example
 
@@ -67,17 +63,19 @@ disable = ["identity"]
 | :- | :- | :- |
 | `env` | Names of environment variables whose values to hide. Exact names, or patterns with `*` | [fnox and mise](../guide/fnox-mise) |
 | `env_files` | Dotenv files whose values to hide, relative to where redact runs | [.env files](../guide/dotenv) |
-| `import` | Packs, word lists, folders and other config files to load, relative to this file (for a symlinked config, the file it points to). `~/` is your home folder | [Packs](../packs/) |
-| `me` | Hide your git `user.name` and `user.email` and your GitHub logins | [Hiding yourself](../guide/me) |
+| `import` | Packs, word lists, folders, and other config files to load, relative to this file. `~/` is your home folder | [Packs](../packs/) |
+| `me` | Hide your git `user.name` and `user.email`, and your GitHub logins | [Hiding yourself](../guide/me) |
 | `allow` | Values never to hide, matched in any case. `$NAME` reads one from an environment variable | [Allow](#allow) |
-| `[packs]` | `enable` and `disable` lists of pack ids; `disable` also takes one rule as `pack:rule` | [Packs](#packs) |
-| `[[override]]` | Settings for one machine, folder or command | [Overrides](#overrides) |
+| `[packs]` | `enable` and `disable` lists of pack ids. `disable` also takes one rule as `pack:rule` | [Packs](#packs) |
+| `[[override]]` | Settings for one machine, folder, or command | [Overrides](#overrides) |
 
-An unknown setting is an error, so a typo such as `imports` is caught rather than ignored.
+In a symlinked config, an `import` path is relative to the file the link points to.
+
+An unknown setting is an error, so redact reports a typo such as `imports` instead of ignoring it.
 
 ## Allow
 
-`allow` leaves a value visible even when a rule or a word list would hide it: your own organisation's name, so links that contain it still work, or a public product name a word list catches. It allows the value itself, never what sits next to it.
+`allow` leaves a value visible even when a rule or a word list would hide it. Typical values are your own organisation's name, so links that contain it still work, and a public product name that a word list catches. `allow` covers the value itself, never the text next to it.
 
 `$NAME` reads the value from an environment variable, so the config file itself names nothing:
 
@@ -85,7 +83,7 @@ An unknown setting is an error, so a typo such as `imports` is caught rather tha
 allow = ["$ACME_ORG"]
 ```
 
-A variable that is not set allows nothing, and `redact config ls` lists it as not set.
+A variable that is not set allows nothing. `redact config ls` lists it as not set.
 
 ## Packs
 
@@ -97,23 +95,23 @@ enable = ["pii"]
 disable = ["gcp"]
 ```
 
-`disable` also switches off one rule, named `pack:rule` as `redact scan --explain` prints it, such as `pii:ipv4`; the rest of the pack keeps running. `redact packs` lists each pack's rules.
+`disable` also switches off a single rule, named `pack:rule` as `redact scan --explain` prints it, for example `pii:ipv4`. The rest of the pack keeps running. `redact packs` lists each pack's rules.
 
-`disable` wins over `enable`. A name that is no pack or `pack:rule` is an error that lists the packs there are. `redact packs` shows switched-off packs too, marked `off`.
+`disable` wins over `enable`. A name that matches no pack and no `pack:rule` is an error, and the error lists the packs that exist. `redact packs` also shows switched-off packs, marked `off`.
 
 ## Overrides
 
-An `[[override]]` applies its settings only when every condition it gives matches. Each condition is a glob, `*` matching anything:
+An `[[override]]` applies its settings only when every condition it gives matches. Each condition is a glob, in which `*` matches anything:
 
 | Condition | Matches |
 | :- | :- |
-| `host` | The machine's name, in any case (`COMPUTERNAME` on Windows, `HOSTNAME` or the `hostname` command elsewhere) |
+| `host` | The machine's name, in any case. redact reads `COMPUTERNAME` on Windows, and `HOSTNAME` or the `hostname` command elsewhere |
 | `dir` | The folder redact runs in, and every folder below it. `~/` is your home folder |
 | `command` | The command named by `--command` or `REDACT_COMMAND` |
 
-An override with no condition always applies. It may set `env`, `env_files`, `allow` and `[override.packs]`; each adds to what came before. Overrides apply in file order, after the settings above them, and `redact config ls` lists each one that applied and why.
+An override with no condition always applies. An override can set `env`, `env_files`, `allow`, and `[override.packs]`, and each one adds to the settings before it. Overrides apply in file order, after the top-level settings. `redact config ls` lists each override that applied, and why.
 
-redact cannot see the command whose output it reads, so a hook or alias that knows it passes it on:
+redact cannot see the command whose output it reads. A hook or an alias that knows the command passes it on:
 
 ```sh
 gh pr view 42 | redact scan --command "gh pr view 42"
@@ -121,12 +119,17 @@ gh pr view 42 | redact scan --command "gh pr view 42"
 
 ## Load order
 
-1. The built-in packs: `azure`, `identity`, `kubernetes`, `docker`, `npm`, `http`, `gcp`, `credentials`, `pii` (off).
+1. The built-in packs: `azure`, `identity`, `kubernetes`, `docker`, `npm`, `http`, `gcp`, `credentials`, and `pii`, which is off.
 2. Every `.toml` and `.txt` in `~/.config/redact/packs/`.
-3. The config file, and everything it imports, in order; then each override that applies.
+3. The config file and everything it imports, in order, then each override that applies.
 4. `--file` and `--env-file` from the command line.
 
-`[packs]` choices apply last, to every pack from 1 to 4. `--only-files` skips 1 to 3; `-c` replaces 2 and 3. `redact config ls` prints what loaded, in this order, and what imported each file; a packs folder or config file that is not there is listed as `missing`. `--json` prints one object per file, with `kind`, `path`, `detail`, `via` and `found`.
+`[packs]` choices apply last, to the packs from all four steps. Two flags change the order:
+
+- `--only-files` skips steps 1 to 3.
+- `-c` replaces steps 2 and 3.
+
+`redact config ls` prints what loaded, in this order, and what imported each file. It lists a packs folder or a config file that is not there as `missing`. With `--json`, it prints one object per file, with the fields `kind`, `path`, `detail`, `via`, and `found`.
 
 ## Environment variables
 
@@ -134,4 +137,4 @@ gh pr view 42 | redact scan --command "gh pr view 42"
 | :- | :- |
 | `REDACT_CONFIG` | Use this config file, as `-c` does |
 | `REDACT_COMMAND` | The command whose output is being read, as `--command` does |
-| `REDACT_KEY` | Key for placeholder tags, so the same value gets the same tag across runs. 16+ characters. See [How it works](./how-it-works) |
+| `REDACT_KEY` | Key for placeholder tags, so the same value gets the same tag across runs. At least 16 characters. See [How it works](./how-it-works) |
