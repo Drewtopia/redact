@@ -4,6 +4,8 @@ export default defineConfig({
   title: 'redact',
   description: 'Keep secrets, names, and sensitive information out of what AI sees',
   base: '/redact/',
+  // Setup for contributors' coding agents, not pages for readers.
+  srcExclude: ['agents/**'],
   cleanUrls: true,
   lastUpdated: true,
   themeConfig: {
