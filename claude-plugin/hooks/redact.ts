@@ -155,12 +155,9 @@ export const register: Register = (on, options) => {
     const context = r.context ? { context: r.context.map(fix) } : {}
     if (r.isError) return { isError: true as const, result, text: r.text === undefined ? undefined : fix(r.text), ...context }
     return { result, ...context } as typeof r
-  }).catch(async ($, e, next) => {
-    if (!next.called) return { deny: WITHHELD }
-    const r = await next(e)
-    if (r.isError) return { isError: true as const, result: WITHHELD, text: WITHHELD }
-    return { deny: WITHHELD }
-  })
+  // A refusal, never a result: a string where the tool's output object goes
+  // breaks its shape.
+  }).catch(() => ({ deny: WITHHELD }))
 
   // 3. The blocks on the first message: CLAUDE.md and the engine's context.
   on('prompt.context', async ($, e, next) => {
