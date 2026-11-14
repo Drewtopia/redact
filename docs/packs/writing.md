@@ -48,6 +48,7 @@ remember = "distinctive"
 | `label` | What the placeholder says; defaults to the rule id |
 | `within` | Run only inside a JSON object whose own fields match this regex, whatever their order and wherever nested objects sit |
 | `except` | Leave a found value alone when it matches this regex: a reference such as `$TOKEN` or `<placeholder>`, not a secret. Rust's `regex` has no lookahead, so this is how a rule says "but not these" |
+| `exceptMatch` | Leave a find alone when the whole match, not just the value, matches this regex. Use it when the name decides: the paging cursor in `nextPageToken: …` is not a secret, though `token` is in its name. Anchor it with `^` so the value cannot trigger it. With `within`, it is also tested against each JSON object's own fields, and an object it matches is skipped whole: `{"name": "nextPageToken", "value": …}` |
 | `remember` | `"distinctive"`: also hide the value everywhere else when it reads as a name (a space, `-`, `_`, `.`, a digit or an inner capital). `"any"`: any value with a capital letter or of 5+ characters |
 | `keywords` | The rule runs only when one of these appears |
 | `context` | Clue words, as in Microsoft Presidio: hide a found value only when one of these is on its line or the line before. Any case, whole words; `_`, `-` and a camelCase hump count as word edges, so `phone` is found in `mobile_phone` and `homePhone` but not `phones`. For shapes that mean nothing alone, such as `123-45-6789`: `context = ["ssn", "social security"]` |

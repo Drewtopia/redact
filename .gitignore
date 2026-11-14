@@ -4,3 +4,8 @@
 docs/node_modules/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+
+# Claude Code: share the project settings, keep worktrees and local settings out.
+!.claude/
+.claude/*
+!.claude/settings.json

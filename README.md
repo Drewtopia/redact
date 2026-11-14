@@ -34,7 +34,7 @@ Or download a binary for macOS, Linux or Windows from [Releases](https://github.
 | `redact scan --explain` | Also says on stderr which rule hid each part, never the value |
 | `redact scan --json` | Prints the parts to hide as byte spans instead of masked text |
 | `redact packs` | Lists the rules that load, and the packs switched off |
-| `redact config ls` | Lists every file that loads, in order, what imported it, and each override that applied |
+| `redact config ls` | Lists every file that loads, in order, what imported it, each override that applied, and each file looked for but missing |
 | `redact config init` | Writes a starter config with every setting switched off |
 | `redact --command "gh pr view"` | Names the command whose output this is, for `command` overrides |
 | `redact --env-file .env` | Also hides every value in that dotenv file |

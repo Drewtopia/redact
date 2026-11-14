@@ -126,7 +126,7 @@ gh pr view 42 | redact scan --command "gh pr view 42"
 3. The config file, and everything it imports, in order; then each override that applies.
 4. `--file` and `--env-file` from the command line.
 
-`[packs]` choices apply last, to every pack from 1 to 4. `--only-files` skips 1 to 3; `-c` replaces 2 and 3. `redact config ls` prints what loaded, in this order, and what imported each file.
+`[packs]` choices apply last, to every pack from 1 to 4. `--only-files` skips 1 to 3; `-c` replaces 2 and 3. `redact config ls` prints what loaded, in this order, and what imported each file; a packs folder or config file that is not there is listed as `missing`. `--json` prints one object per file, with `kind`, `path`, `detail`, `via` and `found`.
 
 ## Environment variables
 

@@ -146,7 +146,15 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                 Some(w) => recs
                     .get_or_init(|| records(text))
                     .iter()
-                    .filter(|r| w.is_match(&r.joined))
+                    // `exceptMatch` also skips a whole record: the name that decides
+                    // sits in a field beside the match, not in it.
+                    .filter(|r| {
+                        w.is_match(&r.joined)
+                            && !rule
+                                .except_match
+                                .as_ref()
+                                .is_some_and(|x| x.is_match(&r.joined))
+                    })
                     .flat_map(|r| r.pieces.iter().copied())
                     .collect(),
             };
@@ -170,6 +178,16 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                     let Some(m) = caps.get(rule.group) else {
                         continue;
                     };
+                    // A name the rule must leave alone: look again inside its value,
+                    // which may hold a real secret further along the line.
+                    if rule
+                        .except_match
+                        .as_ref()
+                        .is_some_and(|x| x.is_match(whole.as_str()))
+                    {
+                        pos = m.start();
+                        continue;
+                    }
                     // Trailing whitespace is not part of a value: on a CRLF line
                     // the `\r` would otherwise stick to a remembered name.
                     let value = m.as_str().trim_end();
@@ -177,6 +195,7 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                         || pack.allow.contains(&value.to_lowercase())
                         || loaded.allow.contains(&value.to_lowercase())
                         || rule.except.as_ref().is_some_and(|x| x.is_match(value))
+                        || is_tag(value)
                         || rule.check.is_some_and(|c| !c.passes(value))
                         || rule.entropy.is_some_and(|min| entropy(value) <= min)
                         || !rule.context.is_empty()
@@ -292,6 +311,14 @@ fn word_edge(s: &str, i: usize) -> bool {
         }
         _ => true,
     }
+}
+
+/// A placeholder this tool wrote, such as `[SECRET-a1b2c3d4]`: hiding it again
+/// would only swap one tag for another when redacted text is redacted again.
+fn is_tag(v: &str) -> bool {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"^\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\]$").unwrap())
+        .is_match(v)
 }
 
 /// Lower case with `-`, `_` and spaces folded together, to compare labels and words.
@@ -1848,13 +1875,113 @@ mod tests {
         let out = azure(text);
         assert!(out.contains("billing:[PASSWORD-…]@db.example.com"), "{out}");
         for (text, gone) in [
-            ("email:ada@example.com", "ada@"),
-            ("<a href=\"mailto:ada@example.com\">", "ada@"),
-            ("ada@example.com,bob@example.com", "bob@"),
-            ("git clone ada@example.com:repo", "ada@"),
+            ("email:ada@fabrikamq.example", "ada@"),
+            ("<a href=\"mailto:ada@fabrikamq.example\">", "ada@"),
+            ("ada@fabrikamq.example,bob@fabrikamq.example", "bob@"),
+            ("git clone ada@fabrikamq.example:repo", "ada@"),
         ] {
             let out = azure(text);
             assert!(!out.contains(gone), "{text:?} -> {out}");
+        }
+    }
+
+    #[test]
+    fn values_already_hidden_or_too_short_stay() {
+        for kept in [
+            "password: ********",
+            "token=[REDACTED:secret.assignment]",
+            "if (token == null) return;\n",
+            "Authorization: token abc",
+            "pwd: 0\n",
+            "password: Ab3$x\n",
+            "write to someone@example.com\n",
+            "mail ops@docs.example.org or a@b.example.net",
+        ] {
+            assert_eq!(azure(kept), kept, "a non-secret was hidden");
+        }
+        for (text, gone) in [
+            (
+                "Authorization: token 0123456789abcdef0123",
+                "0123456789abcdef",
+            ),
+            ("pwd: hunter22\n", "hunter22"),
+            ("token=REDACTEDbutReal99", "REDACTEDbutReal99"),
+            ("write to ada@notexample.com", "ada@"),
+            ("write to ada@example.com.evil.io", "ada@"),
+        ] {
+            let out = azure(text);
+            assert!(!out.contains(gone), "{text:?} -> {out}");
+        }
+    }
+
+    #[test]
+    fn paging_cursors_stay_but_tokens_beside_them_do_not() {
+        for kept in [
+            "continuationToken: abc123def456\n",
+            "next_token: abc123def456\n",
+            r#"{"nextPageToken": "abc123def456"}"#,
+            "{'pageToken': 'abc123def456'}",
+            "NextToken=abc123def456",
+            "page-token: abc123def456\n",
+            "x-ms-continuationtoken: abc123def456\n",
+            "- name: nextPageToken\n  value: abc123def456\n",
+            "nextLink: https://api.example.com/items?continuationToken=abc123def456\n",
+            r#"{"name": "continuationToken", "value": "abc123def456"}"#,
+            r#"{"Name": "NextPageToken", "Value": "abc123def456"}"#,
+            "{\n  \"name\": \"next_token\",\n  \"value\": \"abc123def456\"\n}\n",
+        ] {
+            assert_eq!(azure(kept), kept, "a paging cursor was hidden");
+        }
+        for (text, gone) in [
+            ("accessToken: Zq8vR2mK9pL4xW\n", "Zq8vR2mK9pL4xW"),
+            ("refresh_token=Zq8vR2mK9pL4xW", "Zq8vR2mK9pL4xW"),
+            ("x-api-token: Zq8vR2mK9pL4xW\n", "Zq8vR2mK9pL4xW"),
+            ("apiToken: nextToken=Zq8vR2mK9pL4xW", "Zq8vR2mK9pL4xW"),
+            (
+                "nextPageToken: x accessToken: Zq8vR2mK9pL4xW",
+                "Zq8vR2mK9pL4xW",
+            ),
+            (
+                r#"{"nextPageToken": "abc123def456", "accessToken": "Zq8vR2mK9pL4xW"}"#,
+                "Zq8vR2mK9pL4xW",
+            ),
+            (
+                r#"{"name": "accessToken", "value": "Zq8vR2mK9pL4xW"}"#,
+                "Zq8vR2mK9pL4xW",
+            ),
+            (
+                r#"{"name": "client_secret", "value": "Zq8vR2mK9pL4xW"}"#,
+                "Zq8vR2mK9pL4xW",
+            ),
+            (
+                r#"[{"name": "nextPageToken", "value": "abc123def456"}, {"name": "accessToken", "value": "Zq8vR2mK9pL4xW"}]"#,
+                "Zq8vR2mK9pL4xW",
+            ),
+        ] {
+            let out = azure(text);
+            assert!(!out.contains(gone), "{text:?} -> {out}");
+        }
+    }
+
+    #[test]
+    fn a_tag_is_never_hidden_again() {
+        let loaded = pack::load(&pack::Options {
+            files: vec![],
+            builtin: true,
+            user: false,
+            config: None,
+            env_files: vec![],
+            command: None,
+            cwd: None,
+            host: None,
+        })
+        .unwrap();
+        for text in [
+            r#"[{"name": "DB_PASSWORD", "value": "[SECRET-0a1b2c3d]"}]"#,
+            "- name: api-token\n  value: [SECRET-0a1b2c3d]\n",
+            "password: [SECRET-0a1b2c3d]\n",
+        ] {
+            assert!(scan(text, &loaded).unwrap().is_empty(), "{text:?}");
         }
     }
 
