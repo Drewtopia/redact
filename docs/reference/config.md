@@ -17,7 +17,15 @@ redact runs with no config at all: the built-in packs load on their own. A confi
 redact config init
 ```
 
-writes a starter file with every setting shown and switched off. `--print` shows it without writing; `--force` replaces a file that is already there.
+writes a starter file. `--preset` picks which:
+
+| Preset | What it holds |
+| :- | :- |
+| `minimal` (default) | `me`, secret-named environment variables, `.env` files: on |
+| `full` | the same plus `.env.keys` and the `pii` pack: on |
+| `commented` | every setting shown and switched off |
+
+`--print` shows it without writing; `--force` replaces a file that is already there.
 
 ## A full example
 

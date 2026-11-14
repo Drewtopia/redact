@@ -130,8 +130,11 @@ fn redacted {|@a| var rest = $a[1..]; (external $a[0]) $@rest 2>&1 | redact scan
 enum ConfigAction {
     /// List every file that loads, in load order, and what imported it.
     Ls,
-    /// Write a commented starter config, every setting shown and switched off.
+    /// Write a starter config: `minimal` by default.
     Init {
+        /// Which starter to write.
+        #[arg(long, value_enum, default_value_t = Preset::Minimal)]
+        preset: Preset,
         /// Replace an existing config file.
         #[arg(long)]
         force: bool,
@@ -141,14 +144,31 @@ enum ConfigAction {
     },
 }
 
-/// The starter config `redact config init` writes. A test loads it, so it can
-/// never drift into an example that does not parse.
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum Preset {
+    /// Hides you, secret-named environment variables and .env files.
+    Minimal,
+    /// Every setting that needs none of your own names, switched on, pii included.
+    Full,
+    /// Every setting shown and switched off, as a reference.
+    Commented,
+}
+
+/// The starter configs `redact config init` writes. Tests load each, so none
+/// can drift into an example that does not parse.
 const STARTER_CONFIG: &str = include_str!("../config.example.toml");
+const MINIMAL_CONFIG: &str = include_str!("../config.minimal.toml");
+const FULL_CONFIG: &str = include_str!("../config.full.toml");
 
 /// `redact config init`: writes the starter config unless one is there already.
-fn config_init(path: Option<PathBuf>, force: bool, print: bool) -> ExitCode {
+fn config_init(path: Option<PathBuf>, preset: Preset, force: bool, print: bool) -> ExitCode {
+    let starter = match preset {
+        Preset::Minimal => MINIMAL_CONFIG,
+        Preset::Full => FULL_CONFIG,
+        Preset::Commented => STARTER_CONFIG,
+    };
     if print {
-        print!("{STARTER_CONFIG}");
+        print!("{starter}");
         return ExitCode::SUCCESS;
     }
     let Some(path) = path.or_else(|| pack::config_home().map(|h| h.join("config.toml"))) else {
@@ -166,7 +186,7 @@ fn config_init(path: Option<PathBuf>, force: bool, print: bool) -> ExitCode {
     {
         return fail(&format!("{}: {e}", dir.display()));
     }
-    match std::fs::write(&path, STARTER_CONFIG) {
+    match std::fs::write(&path, starter) {
         Ok(()) => {
             println!("wrote {}", pack::tilde(&path));
             ExitCode::SUCCESS
@@ -202,10 +222,15 @@ fn main() -> ExitCode {
     }
     // Before loading, so a broken config can still be replaced.
     if let Command::Config {
-        action: ConfigAction::Init { force, print },
+        action:
+            ConfigAction::Init {
+                preset,
+                force,
+                print,
+            },
     } = &command
     {
-        return config_init(cli.config.clone(), *force, *print);
+        return config_init(cli.config.clone(), *preset, *force, *print);
     }
     let opts = pack::Options {
         files: cli.files,
@@ -449,6 +474,33 @@ mod docs {
             "{out}"
         );
         assert!(out.contains("status=3"), "{out}");
+    }
+
+    /// The minimal and full presets load as written, and full turns pii on.
+    #[test]
+    fn the_live_presets_load() {
+        for (name, text) in [("minimal", MINIMAL_CONFIG), ("full", FULL_CONFIG)] {
+            let d = std::env::temp_dir().join(format!("redact-test-{}-{name}", std::process::id()));
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("config.toml"), text).unwrap();
+            let loaded = pack::load(&pack::Options {
+                files: vec![],
+                builtin: true,
+                user: true,
+                config: Some(d.join("config.toml")),
+                env_files: vec![],
+                command: None,
+                cwd: Some(d.clone()),
+                host: None,
+            });
+            std::fs::remove_dir_all(&d).unwrap();
+            let loaded = loaded.unwrap_or_else(|e| panic!("{name} preset: {e}"));
+            assert_eq!(
+                loaded.packs.iter().any(|p| p.id == "pii"),
+                name == "full",
+                "{name}: pii"
+            );
+        }
     }
 
     /// Every example in the starter config, uncommented, loads: the starter can

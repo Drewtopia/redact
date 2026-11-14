@@ -1,0 +1,18 @@
+# redact config: ~/.config/redact/config.toml (%APPDATA%\redact\config.toml on Windows).
+# Written by `redact config init --preset full`: every setting that needs none of
+# your own names, switched on. `redact config ls` shows what loads and why;
+# `redact config init --preset commented --print` shows allow, import and overrides.
+
+# Hide who you are: your git name and email, and your GitHub login.
+me = true
+
+# Hide whatever these environment variables hold. `*` matches anything.
+env = ["*_TOKEN", "*_KEY", "*_SECRET", "*_PASSWORD"]
+
+# Hide every value in these dotenv files, relative to where redact runs.
+env_files = [".env", ".env.local", ".env.keys"]
+
+# Built-in packs: azure, identity, kubernetes, docker, npm, http, gcp, credentials,
+# and pii (personal data: phone numbers, cards, IP addresses), on here.
+[packs]
+enable = ["pii"]
