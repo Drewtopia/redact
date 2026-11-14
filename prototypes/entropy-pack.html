@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entropy pack prototype</title>
+<!-- PROTOTYPE, throwaway. Answers "How should the entropy pack decide a token is a secret?"
+     (https://github.com/Drewtopia/redact/issues/27). Every token in the samples is generated
+     by a seeded random generator in this page: none is a real secret. -->
+<style>
+:root { --bg:#fbfaf8; --fg:#1f1d1a; --muted:#6b665e; --line:#e4e0d8; --card:#fff;
+  --accent:#3b5bdb; --hid:#1f1d1a; --miss:#c92a2a; --fp:#e8590c; --skip:#868e96; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#17171a; --fg:#e9e7e3; --muted:#9a958c; --line:#2e2e33; --card:#1f1f23;
+  --accent:#7c9cff; --hid:#e9e7e3; --miss:#ff6b6b; --fp:#ffa94d; --skip:#7d858c; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
+main { max-width:1100px; margin:0 auto; padding:24px 16px 64px; }
+h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:16px; margin:24px 0 8px; }
+p { margin:6px 0; } .muted { color:var(--muted); }
+.card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin:12px 0; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px 20px; }
+label { display:flex; gap:8px; align-items:center; font-size:14px; }
+input[type=range] { flex:1; } .val { font-variant-numeric:tabular-nums; min-width:3.2em; text-align:right; font-weight:600; }
+button { font:inherit; font-size:14px; padding:6px 12px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); cursor:pointer; }
+button:hover { border-color:var(--accent); } button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+.tabs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+.steps { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+.steps button { text-align:left; } .steps button.done { opacity:.55; } .steps button.next { border-color:var(--accent); border-width:2px; }
+.score { display:flex; flex-wrap:wrap; gap:18px; font-size:15px; } .score b { font-size:20px; }
+.changed { background:color-mix(in srgb, var(--accent) 18%, transparent); border-radius:4px; padding:0 4px; }
+pre { margin:0; white-space:pre-wrap; word-break:break-all; font:13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.hid { background:var(--hid); color:var(--bg); border-radius:3px; padding:0 2px; }
+.hid.fp { background:var(--fp); color:#000; }
+.miss { outline:2px solid var(--miss); border-radius:3px; }
+.skip { text-decoration:underline dotted var(--skip); text-underline-offset:3px; }
+table { border-collapse:collapse; width:100%; font-size:13px; }
+th, td { text-align:left; padding:4px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+td.tok { font-family:ui-monospace, monospace; word-break:break-all; }
+.tag { font-size:12px; padding:1px 6px; border-radius:6px; border:1px solid var(--line); white-space:nowrap; }
+.tag.miss { color:var(--miss); outline:none; } .tag.fp { color:var(--fp); } .tag.ok { color:var(--accent); }
+textarea { width:100%; min-height:120px; font:13px ui-monospace, monospace; background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px; }
+.legend span { margin-right:14px; font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Entropy pack prototype</h1>
+<p><b>Question:</b> for the opt-in pack that hides random-looking tokens with no known prefix, which tokens count, what entropy floor, whether a name like <code>key=</code> or <code>Bearer</code> lowers the bar, and which non-secrets (hashes, IDs, base64 images, commit SHAs) must stay visible.</p>
+<p class="muted">The samples below are made-up terminal output. Each fake secret in them was generated in this page; nothing here is real. Change the settings, run a walkthrough, or paste your own output at the bottom (it never leaves this page).</p>
+
+<div class="card">
+  <div class="score" id="score"></div>
+  <div class="legend muted" style="margin-top:6px">
+    <span><span class="hid">&nbsp;hidden&nbsp;</span> hidden, rightly</span>
+    <span><span class="hid fp">&nbsp;hidden&nbsp;</span> hidden but not a secret</span>
+    <span><span class="miss">&nbsp;missed&nbsp;</span> a secret left visible</span>
+    <span><span class="skip">looked at</span> considered, kept visible (hover for why)</span>
+  </div>
+</div>
+
+<h2>Settings</h2>
+<div class="card">
+  <div class="grid" id="settings"></div>
+  <div style="margin-top:10px"><button id="reset">Back to today's rule</button>
+  <span class="muted" style="margin-left:8px">Today's rule is <code>random-token</code> as merged into the credentials pack.</span></div>
+</div>
+
+<h2>Walkthroughs</h2>
+<div class="card">
+  <div class="tabs" id="tabs"></div>
+  <div id="walk"></div>
+</div>
+
+<h2>Samples</h2>
+<div class="tabs" id="sampleTabs"></div>
+<div class="card"><p class="muted" id="sampleNote"></p><pre id="out"></pre></div>
+<div class="card"><table id="table"></table></div>
+
+<h2>Your own output</h2>
+<div class="card">
+  <textarea id="own" placeholder="Paste terminal output here. Nothing is sent anywhere."></textarea>
+  <pre id="ownOut" style="margin-top:8px"></pre>
+</div>
+</main>
+
+<script>
+// ---- The logic: pure functions, no DOM. This is the part worth keeping. ----
+const Entropy = (() => {
+  const TODAY = {
+    minLength: 24, floor: 3.6,
+    namedMinLength: 24, namedFloor: 3.6,
+    requireMix: true, allowDashUnderscore: false, allowPlusSlash: false,
+    skipHex: true, skipNames: true, skipHashPrefixes: true, skipBase64Blocks: true,
+    namedSkipsChecks: false,
+  };
+  const NAME_BEFORE = /(?:bearer\s+|passw(?:or)?d\s+|(?:api[_-]?key|access[_-]?key|secret|token|passw(?:or)?d|pwd|auth|key)["']?\s*[:=]\s*["']?)$/i;
+  const HASH_BEFORE = /(?:sha(?:1|224|256|384|512)[:-]|h1:|md5:|integrity["']?\s*[:=]\s*["']?)$/i;
+  const HASH_INSIDE = /^sha(?:1|224|256|384|512)-/i;
+
+  function entropy(s) {
+    const n = s.length, counts = {};
+    for (const c of s) counts[c] = (counts[c] || 0) + 1;
+    let h = 0; for (const k in counts) { const p = counts[k] / n; h -= p * Math.log2(p); }
+    return h;
+  }
+  // Port of the merged `not-a-name` check: 70%+ of the token is real words.
+  function looksLikeName(v) {
+    let i = 0, words = 0; const n = v.length;
+    const isD = c => c >= '0' && c <= '9', isL = c => c >= 'a' && c <= 'z', isU = c => c >= 'A' && c <= 'Z';
+    const run = (j, f) => { while (j < n && f(v[j])) j++; return j; };
+    while (i < n) {
+      const start = i;
+      if (isD(v[i])) i = run(i, isD);
+      else if (isL(v[i])) i = run(i, isL);
+      else if (isU(v[i])) {
+        const caps = run(i, isU); const nextLower = caps < n && isL(v[caps]);
+        i = (caps - i === 1 && nextLower) ? run(caps, isL) : (nextLower ? caps - 1 : caps);
+        if (i === start) i = start + 1;
+      } else i++;
+      const seg = v.slice(start, i); const lower = [...seg].filter(isL).length;
+      const capWord = isU(seg[0]) && lower === seg.length - 1, firstWord = start === 0 && lower === seg.length;
+      if ((capWord || firstWord) && lower >= 2) words += seg.length;
+    }
+    return words * 10 >= n * 7;
+  }
+  // Every candidate run in `text`, with a verdict and the reason for it.
+  function scan(text, s) {
+    const chars = 'A-Za-z0-9' + (s.allowDashUnderscore ? '_\\-~' : '') + (s.allowPlusSlash ? '+/=' : '');
+    // Runs are always cut on the full token alphabet, as the merged rule does, then judged.
+    const re = /[A-Za-z0-9+/_~-]+={0,2}/g; const out = [];
+    for (let m; (m = re.exec(text)); ) {
+      let start = m.index, v = m[0];
+      const lead = v.match(/^[-_~=]+/); if (lead) { start += lead[0].length; v = v.slice(lead[0].length); }
+      v = v.replace(/[-_~.]+$/, '');
+      if (!v) continue;
+      const before = text.slice(Math.max(0, start - 40), start);
+      const named = NAME_BEFORE.test(before);
+      const minLen = named ? s.namedMinLength : s.minLength, floor = named ? s.namedFloor : s.floor;
+      const core = v.replace(/=+$/, '');
+      const c = { start, end: start + v.length, value: v, named, length: core.length, entropy: entropy(core) };
+      const lineStart = text.lastIndexOf('\n', start - 1) + 1, lineEnd = (text.indexOf('\n', start) + 1 || text.length + 1) - 1;
+      const wholeLine = text.slice(lineStart, lineEnd).trim() === v;
+      const verdict = (hide, reason) => out.push({ ...c, hide, reason });
+      if (core.length < Math.min(s.minLength, s.namedMinLength)) continue; // too short to look at
+      if (core.length < minLen) { verdict(false, `shorter than ${minLen}`); continue; }
+      if (!new RegExp(`^[${chars}]+$`).test(v)) {
+        verdict(false, /[_\-~]/.test(v) && !s.allowDashUnderscore ? 'has - or _ (not allowed)' : 'has + / = (not allowed)'); continue;
+      }
+      if (s.skipHashPrefixes && (HASH_BEFORE.test(before) || HASH_INSIDE.test(v))) { verdict(false, 'after a hash prefix (sha256:, sha512-, h1:, integrity)'); continue; }
+      if (s.skipBase64Blocks && (/base64,$/.test(before) || (wholeLine && (core.length === 64 || core.length === 76)))) {
+        verdict(false, 'base64 data (image or wrapped block)'); continue;
+      }
+      if (s.skipHex && !(named && s.namedSkipsChecks) && /^[0-9a-fA-F]+$/.test(core.replace(/-/g, ''))) { verdict(false, 'hex only: a hash, SHA or ID'); continue; }
+      if (s.requireMix && !(named && s.namedSkipsChecks) && !(/[a-z]/.test(core) && /[A-Z]/.test(core) && /[0-9]/.test(core))) { verdict(false, 'not a mix of lower, upper and digits'); continue; }
+      if (s.skipNames && looksLikeName(core)) { verdict(false, 'reads as a camelCase name'); continue; }
+      if (c.entropy <= floor) { verdict(false, `entropy ${c.entropy.toFixed(2)} ≤ ${floor}`); continue; }
+      verdict(true, named ? `random after a name (≥ ${floor})` : `random (entropy above ${floor})`);
+    }
+    return out;
+  }
+  return { TODAY, scan, entropy, looksLikeName };
+})();
+
+// ---- Fake data: a seeded generator, so every run shows the same samples. ----
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const R = rng(27);
+const pick = (s, n) => Array.from({ length: n }, () => s[Math.floor(R() * s.length)]).join('');
+const AN = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+const B64 = AN + '+/', B64U = AN + '-_', HEX = '0123456789abcdef', B32 = '0123456789abcdfghijklmnpqrsvwxyz';
+const KINDS = {
+  // secrets
+  alnum32: [true, () => pick(AN, 32)], alnum40: [true, () => pick(AN, 40)],
+  urlsafe43: [true, () => pick(AN, 18) + '-' + pick(AN, 10) + '_' + pick(AN, 13)],
+  b64key40: [true, () => pick(AN, 9) + '/' + pick(AN, 14) + '+' + pick(AN, 15)],
+  hexkey32: [true, () => pick(HEX, 32)], pass16: [true, () => pick(AN, 16)], pass20sym: [true, () => pick(AN, 8) + '-' + pick(AN, 11)],
+  // not secrets
+  sha40: [false, () => pick(HEX, 40)], sha7: [false, () => pick(HEX, 7)], hex64: [false, () => pick(HEX, 64)],
+  uuid: [false, () => [8, 4, 4, 4, 12].map(n => pick(HEX, n)).join('-')], oid24: [false, () => pick(HEX, 24)],
+  pod: [false, () => pick(HEX.slice(0, 10) + 'bcdf', 9) + '-' + pick('bcdfghjklmnpqrstvwxz2456789', 5)],
+  integrity: [false, () => pick(B64, 86) + '=='], h1: [false, () => pick(B64, 43) + '='],
+  b64img: [false, () => pick(B64, 220)], nix32: [false, () => pick(B32, 32)], asset8: [false, () => pick(HEX, 8)],
+  cert64: [false, () => pick(B64, 64)], ytid: [false, () => pick(B64U, 11)],
+};
+function fill(tpl) {
+  let text = '', last = 0; const secrets = [];
+  tpl.replace(/\{(\w+)\}/g, (m, k, off) => {
+    text += tpl.slice(last, off); const [isSecret, gen] = KINDS[k]; const v = gen();
+    if (isSecret) secrets.push([text.length, text.length + v.length]);
+    text += v; last = off + m.length; return m;
+  });
+  return { text: text + tpl.slice(last), secrets };
+}
+const SAMPLES = [
+  ['git', 'Commit SHAs, short and long: nothing here is secret.', `$ git log --oneline -3
+{sha7} fix(claude): scan keys, field names and numbers
+{sha7} chore: release v0.2.0
+{sha7} feat(credentials): vendor shapes
+$ git show --stat HEAD
+commit {sha40}
+Merge: {sha7} {sha7}`],
+  ['npm', 'Lockfile integrity hashes and a resolved URL.', `$ npm install
+added 214 packages in 3s
+$ grep -A2 '"node_modules/vitepress"' package-lock.json
+      "resolved": "https://registry.npmjs.org/vitepress/-/vitepress-1.6.3.tgz",
+      "integrity": "sha512-{integrity}",
+$ go mod download -json | grep Sum
+	"Sum": "h1:{h1}",`],
+  ['docker + kubectl', 'Image digests, container IDs and pod names.', `$ docker images --digests
+REPOSITORY   TAG     DIGEST                                                                    IMAGE ID
+redact       0.2.0   sha256:{hex64}   {sha7}{sha7}
+$ kubectl get pods
+NAME                          READY   STATUS    RESTARTS   AGE
+api-{pod}                     1/1     Running   0          3d
+worker-{pod}                  1/1     Running   2          3d`],
+  ['curl + API', 'A bearer token, IDs in a JSON reply, and a key printed with no name.', `$ curl -v https://api.example.test/v1/me
+> Authorization: Bearer {urlsafe43}
+< HTTP/2 200
+{"id": "{uuid}", "org": "{oid24}", "session": "{alnum32}"}
+$ example-cli auth create
+Created. Copy it now, it won't be shown again:
+  {alnum40}`],
+  ['vault + config', 'An AWS-style secret with / and +, a hex API key, and short passwords after a name.', `$ vault kv get secret/ci
+====== Data ======
+Key       Value
+---       -----
+aws       {b64key40}
+legacy    {hexkey32}
+$ cat .netrc
+machine db.example.test login ci password {pass16}
+$ grep key= deploy.conf
+key={hexkey32}
+pwd={pass20sym}`],
+  ['build output', 'Hashed asset names, a Nix store path, a base64 image and a certificate.', `$ npm run build
+dist/assets/index-{asset8}.js    142.31 kB
+dist/assets/style-{asset8}.css    12.04 kB
+$ nix path-info nixpkgs#ripgrep
+/nix/store/{nix32}-ripgrep-14.1.1
+$ grep -o 'src="data:image/png;base64,[^"]*' report.html | head -c 240
+src="data:image/png;base64,{b64img}
+$ sed -n 2,3p ca.pem
+{cert64}
+{cert64}
+watch: https://youtu.be/{ytid}`],
+].map(([name, note, tpl]) => ({ name, note, ...fill(tpl) }));
+
+// ---- Walkthroughs ----
+const WALKS = [
+  ['Today\'s rule', 'Start where main is now: random-token as merged. Watch which secrets it misses and why.', [
+    ['Reset to today\'s rule', s => ({ ...Entropy.TODAY })],
+    ['Look at "curl + API"', null, 3], ['Look at "vault + config"', null, 4],
+  ]],
+  ['Let - and _ in', 'Most API tokens are URL-safe base64, which uses - and _. Today they are all skipped.', [
+    ['Reset to today\'s rule', s => ({ ...Entropy.TODAY })], ['Look at "curl + API"', null, 3],
+    ['Allow - and _ inside a token', s => ({ ...s, allowDashUnderscore: true })],
+    ['Check "docker + kubectl" stays clean', null, 2],
+  ]],
+  ['Let + and / in', 'AWS-style secrets are plain base64. Allowing + / = catches them, if hashes and images are still skipped.', [
+    ['Reset to today\'s rule', s => ({ ...Entropy.TODAY })], ['Look at "vault + config"', null, 4],
+    ['Allow + / = inside a token', s => ({ ...s, allowPlusSlash: true })],
+    ['Check "npm"', null, 1], ['Check "build output"', null, 5],
+    ['Stop skipping hash prefixes, to see why it matters', s => ({ ...s, skipHashPrefixes: false })], ['Look at "npm" again', null, 1],
+  ]],
+  ['Lower bar after a name', 'Short passwords and hex keys only look random when a name says so. A lower bar after key=, password or Bearer catches them.', [
+    ['Reset to today\'s rule', s => ({ ...Entropy.TODAY })], ['Look at "vault + config"', null, 4],
+    ['After a name: length 12+', s => ({ ...s, namedMinLength: 12 })],
+    ['After a name: entropy floor 3.0', s => ({ ...s, namedFloor: 3.0 })],
+    ['After a name, let hex keys count', s => ({ ...s, namedSkipsChecks: true })], ['Check "git" stays clean', null, 0],
+  ]],
+  ['Everything on', 'A candidate setting: - _ + / allowed, a lower bar after names, hashes and images skipped.', [
+    ['Apply it', s => ({ ...Entropy.TODAY, allowDashUnderscore: true, allowPlusSlash: true, namedMinLength: 12, namedFloor: 3.0, namedSkipsChecks: true })],
+    ['Walk every sample', null, 0], ['…npm', null, 1], ['…docker', null, 2], ['…curl', null, 3], ['…vault', null, 4], ['…build', null, 5],
+  ]],
+];
+
+// ---- The page (throwaway) ----
+let settings = { ...Entropy.TODAY }, current = 3, walk = 0, step = 0, lastChange = null;
+const CONTROLS = [
+  ['minLength', 'Minimum length', 12, 48, 1], ['floor', 'Entropy floor (bits per character)', 2.5, 5, 0.1],
+  ['namedMinLength', 'After a name: minimum length', 8, 48, 1], ['namedFloor', 'After a name: entropy floor', 2, 5, 0.1],
+  ['requireMix', 'Must mix lower, upper and digits'], ['allowDashUnderscore', 'Allow - and _ inside a token'],
+  ['allowPlusSlash', 'Allow + / = inside a token'], ['skipHex', 'Skip hex-only runs (hashes, SHAs, IDs)'],
+  ['skipNames', 'Skip camelCase names'], ['skipHashPrefixes', 'Skip after sha256:, sha512-, h1:, integrity'],
+  ['skipBase64Blocks', 'Skip base64 images and wrapped blocks'],
+  ['namedSkipsChecks', 'After a name, hex and lower-case-only values count too'],
+];
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function judge(sample) {
+  const cands = Entropy.scan(sample.text, settings);
+  const isSecret = c => (sample.secrets || []).some(([a, b]) => c.start < b && c.end > a);
+  for (const c of cands) c.expected = isSecret(c);
+  const misses = (sample.secrets || []).filter(([a, b]) => !cands.some(c => c.hide && c.start < b && c.end > a));
+  return { cands, misses };
+}
+function renderText(sample, j) {
+  const marks = [];
+  for (const c of j.cands) marks.push([c.start, c.end, c.hide ? `hid${sample.secrets && !c.expected ? ' fp' : ''}` : 'skip', c.reason]);
+  for (const [a, b] of j.misses) if (!marks.some(m => m[0] === a)) marks.push([a, b, 'miss', 'a secret left visible']);
+  marks.sort((x, y) => x[0] - y[0]);
+  let html = '', at = 0;
+  for (const [a, b, cls, why] of marks) {
+    if (a < at) continue; html += esc(sample.text.slice(at, a));
+    const extra = cls === 'skip' && j.misses.some(([x]) => x === a) ? ' miss' : '';
+    html += `<span class="${cls}${extra}" title="${esc(why)}">${cls.startsWith('hid') ? '[SECRET]' : esc(sample.text.slice(a, b))}</span>`; at = b;
+  }
+  return html + esc(sample.text.slice(at));
+}
+function render() {
+  let caught = 0, total = 0, fps = 0;
+  for (const s of SAMPLES) { const j = judge(s); total += s.secrets.length; caught += s.secrets.length - j.misses.length;
+    fps += j.cands.filter(c => c.hide && !c.expected).length; }
+  $('score').innerHTML = `<div>Secrets hidden <b>${caught}/${total}</b></div><div>Non-secrets hidden <b>${fps}</b></div>` +
+    (lastChange ? `<div class="changed">Just changed: ${esc(lastChange)}</div>` : '');
+  $('settings').innerHTML = CONTROLS.map(([k, label, min, max, st]) => min === undefined
+    ? `<label><input type="checkbox" data-k="${k}" ${settings[k] ? 'checked' : ''}> ${label}${settings[k] !== Entropy.TODAY[k] ? ' <span class="changed">changed</span>' : ''}</label>`
+    : `<label>${label}<input type="range" data-k="${k}" min="${min}" max="${max}" step="${st}" value="${settings[k]}"><span class="val ${settings[k] !== Entropy.TODAY[k] ? 'changed' : ''}">${settings[k]}</span></label>`).join('');
+  $('tabs').innerHTML = WALKS.map(([n], i) => `<button class="${i === walk ? 'on' : ''}" data-walk="${i}">${n}</button>`).join('');
+  const [, desc, steps] = WALKS[walk];
+  $('walk').innerHTML = `<p>${desc}</p><div class="steps">` + steps.map(([label], i) =>
+    `<button data-step="${i}" class="${i < step ? 'done' : i === step ? 'next' : ''}">${i + 1}. ${label}</button>`).join('') + '</div>';
+  $('sampleTabs').innerHTML = SAMPLES.map((s, i) => `<button class="${i === current ? 'on' : ''}" data-sample="${i}">${s.name}</button>`).join('');
+  const s = SAMPLES[current], j = judge(s);
+  $('sampleNote').textContent = s.note; $('out').innerHTML = renderText(s, j);
+  $('table').innerHTML = '<tr><th>Token</th><th>Length</th><th>Entropy</th><th>After a name</th><th>Verdict</th><th>Why</th></tr>' +
+    j.cands.map(c => { const tag = c.hide ? (c.expected ? '<span class="tag ok">hidden</span>' : '<span class="tag fp">hidden, not a secret</span>')
+      : (c.expected ? '<span class="tag miss">missed</span>' : '<span class="tag">kept</span>');
+      return `<tr><td class="tok">${esc(c.value.length > 48 ? c.value.slice(0, 45) + '…' : c.value)}</td><td>${c.length}</td><td>${c.entropy.toFixed(2)}</td><td>${c.named ? 'yes' : ''}</td><td>${tag}</td><td>${esc(c.reason)}</td></tr>`; }).join('');
+  const own = $('own').value; $('ownOut').innerHTML = own ? renderText({ text: own }, judge({ text: own })) : '';
+}
+document.addEventListener('input', e => { const k = e.target.dataset.k; if (!k) return;
+  settings = { ...settings, [k]: e.target.type === 'checkbox' ? e.target.checked : Number(e.target.value) };
+  lastChange = CONTROLS.find(c => c[0] === k)[1]; render(); });
+document.addEventListener('click', e => { const d = e.target.dataset; if (!d) return;
+  if (d.walk) { walk = +d.walk; step = 0; settings = { ...Entropy.TODAY }; lastChange = null; render(); }
+  else if (d.step) { const [label, fn, sample] = WALKS[walk][2][+d.step];
+    if (fn) { settings = fn(settings); lastChange = label; } if (sample !== undefined) current = sample;
+    step = +d.step + 1; render(); }
+  else if (d.sample) { current = +d.sample; render(); } });
+$('reset').onclick = () => { settings = { ...Entropy.TODAY }; lastChange = 'back to today\'s rule'; render(); };
+$('own').oninput = render;
+render();
+</script>
+</body>
+</html>
