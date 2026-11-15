@@ -46,7 +46,7 @@ Before Claude reads a tool result, the mod also:
 - Withholds a result whose secret sits in a number, because a number cannot hold a placeholder.
 - Withholds a result if a match in its JSON cannot be mapped back to the original fields safely.
 
-The mod passes a Bash or PowerShell command's own text to redact as `--command`, through `REDACT_COMMAND`. A `command` [override](../reference/config#overrides) then applies to that command's output alone.
+The mod passes a Bash or PowerShell command's own text to redact as `--command`, through `REDACT_COMMAND`. A `command` [override](../reference/config#overrides) then applies to that command's output alone. A command that runs more than one (`;`, `&&`, `|`, a redirect, a new line, `$(…)` or backticks) is not passed on, so an override never switches hiding off for the commands chained after it.
 
 ## Placeholders going back in
 
@@ -70,7 +70,7 @@ Write puts the real value into a file, and a later `git add` and `git commit` wo
 
 The mod does not put a value into a Bash or PowerShell command when the value holds spaces, quotes, `$`, or other shell characters. It refuses the call instead, and tells Claude to write the value to a file and read it from there. A person's name with a space in it is such a value.
 
-When a tool prints a value the mod handed it, that value comes back hidden, even where no rule would find it.
+When a tool prints a value the mod handed it, that value comes back hidden, even where no rule would find it. So does any run of 6 or more of its characters, so `cut -c1-12` or `${v:0:8}` cannot show part of it. A value the command encodes (`base64`, `xxd`, a decoded JWT) can still come back readable.
 
 ## What it misses
 

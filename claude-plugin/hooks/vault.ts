@@ -92,6 +92,38 @@ function hideKnown(text: string, all: string[], tags: Set<string>): string {
   return out
 }
 
+// A command handed a value can print part of it (`cut -c1-12`, `${v:0:8}`),
+// which no rule and no whole-value match finds. So any run of SLICE_MIN or
+// more characters taken from a handed value is hidden too. An encoded form
+// (base64, hex) still gets through.
+const SLICE_MIN = 6
+
+function hideSlices(text: string, v: string, tags: Set<string>): string {
+  if (v.length < SLICE_MIN) return text
+  const windows = new Map<string, number>()
+  for (let i = 0; i + SLICE_MIN <= v.length; i++) {
+    const w = v.slice(i, i + SLICE_MIN)
+    if (!windows.has(w)) windows.set(w, i)
+  }
+  // Cheap check first: most output holds no part of the value.
+  if (![...windows.keys()].some((w) => text.includes(w))) return text
+  const label = labelOf(byValue.get(v)) ?? 'SECRET'
+  let out = ''
+  let p = 0
+  while (p < text.length) {
+    const i = p + SLICE_MIN <= text.length ? windows.get(text.slice(p, p + SLICE_MIN)) : undefined
+    if (i === undefined) {
+      out += text[p++]
+      continue
+    }
+    let k = SLICE_MIN
+    while (p + k < text.length && i + k < v.length && text[p + k] === v[i + k]) k++
+    out += mint(label, text.slice(p, p + k), tags)
+    p += k
+  }
+  return out
+}
+
 // A pack's label can be anything (`123-customers`, `v1.2`): fold it into the
 // placeholder's shape. A label of LITERAL must not mint the hook's own tags.
 function tagLabel(label: string): string {
@@ -252,6 +284,8 @@ export async function scrub($: any, texts: string[], o: ScanOptions): Promise<{ 
     return out
   })
   // Built once all pieces minted, so a value found in one is hidden in the rest.
-  const all = knownValues(o.handed ?? new Set())
-  return { masked: minted.map((t) => hideKnown(t, all, tags)), tags }
+  const handed = o.handed ?? new Set<string>()
+  const all = knownValues(handed)
+  const hide = (t: string) => [...handed].reduce((s, v) => hideSlices(s, v, tags), hideKnown(t, all, tags))
+  return { masked: minted.map(hide), tags }
 }

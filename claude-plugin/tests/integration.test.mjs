@@ -245,3 +245,38 @@ test('placeholder text beside a value found by name stays escaped', async () => 
   const written = h.seen.at(-1).content
   assert.ok(!written.includes('firstsecret42') && written.includes(first), written)
 })
+
+test('a command override applies to a single command, never a chain', async () => {
+  const path = join(dir, 'override-config.toml')
+  writeFileSync(path, '[[override]]\ncommand = "gh pr *"\n[override.packs]\ndisable = ["identity"]\n')
+  const email = ['jane.example', 'fabrikam.test'].join('@')
+  const line = `Author: Jane Example <${email}>`
+  const h = hook(() => line, path)
+  const alone = await h.call({ tool: 'Bash', command: 'gh pr view 42' })
+  assert.ok(JSON.stringify(alone).includes(email), 'the override still applies to the command it names')
+  for (const command of [
+    'gh pr view 42 && git log -1',
+    'gh pr view 42; git log -1',
+    'gh pr view 42 | cat - ~/.gitconfig',
+    'gh pr view 42\ngit log -1',
+    'gh pr view $(git log -1)',
+    'gh pr view `git log -1`',
+    'gh pr view 42 < ~/.gitconfig',
+  ]) {
+    const r = await h.call({ tool: 'Bash', command })
+    assert.ok(!JSON.stringify(r).includes(email), `${JSON.stringify(command)} let the override through`)
+  }
+})
+
+test('a slice of a value handed to a command comes back hidden', async () => {
+  const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+  const secret = Array.from({ length: 40 }, () => abc[Math.floor(Math.random() * abc.length)]).join('')
+  const h = hook((e) => e.tool === 'Read' ? { [['pass', 'word'].join('')]: secret } : `prefix: ${secret.slice(0, 12)}\nmiddle ${secret.slice(15, 23)}.`)
+  const tag = Object.values((await h.call({ tool: 'Read', file_path: 'synthetic.json' })).result)[0]
+  const r = await h.call({ tool: 'Bash', command: `echo ${tag} | cut -c1-12` })
+  assert.equal(r.deny, undefined, JSON.stringify(r))
+  const out = JSON.stringify(r)
+  assert.ok(!out.includes(secret.slice(0, 12)), out)
+  assert.ok(!out.includes(secret.slice(15, 23)), out)
+  assert.ok(out.includes('prefix: ') && out.includes('middle '), out)
+})

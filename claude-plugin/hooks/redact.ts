@@ -60,7 +60,14 @@ const SHELL_ACTIVE: Record<string, RegExp> = {
   PowerShell: /[\s$`"'\\;&|<>()*?[\]{}#~@,%\u2013-\u2015\u2018-\u201f]|[\x00-\x1f\x7f]/,
 }
 
-const MEDIA_FILE = /\.(?:png|jpe?g|gif|webp|bmp|tiff?|heic|pdf)$/i
+// A `command` override can switch hiding off, and its glob's `*` matches
+// anything, so `gh pr view 1 && git log` would turn it on for the git log too.
+// The command is passed on only when the shell runs one command.
+const CHAINED = /[;&|<>`\r\n]|\$\(/
+const overrideCommand = (command: unknown): string | undefined =>
+  typeof command === 'string' && !CHAINED.test(command) ? command : undefined
+
+const MEDIA_FILE =/\.(?:png|jpe?g|gif|webp|bmp|tiff?|heic|pdf)$/i
 
 type WalkState = { incomplete: boolean }
 const MAX_DEPTH = 64
@@ -171,7 +178,7 @@ export const register: Register = (on, options) => {
       }
     }
     const r = await next(input)
-    const scan = { command: typeof command === 'string' ? command : undefined, handed }
+    const scan = { command: overrideCommand(command), handed }
     if (r.deny !== undefined) {
       // A refusal from beneath may quote the input it refused, real values and all.
       const d = await run($, next, binary, [r.deny], { ...scan, escape: true })
