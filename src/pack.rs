@@ -2,7 +2,7 @@
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Packs compiled into the binary, so `redact` works with no config at all.
@@ -126,7 +126,8 @@ pub struct Pack {
 }
 
 pub struct WordList {
-    /// The placeholder's label: fixed, as the name below may say what is hidden.
+    /// The placeholder's label: `ENV-VALUE` or `WORDLIST`, as the name below may
+    /// say what is hidden, unless `[labels]` asks for the name.
     pub label: String,
     /// The variable, key or file it came from, for `--explain` and `--json`.
     pub name: String,
@@ -145,6 +146,9 @@ pub struct Loaded {
     /// Packs switched off, by `[packs] disable` or their own `default = false`:
     /// listed by `redact packs`, never used to scan.
     pub off: Vec<Pack>,
+    /// `pack:rule` (or `words:NAME`) to the label it had before `[labels]`
+    /// changed it, for `--explain`.
+    pub kinds: HashMap<String, String>,
 }
 
 #[derive(Serialize)]
@@ -201,6 +205,8 @@ struct ConfigFile {
     allow: Vec<String>,
     #[serde(default)]
     packs: PackSelect,
+    #[serde(default)]
+    labels: LabelSelect,
     /// Settings that apply only on a machine, in a folder, or for a command.
     #[serde(default, rename = "override")]
     overrides: Vec<Override>,
@@ -214,6 +220,18 @@ struct PackSelect {
     enable: Vec<String>,
     #[serde(default)]
     disable: Vec<String>,
+}
+
+/// `[labels]`: what placeholders say. `style` picks the base label: `"kind"`
+/// (the rule's own label, the default), `"rule"` (the rule id, or a word
+/// list's file or variable name) or `"generic"` (`HIDDEN`). Every other key
+/// renames: a label the style gives (`SECRET = "CREDENTIAL"`), or one rule or
+/// list by what `--explain` prints (`"credentials:github-token"`, `"words:customers"`).
+#[derive(Deserialize, Default)]
+struct LabelSelect {
+    style: Option<String>,
+    #[serde(flatten)]
+    renames: BTreeMap<String, String>,
 }
 
 /// `[[override]]`: settings that apply when every condition given matches.
@@ -233,6 +251,8 @@ struct Override {
     env_files: Vec<String>,
     #[serde(default)]
     packs: PackSelect,
+    #[serde(default)]
+    labels: LabelSelect,
 }
 
 /// GitHub logins in gh's `hosts.yml`: each host's `user:`, and the names under
@@ -548,7 +568,117 @@ pub fn load(opts: &Options) -> Result<Loaded, String> {
         l.env_file(f, None, true)?;
     }
     select_packs(&mut l)?;
+    relabel(&mut l)?;
     Ok(l.loaded)
+}
+
+/// A `[labels]` key as it matches: `pack:rule` lower-cased, `words:NAME` and a
+/// label as `label_of` writes them, so `words:acme_org` finds `ACME_ORG`.
+fn label_key_of(key: &str) -> String {
+    match key.split_once(':') {
+        Some(("words", name)) => format!("words:{}", label_of(name)),
+        Some(_) => key.trim().to_lowercase(),
+        None => label_of(key),
+    }
+}
+
+/// A rule id or list name as a label in the placeholder shape: `v1.2_key` is
+/// `V1-2-KEY`, `123-customers` is `CUSTOMERS`. The Claude Code mod folds the same way.
+fn fold_label(name: &str) -> String {
+    let mut out = String::new();
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_uppercase());
+        } else if !out.is_empty() && !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    let out = out.trim_start_matches(|c: char| c.is_ascii_digit() || c == '-');
+    match out.trim_end_matches('-') {
+        "" => "HIDDEN".into(),
+        t => t.into(),
+    }
+}
+
+/// Applies `[labels]`: the style's base label for each rule and word list,
+/// then a rename of that label, then a rename of that one rule or list.
+fn relabel(l: &mut Loader) -> Result<(), String> {
+    let style = l.label_style.as_deref().unwrap_or("kind");
+    if !matches!(style, "kind" | "rule" | "generic") {
+        return Err(format!(
+            "[labels] style \"{style}\": use \"kind\", \"rule\" or \"generic\""
+        ));
+    }
+    // The shape the Claude Code mod reads back as a placeholder, and not the
+    // LITERAL tags it mints itself.
+    let shape = Regex::new(r"^[A-Za-z][A-Za-z0-9]*(?:[-_][A-Za-z0-9]+)*$").unwrap();
+    let mut renames = BTreeMap::new();
+    for (key, (written, value)) in &l.labels {
+        let label = label_of(value);
+        if !shape.is_match(value) || label == "LITERAL" {
+            return Err(format!(
+                "[labels] {written} = \"{value}\": a label is letters and digits, starts with a letter, may join words with one - or _, and is not LITERAL"
+            ));
+        }
+        renames.insert(key.as_str(), label);
+    }
+    let base = |kind: &str, rule: &str| match style {
+        "rule" => fold_label(rule),
+        "generic" => "HIDDEN".to_string(),
+        _ => kind.to_string(),
+    };
+    let mut used = HashSet::new();
+    let mut produced = HashSet::new();
+    let mut kinds = HashMap::new();
+    let mut relabel_one = |key: String, label: &mut String, rule: &str| {
+        let b = base(label, rule);
+        produced.insert(b.clone());
+        let new = match renames.get(key.as_str()) {
+            Some(l) => {
+                used.insert(key.clone());
+                l.clone()
+            }
+            None => match renames.get(b.as_str()) {
+                Some(l) => {
+                    used.insert(b.clone());
+                    l.clone()
+                }
+                None => b,
+            },
+        };
+        if new != *label {
+            kinds.insert(key, std::mem::replace(label, new));
+        }
+    };
+    let loaded = &mut l.loaded;
+    for p in loaded.packs.iter_mut().chain(loaded.off.iter_mut()) {
+        for r in &mut p.rules {
+            relabel_one(format!("{}:{}", p.id, r.id), &mut r.label, &r.id);
+        }
+    }
+    for w in &mut loaded.words {
+        relabel_one(format!("words:{}", w.name), &mut w.label, &w.name);
+    }
+    loaded.kinds = kinds;
+    // A word list or variable may be loaded on one machine and not another,
+    // as `env` may be set or not: only a rule or label that matches nothing is a typo.
+    let mut unknown: Vec<&str> = l
+        .labels
+        .iter()
+        .filter(|(k, _)| !k.starts_with("words:") && !used.contains(*k) && !produced.contains(*k))
+        .map(|(_, (written, _))| written.as_str())
+        .collect();
+    if !unknown.is_empty() {
+        unknown.sort();
+        let mut here: Vec<String> = produced.into_iter().collect();
+        here.sort();
+        return Err(format!(
+            "[labels] names no such label or pack:rule: {} (labels here: {}; `redact packs` lists the rules)",
+            unknown.join(", "),
+            here.join(", ")
+        ));
+    }
+    Ok(())
 }
 
 /// The packs folder and config file in `home`, each listed as missing when it is not there.
@@ -707,6 +837,9 @@ struct Loader {
     host: String,
     cwd: PathBuf,
     command: Option<String>,
+    /// `[labels]` from every config and matching override; a later one wins.
+    label_style: Option<String>,
+    labels: BTreeMap<String, (String, String)>,
     /// `[packs]` from every config and matching override.
     enable: HashSet<String>,
     disable: HashSet<String>,
@@ -754,15 +887,35 @@ impl Loader {
     }
 
     /// The settings a config and its matching overrides share: env, env_files,
-    /// allow and [packs].
+    /// allow, [packs] and [labels].
     fn apply(
         &mut self,
         env: &[String],
         env_files: &[String],
         allow: &[String],
         packs: &PackSelect,
+        labels: &LabelSelect,
         via: &Path,
     ) -> Result<(), String> {
+        if labels.style.is_some() || !labels.renames.is_empty() {
+            let style = labels.style.as_deref().map(|s| format!("style {s}, "));
+            self.record(
+                "labels",
+                "[labels]".into(),
+                format!(
+                    "{}{} renames",
+                    style.unwrap_or_default(),
+                    labels.renames.len()
+                ),
+                Some(via),
+            );
+        }
+        if let Some(st) = &labels.style {
+            self.label_style = Some(st.clone());
+        }
+        for (k, v) in &labels.renames {
+            self.labels.insert(label_key_of(k), (k.clone(), v.clone()));
+        }
         if !env.is_empty() {
             let (lists, missing) = env_words(env, std::env::vars());
             let total: usize = lists.iter().map(|w| w.words.len()).sum();
@@ -989,14 +1142,21 @@ impl Loader {
                     self.file(&resolve(raw, &canon), Some(&canon))?;
                 }
                 self.stack.pop();
-                self.apply(&cfg.env, &cfg.env_files, &cfg.allow, &cfg.packs, &canon)?;
+                self.apply(
+                    &cfg.env,
+                    &cfg.env_files,
+                    &cfg.allow,
+                    &cfg.packs,
+                    &cfg.labels,
+                    &canon,
+                )?;
                 if cfg.me {
                     self.me(&canon);
                 }
                 for o in &cfg.overrides {
                     if let Some(why) = self.matches(o) {
                         self.record("override", why, "applies".into(), Some(&canon));
-                        self.apply(&o.env, &o.env_files, &o.allow, &o.packs, &canon)?;
+                        self.apply(&o.env, &o.env_files, &o.allow, &o.packs, &o.labels, &canon)?;
                     }
                 }
             }
@@ -1118,7 +1278,8 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             ));
         }
         rules.push(Rule {
-            // Not the id: `acme-api-key` would say whose key it is.
+            // Not the id: `acme-api-key` would say whose key it is, unless
+            // `[labels] style = "rule"` asks for it.
             label: label_of(r.label.as_deref().unwrap_or("SECRET")),
             id: r.id,
             description: r.description,

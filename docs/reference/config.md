@@ -67,6 +67,7 @@ disable = ["identity"]
 | `me` | Hide your git `user.name` and `user.email`, and your GitHub logins | [Hide yourself](../guide/me) |
 | `allow` | Values never to hide, matched in any case. `$NAME` reads one from an environment variable | [Allow](#allow) |
 | `[packs]` | `enable` and `disable` lists of pack ids. `disable` also takes one rule as `pack:rule` | [Packs](#packs) |
+| `[labels]` | What placeholders say: a `style`, and renames of a label, a rule, or a word list | [Labels](#labels) |
 | `[[override]]` | Settings for one machine, folder, or command | [Overrides](#overrides) |
 
 In a symlinked config, an `import` path is relative to the file the link points to.
@@ -99,6 +100,31 @@ disable = ["gcp"]
 
 `disable` wins over `enable`. A name that matches no pack and no `pack:rule` is an error, and the error lists the packs that exist. `redact packs` also shows switched-off packs, marked `off`.
 
+## Labels
+
+A placeholder's label says what kind of thing it hides, such as `[SECRET-…]` or `[PERSON-…]`. [Labels](../packs/#labels) lists them. `[labels]` changes what they say. Leave it out and nothing changes.
+
+```toml
+[labels]
+style = "generic"                          # every placeholder is [HIDDEN-…]
+HIDDEN = "REDACTED"                        # ...or rather [REDACTED-…]
+"credentials:github-token" = "GH-TOKEN"    # except GitHub tokens
+"words:customers" = "CUSTOMER"             # and the customers.txt list
+```
+
+| Key | What it does |
+| :- | :- |
+| `style` | The label each placeholder starts from. `"kind"`, the default, is the rule's own label. `"rule"` is the rule id (`[GITHUB-TOKEN-…]`), or a word list's file name or a variable's name. `"generic"` is `HIDDEN` |
+| A label | Renames that label, as the style gives it: `SECRET = "CREDENTIAL"` |
+| `pack:rule` | Renames one rule, as `redact scan --explain` prints it: `"credentials:github-token"`. `--explain` then adds the label it had before, as `(was SECRET)` |
+| `words:name` | Renames one word list, `env` variable, or dotenv key, as `--explain` prints it: `"words:customers"`, `"words:ACME_ORG"` |
+
+The most specific key wins: `pack:rule` or `words:name`, then a label, then the style. Keys match in any case.
+
+A label is letters and digits, starts with a letter, may join words with one `-` or `_` (`GH-TOKEN`), and is not `LITERAL`, which the Claude Code mod keeps for itself. Anything else is an error. In `"rule"` style, a rule id or file name that does not fit is folded to fit: `v1.2_key` becomes `V1-2-KEY`. So is a key that names no label the style gives and no `pack:rule`, and the error lists the labels that exist. A `words:` key that matches nothing is not an error, as a variable can be set on one machine and not another.
+
+`"rule"` style and `words:` keys put a name in every placeholder. A file name such as `acme-customers.txt` can say what the list hides, so use them only for names you are happy for the model to see.
+
 ## Overrides
 
 An `[[override]]` applies its settings only when every condition it gives matches. Each condition is a glob, in which `*` matches anything:
@@ -109,7 +135,7 @@ An `[[override]]` applies its settings only when every condition it gives matche
 | `dir` | The folder redact runs in, and every folder below it. `~/` is your home folder |
 | `command` | The command named by `--command` or `REDACT_COMMAND` |
 
-An override with no condition always applies. An override can set `env`, `env_files`, `allow`, and `[override.packs]`, and each one adds to the settings before it. Overrides apply in file order, after the top-level settings. `redact config ls` lists each override that applied, and why.
+An override with no condition always applies. An override can set `env`, `env_files`, `allow`, `[override.packs]`, and `[override.labels]`, and each one adds to the settings before it. In `[override.labels]`, a key replaces the same key set before it. Overrides apply in file order, after the top-level settings. `redact config ls` lists each override that applied, and why.
 
 redact cannot see the command whose output it reads. A hook or an alias that knows the command passes it on:
 

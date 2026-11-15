@@ -1063,6 +1063,147 @@ mod tests {
         assert_eq!(pack::entropy("aabb"), 1.0);
     }
 
+    /// `text` masked under a config that imports a small pack (a SECRET rule
+    /// and a PERSON rule) and a `customers.txt` word list, then adds `labels`.
+    fn relabelled(labels: &str, command: Option<&str>, text: &str) -> Result<String, String> {
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let d = tmp(&format!(
+            "labels-{}",
+            N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::write(d.join("p.toml"), "schema_version = 1\nid = \"p\"\n[[rules]]\nid = \"acme-key\"\nregex = '(zqxkey[0-9]+)'\nsecretGroup = 1\nlabel = \"SECRET\"\n[[rules]]\nid = \"owner\"\nregex = 'owner=(\\w+)'\nsecretGroup = 1\nlabel = \"PERSON\"\n").unwrap();
+        std::fs::write(d.join("customers.txt"), "Northwind Traders\n").unwrap();
+        std::fs::write(
+            d.join("config.toml"),
+            format!("import = [\"p.toml\", \"customers.txt\"]\n{labels}"),
+        )
+        .unwrap();
+        let loaded = pack::load(&pack::Options {
+            files: vec![d.join("config.toml")],
+            builtin: false,
+            user: false,
+            config: None,
+            env_files: vec![],
+            command: command.map(String::from),
+            cwd: None,
+            host: None,
+        });
+        std::fs::remove_dir_all(&d).unwrap();
+        let loaded = loaded?;
+        let out = mask(text, &scan(text, &loaded)?, &mut Tagger::new(None)?);
+        Ok(blank_tags(&out))
+    }
+
+    const LABEL_TEXT: &str = "key zqxkey1 owner=quillq ship to Northwind Traders";
+
+    #[test]
+    fn labels_default_to_kinds() {
+        assert_eq!(
+            relabelled("", None, LABEL_TEXT).unwrap(),
+            "key [SECRET-…] owner=[PERSON-…] ship to [WORDLIST-…]"
+        );
+    }
+
+    #[test]
+    fn labels_style_generic_hides_everything_as_hidden() {
+        assert_eq!(
+            relabelled("[labels]\nstyle = \"generic\"\n", None, LABEL_TEXT).unwrap(),
+            "key [HIDDEN-…] owner=[HIDDEN-…] ship to [HIDDEN-…]"
+        );
+    }
+
+    #[test]
+    fn labels_style_rule_names_the_rule_or_list() {
+        assert_eq!(
+            relabelled("[labels]\nstyle = \"rule\"\n", None, LABEL_TEXT).unwrap(),
+            "key [ACME-KEY-…] owner=[OWNER-…] ship to [CUSTOMERS-…]"
+        );
+    }
+
+    #[test]
+    fn labels_rename_a_kind_and_name_one_rule_or_list() {
+        let cfg = "[labels]\nSECRET = \"credential\"\n\"p:owner\" = \"ACCOUNT-OWNER\"\n\"words:customers\" = \"CUSTOMER\"\n";
+        assert_eq!(
+            relabelled(cfg, None, LABEL_TEXT).unwrap(),
+            "key [CREDENTIAL-…] owner=[ACCOUNT-OWNER-…] ship to [CUSTOMER-…]"
+        );
+        // A rename applies to what the style gives, so it can rename HIDDEN too.
+        let cfg =
+            "[labels]\nstyle = \"generic\"\nHIDDEN = \"REDACTED\"\n\"p:acme-key\" = \"KEY\"\n";
+        assert_eq!(
+            relabelled(cfg, None, LABEL_TEXT).unwrap(),
+            "key [KEY-…] owner=[REDACTED-…] ship to [REDACTED-…]"
+        );
+    }
+
+    #[test]
+    fn labels_in_an_override_apply_only_when_it_matches() {
+        let cfg = "[[override]]\ncommand = \"gh *\"\n[override.labels]\nstyle = \"generic\"\n";
+        assert_eq!(
+            relabelled(cfg, Some("gh pr view"), LABEL_TEXT).unwrap(),
+            "key [HIDDEN-…] owner=[HIDDEN-…] ship to [HIDDEN-…]"
+        );
+        assert_eq!(
+            relabelled(cfg, Some("git log"), LABEL_TEXT).unwrap(),
+            "key [SECRET-…] owner=[PERSON-…] ship to [WORDLIST-…]"
+        );
+    }
+
+    #[test]
+    fn labels_style_rule_folds_odd_names_into_the_placeholder_shape() {
+        let d = tmp("labels-fold");
+        std::fs::write(d.join("p.toml"), "schema_version = 1\nid = \"p\"\n[[rules]]\nid = \"v1.2_key\"\nregex = '(zqxkey[0-9]+)'\nsecretGroup = 1\n").unwrap();
+        std::fs::write(d.join("123-customers.txt"), "Northwind Traders\n").unwrap();
+        std::fs::write(
+            d.join("config.toml"),
+            "import = [\"p.toml\", \"123-customers.txt\"]\n[labels]\nstyle = \"rule\"\n",
+        )
+        .unwrap();
+        let loaded = only(&[d.join("config.toml")]);
+        std::fs::remove_dir_all(&d).unwrap();
+        let loaded = loaded.unwrap();
+        let text = "key zqxkey1 ship to Northwind Traders";
+        let out = mask(
+            text,
+            &scan(text, &loaded).unwrap(),
+            &mut Tagger::new(None).unwrap(),
+        );
+        assert_eq!(blank_tags(&out), "key [V1-2-KEY-…] ship to [CUSTOMERS-…]");
+        // --explain says what each label was before [labels] changed it.
+        assert_eq!(
+            loaded.kinds.get("p:v1.2_key").map(String::as_str),
+            Some("SECRET")
+        );
+        assert_eq!(
+            loaded.kinds.get("words:123-CUSTOMERS").map(String::as_str),
+            Some("WORDLIST")
+        );
+    }
+
+    #[test]
+    fn bad_labels_settings_are_errors() {
+        for (cfg, says) in [
+            ("[labels]\nstyle = \"fancy\"\n", "style"),
+            ("[labels]\nSECRET = \"1KEY\"\n", "1KEY"),
+            ("[labels]\nSECRET = \"LITERAL\"\n", "LITERAL"),
+            ("[labels]\nSECRET = \"a b\"\n", "a b"),
+            ("[labels]\nSECRET = \"A__B\"\n", "A__B"),
+            ("[labels]\nSECRET = \"A-_B\"\n", "A-_B"),
+            ("[labels]\nSECRET = \"KEY-\"\n", "KEY-"),
+            ("[labels]\n\"p:no-such-rule\" = \"X\"\n", "p:no-such-rule"),
+            ("[labels]\nSECRETS = \"X\"\n", "SECRETS"),
+        ] {
+            let err = relabelled(cfg, None, LABEL_TEXT).unwrap_err();
+            assert!(
+                err.contains("[labels]") && err.contains(says),
+                "{cfg}: {err}"
+            );
+        }
+        // A word list or variable that is not loaded here is not an error: an
+        // unset variable is not one either.
+        assert!(relabelled("[labels]\n\"words:ACME_ORG\" = \"ORG\"\n", None, LABEL_TEXT).is_ok());
+    }
+
     #[test]
     fn a_rule_without_a_label_hides_as_secret_not_its_id() {
         let d = tmp("nolabel");

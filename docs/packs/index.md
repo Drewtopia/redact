@@ -37,6 +37,8 @@ A label says what kind of thing a placeholder hides, so a model can tell a perso
 | `WORDLIST` | A line from one of your word lists |
 | `ME-NAME`, `ME-EMAIL`, `ME-GITHUB` | You, with [`me = true`](../guide/me) |
 
+To change what they say, for example `[HIDDEN-…]` everywhere or a label of your own for one rule, see [`[labels]`](../reference/config#labels).
+
 ## Your own packs
 
 Every `.toml` and `.txt` file in `~/.config/redact/packs/` loads, and so does anything your config `import`s. See [Writing a pack](./writing).
