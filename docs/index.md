@@ -10,6 +10,9 @@ hero:
       text: Get started
       link: /guide/getting-started
     - theme: alt
+      text: See it work
+      link: /guide/see-it-work
+    - theme: alt
       text: What it hides
       link: /packs/
 
