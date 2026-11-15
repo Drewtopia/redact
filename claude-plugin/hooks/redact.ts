@@ -93,6 +93,8 @@ const FILE_EXT = /\.(?:json|ya?ml|toml|txt|md|csv|xml|html?|js|ts|mjs|py|sh|ps1|
 
 type HostCheck = { unlisted: string[]; noHost: boolean }
 
+const PLACEHOLDER_LABEL = 'redacted-value'
+
 function hostOf(authority: string): string {
   const h = authority.slice(authority.lastIndexOf('@') + 1).toLowerCase()
   return h.startsWith('[') ? h.slice(0, h.indexOf(']') + 1) : h.replace(/:\d*$/, '')
@@ -107,12 +109,13 @@ function checkHosts(command: string, allowed: string[]): HostCheck {
   // so the text is read as written, with them removed, and with them as spaces.
   // A placeholder reads as one host label: its hex (`[SECRET-12345678]`) is
   // not an address, but `[SECRET-…].evil.test` sends the value as a DNS name.
-  const bare = command.replace(/\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\]/g, 'x')
+  // A name holding one is always a host, even one ending like a file (`.sh`).
+  const bare = command.replace(/\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\]/g, PLACEHOLDER_LABEL)
   for (const text of [bare, bare.replace(/["'`\\]/g, ''), bare.replace(/["'`\\]/g, ' ')]) {
     for (const m of text.matchAll(URL)) if (m[1]) hosts.add(hostOf(m[1]))
     for (const m of text.matchAll(ALWAYS_HOST)) hosts.add(hostOf(m[1] ?? m[2] ?? m[3] ?? ''))
     for (const m of text.replace(URL, ' ').matchAll(ANY_HOST)) {
-      if (m[1] && (m[2] || !FILE_EXT.test(m[1]))) hosts.add(hostOf(m[1]))
+      if (m[1] && (m[2] || m[1].toLowerCase().includes(PLACEHOLDER_LABEL) || !FILE_EXT.test(m[1]))) hosts.add(hostOf(m[1]))
     }
     if (!NETWORK_TOOL.test(text)) continue
     tool = true
