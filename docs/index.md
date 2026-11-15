@@ -29,3 +29,5 @@ features:
 ::: warning Work in progress
 redact hides a lot, but not everything, and it will miss things. Check its output before you share anything that matters, and do not rely on it as your only safeguard.
 :::
+
+[gone](./no-such-page)
