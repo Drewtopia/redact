@@ -812,6 +812,188 @@ mod tests {
         hides(&short, &short[short.len() - 12..], "CLIENT-SECRET");
     }
 
+    /// What one built-in rule, `pack:rule`, hides in `text` when it runs alone.
+    fn found_by(id: &str, text: &str) -> Vec<String> {
+        let (pack_id, rule_id) = id.split_once(':').unwrap();
+        let mut loaded = pack::load(&pack::Options {
+            files: vec![],
+            builtin: true,
+            user: false,
+            config: None,
+            env_files: vec![],
+            command: None,
+            cwd: None,
+            host: None,
+        })
+        .unwrap();
+        // `pii` is off by default; its rules are tested here too.
+        loaded.packs.append(&mut loaded.off);
+        loaded.packs.retain(|p| p.id == pack_id);
+        for p in &mut loaded.packs {
+            p.rules.retain(|r| r.id == rule_id);
+        }
+        let n: usize = loaded.packs.iter().map(|p| p.rules.len()).sum();
+        assert_eq!(n, 1, "no rule {id}");
+        scan(text, &loaded)
+            .unwrap()
+            .iter()
+            .map(|s| text[s.start..s.end].to_string())
+            .collect()
+    }
+
+    #[test]
+    fn entra_client_secret_after_a_delimiter() {
+        let rest = format!("8{}{}", "Q~", body(34));
+        for first in [".bc", "~bc", "-bc", "abc"] {
+            let key = format!("{first}{rest}");
+            for text in [
+                key.clone(),
+                format!("x={key}"),
+                format!("\"{key}\""),
+                format!("line\\n{key}"),
+            ] {
+                assert_eq!(
+                    found_by("credentials:entra-client-secret", &text),
+                    [key.as_str()],
+                    "{text}"
+                );
+            }
+        }
+        // End to end: each under its own placeholder, the `\n` still shown.
+        assert_eq!(azure(&format!("x=.bc{rest}")), "x=[CLIENT-SECRET-…]");
+        assert_eq!(
+            azure(&format!("line\\nabc{rest}")),
+            "line\\n[CLIENT-SECRET-…]"
+        );
+        let gh = format!("gh{}_{}", "p", body(36));
+        assert_eq!(azure(&format!("log\\n{gh}")), "log\\n[TOKEN-…]");
+    }
+
+    #[test]
+    fn shape_rules_start_after_an_escaped_newline_not_inside_a_word() {
+        // (rule, value, the part it hides: empty for all of it). Keys are split
+        // so no key-shaped string sits in the repo; the IBAN is the textbook example.
+        let jwt = format!(
+            "ey{}.ey{}.{}",
+            "J".to_owned() + &body(12),
+            "J".to_owned() + &body(12),
+            body(20)
+        );
+        let cases: Vec<(&str, String, String)> = vec![
+            ("credentials:jwt", jwt.clone(), jwt),
+            (
+                "credentials:github-token",
+                format!("gh{}_{}", "p", body(36)),
+                String::new(),
+            ),
+            (
+                "credentials:ai-key",
+                format!("sk-{}-{}", "ant", body(30)),
+                String::new(),
+            ),
+            (
+                "credentials:aws-key",
+                format!("AK{}", "IA2345ABCDEFGHJKLM"),
+                String::new(),
+            ),
+            (
+                "credentials:vendor-key",
+                format!("xo{}-{}", "xb", body(24)),
+                String::new(),
+            ),
+            (
+                "credentials:gitlab-token",
+                format!("gl{}-{}", "pat", body(20)),
+                String::new(),
+            ),
+            (
+                "credentials:google-oauth-secret",
+                format!("GOC{}-{}", "SPX", body(28)),
+                String::new(),
+            ),
+            (
+                "credentials:google-refresh-token",
+                format!("1//0{}", body(40)),
+                String::new(),
+            ),
+            (
+                "credentials:entra-client-secret",
+                format!("abc8{}{}", "Q~", body(34)),
+                String::new(),
+            ),
+            (
+                "credentials:url-password",
+                "https://app:hunter2pass@db.example.com".into(),
+                "hunter2pass".into(),
+            ),
+            (
+                "gcp:access-token",
+                format!("ya29.{}", body(30)),
+                String::new(),
+            ),
+            (
+                "gcp:project-path",
+                "projects/bluefinq-prod-45/x".into(),
+                "bluefinq-prod-45".into(),
+            ),
+            ("pii:iban", "GB82WEST12345698765432".into(), String::new()),
+            ("pii:uk-nino", "AB123456C".into(), String::new()),
+        ];
+        for (rule, value, hidden) in cases {
+            let hidden = if hidden.is_empty() {
+                value.clone()
+            } else {
+                hidden
+            };
+            // `uk-nino` runs only beside a clue word.
+            let clue = if rule == "pii:uk-nino" {
+                "NI number "
+            } else {
+                ""
+            };
+            let text = format!("{clue}log\\n{value}");
+            assert_eq!(found_by(rule, &text), [hidden.as_str()], "{text}");
+            let out = text.replace(&hidden, "");
+            assert!(out.starts_with(&format!("{clue}log\\n")), "{rule}: {out}");
+            // A letter or `_` before it makes it part of a longer word, except
+            // that `xhttps://` is a scheme too, so its password is still one.
+            let befores: &[&str] = if rule == "credentials:url-password" {
+                &["_"]
+            } else {
+                &["x", "_"]
+            };
+            for before in befores {
+                let text = format!("{clue}{before}{value}");
+                assert!(found_by(rule, &text).is_empty(), "{text}");
+            }
+        }
+    }
+
+    #[test]
+    fn entra_client_secret_hides_a_longer_token_whole() {
+        let key = format!("abc8{}{}", "Q~", body(34));
+        let rule = "credentials:entra-client-secret";
+        // Never `[CLIENT-SECRET-…]XYZW`: the token is hidden to its end.
+        for tail in ["XYZW", ".XYZW", "_x", "...", "--"] {
+            let text = format!("{key}{tail}");
+            assert_eq!(found_by(rule, &text), [text.as_str()], "{text}");
+        }
+        for text in [
+            format!("\"{key}\""),
+            format!("{key}\\n"),
+            format!("{key} ok"),
+        ] {
+            assert_eq!(found_by(rule, &text), [key.as_str()], "{text}");
+        }
+        // Hidden before this rule had delimiters, so still hidden.
+        let text = format!("foo{}", &key[..]).replacen("abc", ".bc", 1);
+        assert_eq!(found_by(rule, &text), [&text[3..]], "{text}");
+        for before in ["x", "_"] {
+            let text = format!("{before}{key}");
+            assert!(found_by(rule, &text).is_empty(), "{text}");
+        }
+    }
+
     #[test]
     fn not_a_name_tells_camel_case_from_random() {
         let c = pack::Check::NotAName;
