@@ -1,6 +1,6 @@
 # Keeps one release PR open that bumps Cargo.toml, Cargo.lock and plugin.json and
 # adds to CHANGELOG.md. Merging it tags a draft release, and the build below fills it.
-# release-please acts as the redact-release GitHub App, not GITHUB_TOKEN: GitHub runs
+# release-please acts as the drewtopia-release GitHub App, not GITHUB_TOKEN: GitHub runs
 # no workflows on a PR that GITHUB_TOKEN opens, so main's required checks would never
 # report on the release PR. Repo variable RELEASE_APP_CLIENT_ID and secret
 # RELEASE_APP_PRIVATE_KEY hold the App's credentials.
