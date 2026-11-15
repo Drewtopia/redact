@@ -13,7 +13,7 @@ cargo test                       # the scanner, the packs and the generated docs
 claude plugin test claude-plugin # the Claude Code mod (needs Claude Code, no account)
 ```
 
-CI also runs `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`.
+CI also runs `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`, and builds the docs (`cd docs && npm ci && npx vitepress build`), which fails on a dead link.
 
 ## Add a rule
 
