@@ -6,8 +6,8 @@ Google access tokens, and project IDs in key files, resource paths and --project
 
 | Rule | Hides as | What it finds | Hidden everywhere after |
 | :- | :- | :- | :- |
-| `access-token` | `[TOKEN-…]` | A Google OAuth access token (ya29.) |  |
+| `access-token` | `[SECRET-…]` | A Google OAuth access token (ya29.) |  |
 | `project-id-field` | `[PROJECT-…]` | project_id and projectId in a service account key file or API output | yes |
 | `project-path` | `[PROJECT-…]` | The project in a resource path: projects/&lt;id&gt;/... | yes |
 | `project-flag` | `[PROJECT-…]` | The project after --project (gcloud) | yes |
-| `private-key-id` | `[KEY-ID-…]` | private_key_id in a service account key file |  |
+| `private-key-id` | `[ID-…]` | private_key_id in a service account key file |  |

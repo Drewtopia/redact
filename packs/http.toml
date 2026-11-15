@@ -9,7 +9,7 @@ id = "cookie"
 description = "The value of a Cookie or Set-Cookie header (curl -v prefixes > and < are fine)"
 regex = '''(?im)^[<>*]?[ \t]*(?:cookie|set-cookie)[ \t]*:[ \t]*(.+?)[ \t]*$'''
 secretGroup = 1
-label = "COOKIE"
+label = "SECRET"
 keywords = ["cookie"]
 
 [[rules]]
@@ -17,4 +17,4 @@ id = "key-header"
 description = "API key headers: Ocp-Apim-Subscription-Key, x-functions-key, x-api-key, api-key, x-auth-token, x-goog-api-key, Proxy-Authorization"
 regex = '''(?im)^[<>*]?[ \t]*(?:ocp-apim-subscription-key|x-functions-key|x-api-key|api-key|x-auth-token|x-goog-api-key|proxy-authorization)[ \t]*:[ \t]*(.+?)[ \t]*$'''
 secretGroup = 1
-label = "API-KEY"
+label = "SECRET"
