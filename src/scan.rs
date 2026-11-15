@@ -829,8 +829,11 @@ mod tests {
         // `pii` is off by default; its rules are tested here too.
         loaded.packs.append(&mut loaded.off);
         loaded.packs.retain(|p| p.id == pack_id);
-        loaded.packs[0].rules.retain(|r| r.id == rule_id);
-        assert_eq!(loaded.packs[0].rules.len(), 1, "no rule {id}");
+        for p in &mut loaded.packs {
+            p.rules.retain(|r| r.id == rule_id);
+        }
+        let n: usize = loaded.packs.iter().map(|p| p.rules.len()).sum();
+        assert_eq!(n, 1, "no rule {id}");
         scan(text, &loaded)
             .unwrap()
             .iter()
@@ -867,7 +870,8 @@ mod tests {
 
     #[test]
     fn shape_rules_start_after_an_escaped_newline_not_inside_a_word() {
-        // (rule, text to find, the part it hides). Split so no key-shaped string sits in the repo.
+        // (rule, value, the part it hides: empty for all of it). Keys are split
+        // so no key-shaped string sits in the repo; the IBAN is the textbook example.
         let jwt = format!(
             "ey{}.ey{}.{}",
             "J".to_owned() + &body(12),
@@ -965,22 +969,27 @@ mod tests {
     }
 
     #[test]
-    fn entra_client_secret_is_not_cut_out_of_a_longer_token() {
+    fn entra_client_secret_hides_a_longer_token_whole() {
         let key = format!("abc8{}{}", "Q~", body(34));
         let rule = "credentials:entra-client-secret";
-        for text in [
-            format!("x{key}"),
-            format!("{key}XYZW"),
-            format!("{key}.XYZW"),
-        ] {
-            assert!(found_by(rule, &text).is_empty(), "{text}");
+        // Never `[CLIENT-SECRET-…]XYZW`: the token is hidden to its end.
+        for tail in ["XYZW", ".XYZW", "_x", "...", "--"] {
+            let text = format!("{key}{tail}");
+            assert_eq!(found_by(rule, &text), [text.as_str()], "{text}");
         }
         for text in [
-            format!("it is {key}."),
+            format!("\"{key}\""),
             format!("{key}\\n"),
-            format!("{key}~"),
+            format!("{key} ok"),
         ] {
             assert_eq!(found_by(rule, &text), [key.as_str()], "{text}");
+        }
+        // Hidden before this rule had delimiters, so still hidden.
+        let text = format!("foo{}", &key[..]).replacen("abc", ".bc", 1);
+        assert_eq!(found_by(rule, &text), [&text[3..]], "{text}");
+        for before in ["x", "_"] {
+            let text = format!("{before}{key}");
+            assert!(found_by(rule, &text).is_empty(), "{text}");
         }
     }
 
