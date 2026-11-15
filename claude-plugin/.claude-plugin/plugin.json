@@ -21,6 +21,12 @@
       "description": "Tools that run on this machine and may receive the real value behind a placeholder, separated by commas. Never list a tool that sends its input to another model or the network (Agent, WebFetch, WebSearch)",
       "default": "Bash,PowerShell,Write,Edit,MultiEdit,NotebookEdit,Read,Glob,Grep"
     },
+    "restoreHosts": {
+      "type": "string",
+      "title": "Hosts that get real values",
+      "description": "Hosts a shell command may send a real value to, separated by commas; each covers its subdomains (api.example.com). Empty: no real value goes into a command that names a URL or host",
+      "default": ""
+    },
     "notify": {
       "type": "boolean",
       "title": "Say when something is hidden",

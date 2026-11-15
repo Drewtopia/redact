@@ -97,6 +97,10 @@ function hideKnown(text: string, all: string[], tags: Set<string>): string {
 // more characters taken from a handed value is hidden too. An encoded form
 // (base64, hex) still gets through.
 const SLICE_MIN = 6
+// Every value handed to a tool this session: a slice can come back later
+// (`printf %s [SECRET-…] > f`, then `cut -c1-12 f`).
+const handedEver = new Set<string>()
+const KINDS = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/]
 
 function hideSlices(text: string, v: string, tags: Set<string>): string {
   if (v.length < SLICE_MIN) return text
@@ -118,7 +122,15 @@ function hideSlices(text: string, v: string, tags: Set<string>): string {
     }
     let k = SLICE_MIN
     while (p + k < text.length && i + k < v.length && text[p + k] === v[i + k]) k++
-    out += mint(label, text.slice(p, p + k), tags)
+    const run = text.slice(p, p + k)
+    // One kind of character (`passwo`, `123456`) reads as a word or a
+    // number, not a piece of a token: a human password must not hide every
+    // later `password`.
+    if (KINDS.filter((re) => re.test(run)).length < 2) {
+      out += text[p++]
+      continue
+    }
+    out += mint(label, run, tags)
     p += k
   }
   return out
@@ -286,6 +298,7 @@ export async function scrub($: any, texts: string[], o: ScanOptions): Promise<{ 
   // Built once all pieces minted, so a value found in one is hidden in the rest.
   const handed = o.handed ?? new Set<string>()
   const all = knownValues(handed)
-  const hide = (t: string) => [...handed].reduce((s, v) => hideSlices(s, v, tags), hideKnown(t, all, tags))
+  for (const v of handed) if (v.length >= SLICE_MIN) handedEver.add(v)
+  const hide = (t: string) => [...handedEver].reduce((s, v) => hideSlices(s, v, tags), hideKnown(t, all, tags))
   return { masked: minted.map(hide), tags }
 }

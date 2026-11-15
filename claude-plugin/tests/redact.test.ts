@@ -46,8 +46,8 @@ test('a secret in Bash output comes back as a placeholder, and goes back in for 
   const tag = out.match(TAG)?.[0]
   expect(tag).toBeDefined()
 
-  await call($, { tool: 'Bash', command: `curl -H x:${tag} example.test` })
-  expect(seen[1].command).toBe(`curl -H x:${TOKEN} example.test`)
+  await call($, { tool: 'Bash', command: `./deploy.sh -H x:${tag}` })
+  expect(seen[1].command).toBe(`./deploy.sh -H x:${TOKEN}`)
 
   // A commit message keeps the placeholder: it would leave the machine.
   await call($, { tool: 'Bash', command: `git commit -m "rotate ${tag}"` })
@@ -58,8 +58,11 @@ test('PowerShell gets real values, but not into git and not with PowerShell synt
   const seen = tools(on, (e) => (e.command === 'cat .env' ? `TOKEN=${TOKEN}\nTOKEN=me@example.test\n` : 'ok'))
   const [tag, at] = String((await call($, { tool: 'PowerShell', command: 'cat .env' })).result).match(new RegExp(TAG, 'g')) ?? []
 
-  await call($, { tool: 'PowerShell', command: `Invoke-RestMethod -Headers @{x='${tag}'} example.test` })
+  await call($, { tool: 'PowerShell', command: `./deploy.ps1 -Key ${tag}` })
   expect(seen[1].command).toContain(TOKEN)
+  // restoreHosts is empty by default: no real value goes to the network.
+  expect((await call($, { tool: 'PowerShell', command: `Invoke-RestMethod -Headers @{x='${tag}'} https://example.test` })).deny ?? '').toContain('restoreHosts')
+  expect(seen.length).toBe(2)
   await call($, { tool: 'PowerShell', command: `git commit -m "rotate ${tag}"` })
   expect(seen[2].command).toContain(tag)
 
