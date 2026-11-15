@@ -4,7 +4,7 @@ redact works with anything that prints text: it reads stdin and writes stdout. T
 
 | Tool | What the page shows |
 | :- | :- |
-| [Claude Code](./claude-code) | A mod that masks everything Claude reads, and puts real values back in commands |
+| [Claude Code](./claude-code) | A mod that masks prompts, tool results, CLAUDE.md and subagent tasks, and puts real values back in local commands |
 | [Codex CLI](./codex) | A hook that masks tool output |
 | [Chat windows](./clipboard) | Masking what you paste |
 | [Git hooks and CI](./git-ci) | Failing a commit or a build that would leak |

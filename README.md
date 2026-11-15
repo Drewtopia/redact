@@ -112,7 +112,7 @@ env_files = ["~/work/.env"]
 
 `me` asks git for your `user.name` and `user.email` (in the repo you run it from, and globally: a work email set by an `includeIf` counts when you run redact inside that repo) and reads your GitHub logins from gh's `hosts.yml`. They are hidden everywhere as `[ME-NAME-…]`, `[ME-EMAIL-…]` and `[ME-GITHUB-…]`, so your username stops showing in GitHub URLs and remotes. Nothing to keep in sync: change your git name and redact follows.
 
-`env` hides values that anything put in the environment, from your shell profile to a secrets manager, without redact reading that tool's files. Examples: [fnox](https://drewtopia.github.io/redact/integrations/fnox), [mise](https://drewtopia.github.io/redact/integrations/mise).
+`env` hides the values of the variables you name, whatever set them, from your shell profile to a secrets manager, without redact reading that tool's files. redact must see the variables, so run it under the tool that sets them. Examples: [fnox](https://drewtopia.github.io/redact/integrations/fnox), [mise](https://drewtopia.github.io/redact/integrations/mise).
 
 `env_files` hides each value in a dotenv file, including the private keys dotenvx keeps in `.env.keys`. It skips empty values, `encrypted:` values, `DOTENV_PUBLIC_KEY*`, and settings that would wreck ordinary text if hidden everywhere: numbers, `true`/`false`, `localhost`, `development` and the like. A file that is not there is listed by `redact config ls`; `--env-file <path>` makes a missing file an error.
 
