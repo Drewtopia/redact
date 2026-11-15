@@ -111,6 +111,19 @@ test('an errored result is withheld as a refusal when the scan fails', async ($,
   expect(JSON.stringify(r)).not.toContain(TOKEN)
 })
 
+// Core reports a failed Bash command with its error text as `result`, a string
+// where the tool's output object goes. Handing that back as a result breaks
+// the tool's output shape, so the masked error comes back as a refusal.
+test('a failed command whose error holds a secret comes back masked', async ($, on) => {
+  fakeRedact(on)
+  const error = `Exit code 1\nTOKEN=${TOKEN}\ncat: sample.txt: No such file or directory`
+  on('tool.call', () => ({ isError: true, result: error, text: error }))
+  const r = await call($, { tool: 'Bash', command: 'cat .env sample.txt' })
+  expect(JSON.stringify(r)).not.toContain(TOKEN)
+  expect(r.deny).toMatch(TAG)
+  expect(r.deny).toContain('No such file or directory')
+})
+
 test('a result nested too deep to scan is withheld, even with nothing else hidden', async ($, on) => {
   let deep: unknown = `TOKEN=${TOKEN}`
   for (let i = 0; i < 70; i++) deep = { deep }

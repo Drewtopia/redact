@@ -241,7 +241,10 @@ export const register: Register = (on, options) => {
     const n = countHidden(tags)
     if (notify && n > 0) $.ui.notice(e.tool_use_id, `redact: hid ${n} value(s)`)
     const context = r.context ? { context: r.context.map(fix) } : {}
-    if (r.isError) return { isError: true as const, result, text: r.text === undefined ? undefined : fix(r.text), ...context }
+    // An errored result holds the error text where the tool's output object
+    // goes, so core refuses it back as a result; the masked error is sent as
+    // a refusal, which the model reads as the tool's error.
+    if (r.isError) return { deny: r.text !== undefined ? fix(r.text) : typeof result === 'string' ? result : WITHHELD }
     return { result, ...context } as typeof r
   // A refusal, never a result: a string where the tool's output object goes
   // breaks its shape.
