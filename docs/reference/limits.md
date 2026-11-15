@@ -22,10 +22,9 @@ redact will miss things. Check its output before you share anything that matters
 - **camelCase names, with `random-token`.** The rule can hide a camelCase name made mostly of one- and two-letter parts and digits, where words of 3 or more letters cover under 70% of it.
 - **Command lines.** `PGPASSWORD=secret psql -h db -U admin` on one line hides everything after the `=`, command included, because a dump line and a command line look the same.
 
-## What the Claude Code mod misses
+## In integrations
 
-- **PDFs named with `@`.** The mod cannot read a PDF's text, so an `@`-mentioned PDF goes to Claude unscanned. Images also go unscanned, because they reach Claude as pictures.
-- **An `allow` added mid-session.** The mod keeps hiding a value it hid earlier in the session, wherever it turns up. Start a new session for the `allow` to take effect.
+Each integration has limits of its own. See [Claude Code](../integrations/claude-code#what-it-misses) and [Codex CLI](../integrations/codex).
 
 ## What it is not
 

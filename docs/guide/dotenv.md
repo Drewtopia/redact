@@ -7,7 +7,7 @@ To hide every value in your dotenv files, list them in your config:
 env_files = [".env", ".env.local", ".env.keys"]
 ```
 
-redact hides each value in those files, whatever reads them. That includes the private keys that dotenvx keeps in `.env.keys`.
+redact reads those files itself and hides each value, whatever tool uses them. That includes the private keys that dotenvx keeps in `.env.keys`.
 
 A relative path is relative to where redact runs, so `.env` means the current project's `.env`. If a file is not there, `redact config ls` lists it, and redact carries on.
 

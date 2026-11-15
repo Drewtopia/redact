@@ -1,5 +1,7 @@
 # mise
 
+[mise](https://mise.jdx.dev) can install redact, and can set the variables redact hides.
+
 ## Install redact
 
 ```sh
@@ -13,5 +15,3 @@ Inside a project, `mise exec` sets the variables in the project's `[env]`. Name 
 ```sh
 mise exec -- sh -c 'docker compose logs | redact'
 ```
-
-With [fnox](./fnox) as well, see that page.

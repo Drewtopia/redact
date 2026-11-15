@@ -64,7 +64,7 @@ disable = ["identity"]
 | `env` | Names of environment variables whose values to hide. Exact names, or patterns with `*` | [Environment variables](../guide/env) |
 | `env_files` | Dotenv files whose values to hide, relative to where redact runs | [.env files](../guide/dotenv) |
 | `import` | Packs, word lists, folders, and other config files to load, relative to this file. `~/` is your home folder | [Packs](../packs/) |
-| `me` | Hide your git `user.name` and `user.email`, and your GitHub logins | [Hiding yourself](../guide/me) |
+| `me` | Hide your git `user.name` and `user.email`, and your GitHub logins | [Hide yourself](../guide/me) |
 | `allow` | Values never to hide, matched in any case. `$NAME` reads one from an environment variable | [Allow](#allow) |
 | `[packs]` | `enable` and `disable` lists of pack ids. `disable` also takes one rule as `pack:rule` | [Packs](#packs) |
 | `[[override]]` | Settings for one machine, folder, or command | [Overrides](#overrides) |
