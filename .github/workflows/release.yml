@@ -1,11 +1,21 @@
-# Builds redact for macOS, Linux and Windows when a v* tag is pushed, and attaches
-# each binary (plus a sha256 checksum) to a GitHub release. Asset names carry the
-# target triple, which is what `mise use github:Drewtopia/redact` matches on.
+# Builds redact for macOS, Linux and Windows into the draft release that
+# release-please made for a tag, then publishes it. release-please.yml calls this
+# after a release PR merges; run it by hand with the tag to retry a failed build.
+# Asset names carry the target triple, which is what `mise use github:Drewtopia/redact` matches on.
 name: release
 
 on:
-  push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        type: string
+        required: true
+        description: Release tag to build, such as v0.3.0
 
 # Third-party actions are pinned to a commit SHA (tag in the comment) because
 # they run with write access to this repo's releases.
@@ -13,25 +23,23 @@ permissions:
   contents: read
 
 jobs:
-  create-release:
+  check-tag:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Check the tag matches Cargo.toml
-        run: |
-          version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
-          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME is not v$version"; exit 1; }
-      - uses: taiki-e/create-gh-release-action@045e5c0ed9c50cc1f96de7e891a09ad3daea245f # v1.12.0
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          # Draft until every binary is attached: mise's version mirror caches the
-          # asset list of a published release, so a half-uploaded one breaks installs.
-          draft: true
+          ref: ${{ inputs.tag }}
+      - name: Check the tag matches Cargo.toml and plugin.json
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          cargo=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          plugin=$(jq -r .version claude-plugin/.claude-plugin/plugin.json)
+          [ "v$cargo" = "$TAG" ] || { echo "tag $TAG is not Cargo.toml's v$cargo"; exit 1; }
+          [ "v$plugin" = "$TAG" ] || { echo "tag $TAG is not plugin.json's v$plugin"; exit 1; }
 
   upload-assets:
-    needs: create-release
+    needs: check-tag
     strategy:
       fail-fast: false
       matrix:
@@ -47,6 +55,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
       - uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6 # v1.30.2
         with:
           bin: redact
@@ -54,14 +64,18 @@ jobs:
           archive: $bin-$tag-$target
           include: LICENSE-MIT,LICENSE-APACHE,LICENSE-THIRD-PARTY
           checksum: sha256
+          ref: refs/tags/${{ inputs.tag }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
+  # The release stays a draft until every binary is attached: mise's version mirror
+  # caches the asset list of a published release, so a half-uploaded one breaks installs.
   publish-release:
     needs: upload-assets
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - run: gh release edit "$GITHUB_REF_NAME" --draft=false --repo "$GITHUB_REPOSITORY"
+      - run: gh release edit "$TAG" --draft=false --repo "$GITHUB_REPOSITORY"
         env:
+          TAG: ${{ inputs.tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
