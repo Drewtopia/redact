@@ -20,6 +20,14 @@ label = "PHONE"
 context = ["phone", "telephone", "tel", "mobile", "cell", "cellphone", "call", "fax", "sms", "whatsapp", "tél", "téléphone", "telefon", "telefono", "teléfono"]
 keywords = ["+"]
 
+matrix = false
+[[rules.tests]]
+input = "Phone: +44 7700 900123"
+expect = ["+44 7700 900123"]
+[[rules.tests]]
+input = "+2026 11 14"
+expect = []
+
 [[rules]]
 id = "phone-north-america"
 description = "A US or Canadian number: (555) 010-0199, 555-010-0199, 555.010.0199, 1-555-010-0199. Only beside a phone word such as phone, tel, mobile, cell, call or fax"
@@ -27,6 +35,14 @@ regex = '''(?:^|[^0-9A-Za-z])((?:1[ .-])?\(?[1-9][0-9]{2}\)?[ .-]?[0-9]{3}[ .-][
 secretGroup = 1
 label = "PHONE"
 context = ["phone", "telephone", "tel", "mobile", "cell", "cellphone", "call", "fax", "sms", "whatsapp", "tél", "téléphone", "telefon", "telefono", "teléfono"]
+
+matrix = false
+[[rules.tests]]
+input = "tel 555-010-0199"
+expect = ["555-010-0199"]
+[[rules.tests]]
+input = "order 555-010-0199"
+expect = []
 
 [[rules]]
 id = "phone-uk"
@@ -36,6 +52,14 @@ secretGroup = 1
 label = "PHONE"
 context = ["phone", "telephone", "tel", "mobile", "cell", "cellphone", "call", "fax", "sms", "whatsapp", "tél", "téléphone", "telefon", "telefono", "teléfono"]
 
+matrix = false
+[[rules.tests]]
+input = "mobile 07700 900123"
+expect = ["07700 900123"]
+[[rules.tests]]
+input = "build 07700 900123"
+expect = []
+
 [[rules]]
 id = "phone-pairs"
 description = "A number written in pairs after a leading 0, as in France: 01 23 45 67 89, 06.12.34.56.78. Only beside a phone word such as phone, tel, mobile, cell, call or fax"
@@ -43,6 +67,14 @@ regex = '''(?:^|[^0-9A-Za-z])(0[1-9](?:[ .][0-9]{2}){4})(?:[^0-9]|$)'''
 secretGroup = 1
 label = "PHONE"
 context = ["phone", "telephone", "tel", "mobile", "cell", "cellphone", "call", "fax", "sms", "whatsapp", "tél", "téléphone", "telefon", "telefono", "teléfono"]
+
+matrix = false
+[[rules.tests]]
+input = "tél 01 23 45 67 89"
+expect = ["01 23 45 67 89"]
+[[rules.tests]]
+input = "01 23 45 67 89"
+expect = []
 
 [[rules]]
 id = "phone-named"
@@ -52,6 +84,11 @@ secretGroup = 1
 label = "PHONE"
 keywords = ["phone", "tel", "mobile", "cell", "fax"]
 
+matrix = false
+[[rules.tests]]
+input = "phone: +1 (555) 010-0199"
+expect = ["+1 (555) 010-0199"]
+
 [[rules]]
 id = "card-number"
 description = "A payment card number: 13 to 19 digits starting 2 to 6, spaces or dashes allowed, passing the Luhn check. The first digit leaves out timestamps such as 1731542400000"
@@ -59,6 +96,13 @@ regex = '''(?:^|[^0-9])([2-6](?:[ -]?[0-9]){12,18})(?:[^0-9]|$)'''
 secretGroup = 1
 label = "CARD"
 check = "luhn"
+
+[[rules.tests]]
+input = "4111111111111111"
+expect = ["4111111111111111"]
+[[rules.tests]]
+input = "4111111111111112"
+expect = []
 
 [[rules]]
 id = "iban"
@@ -68,12 +112,43 @@ secretGroup = 1
 label = "IBAN"
 check = "iban"
 
+[[rules.tests]]
+input = "GB82WEST12345698765432"
+expect = ["GB82WEST12345698765432"]
+[[rules.tests]]
+input = "GB00WEST12345698765432"
+expect = []
+
 [[rules]]
 id = "ipv4"
 description = "An IPv4 address"
 regex = '''(?:^|[^0-9.])((?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(?:\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3})(?:[^0-9.]|$)'''
 secretGroup = 1
 label = "IP"
+
+[[rules.tests]]
+input = "203.0.113.7"
+expect = ["203.0.113.7"]
+
+[[rules.tests]]
+input = "host 203.0.113.7 up"
+expect = ["203.0.113.7"]
+[[rules.tests]]
+input = "version 1.2.3.4.5"
+expect = []
+
+# Before ipv6: a MAC address also reads as an IPv6 address, and when two rules
+# hide the same text the first one names it.
+[[rules]]
+id = "mac-address"
+description = "A MAC address: aa:bb:cc:dd:ee:ff or AA-BB-CC-DD-EE-FF"
+regex = '''(?i)\b((?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2})\b'''
+secretGroup = 1
+label = "MAC"
+
+[[rules.tests]]
+input = "00:1a:2b:3c:4d:5e"
+expect = ["00:1a:2b:3c:4d:5e"]
 
 [[rules]]
 id = "ipv6"
@@ -83,12 +158,13 @@ secretGroup = 1
 label = "IP"
 keywords = [":"]
 
-[[rules]]
-id = "mac-address"
-description = "A MAC address: aa:bb:cc:dd:ee:ff or AA-BB-CC-DD-EE-FF"
-regex = '''(?i)\b((?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2})\b'''
-secretGroup = 1
-label = "MAC"
+[[rules.tests]]
+input = "2001:db8::1"
+expect = ["2001:db8::1"]
+
+[[rules.tests]]
+input = "addr 2001:db8::1 up"
+expect = ["2001:db8::1"]
 
 [[rules]]
 id = "us-ssn"
@@ -98,6 +174,14 @@ secretGroup = 1
 label = "NATIONAL-ID"
 context = ["ssn", "ssns", "ss#", "social security"]
 
+matrix = false
+[[rules.tests]]
+input = "SSN: 123-45-6789"
+expect = ["123-45-6789"]
+[[rules.tests]]
+input = "part 123-45-6789"
+expect = []
+
 [[rules]]
 id = "uk-nino"
 description = "A UK National Insurance number: QQ 12 34 56 C. Only beside NINO, NI number or national insurance"
@@ -105,3 +189,11 @@ regex = '''(?:^|[^A-Za-z0-9_]|\\[nrt])([A-CEGHJ-PR-TW-Z][A-CEGHJ-NPR-TW-Z] ?[0-9
 secretGroup = 1
 label = "NATIONAL-ID"
 context = ["nino", "ni number", "ni no", "national insurance"]
+
+matrix = false
+[[rules.tests]]
+input = "NI number: AB 12 34 56 C"
+expect = ["AB 12 34 56 C"]
+[[rules.tests]]
+input = "AB 12 34 56 C"
+expect = []

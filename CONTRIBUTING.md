@@ -32,7 +32,7 @@ CI also runs `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`
    keywords = ["-key", "api-key"]
    ```
 
-3. Add a test in `src/scan.rs` that masks a made-up sample and checks the value is gone and the text around it stays.
+3. Add `[[rules.tests]]` under the rule: made-up samples with `expect`, the values the rule hides, plus one it must leave alone (`expect = []`) where a lookalike exists. If the rule finds a value on sight, make one test's input the bare value, so it is also tried in quotes, JSON, YAML and after a literal `\n`; if it only finds values beside a name, set `matrix = false`. See [Rule tests](docs/packs/writing.md#rule-tests).
 4. Run `REDACT_BLESS=1 cargo test`. It rewrites the generated pages under `docs/packs/` and `docs/reference/cli.md`, and a test fails until you do.
 
 `redact scan --explain` shows which `pack:rule` hid each part, which helps while writing the regex.

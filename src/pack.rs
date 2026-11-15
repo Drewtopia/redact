@@ -80,9 +80,28 @@ struct RuleFile {
     /// Clue words: a found value is hidden only when one is near it.
     #[serde(default)]
     context: Vec<String>,
+    /// Sample inputs and what the rule hides in each, run by `cargo test`.
+    #[serde(default)]
+    tests: Vec<RuleTest>,
+    /// `false`: no test's input is the bare value, so none is tried in each layout.
+    #[serde(default = "on")]
+    matrix: bool,
+}
+
+/// `[[rules.tests]]`: an input, and every value the rule alone hides in it.
+/// `expect = []` says the rule hides nothing there.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct RuleTest {
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub input: String,
+    /// Required: `[]` says the rule hides nothing in `input`. An `Option`, so a
+    /// missing one is an error that names the rule, not just a line number.
+    pub expect: Option<Vec<String>>,
 }
 
 // The compiled forms the scanner uses.
+#[derive(Clone)]
 pub struct Rule {
     pub id: String,
     pub description: String,
@@ -109,8 +128,15 @@ pub struct Rule {
     /// Clue words, lower-cased: a found value is hidden only when one of them
     /// is a whole word on its line or the line before (Presidio's context words).
     pub context: Vec<String>,
+    /// The rule's own tests, run by `cargo test`; a scan never reads them.
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub tests: Vec<RuleTest>,
+    /// Whether a test's bare value is tried in each layout (`matrix = false` opts out).
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub matrix: bool,
 }
 
+#[derive(Clone)]
 pub struct Pack {
     pub id: String,
     pub description: String,
@@ -1117,6 +1143,12 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
                 r.id
             ));
         }
+        if r.tests.iter().any(|t| t.expect.is_none()) {
+            return Err(format!(
+                "{source}: rule {} has a test with no expect; use expect = [] when it hides nothing",
+                r.id
+            ));
+        }
         rules.push(Rule {
             // Not the id: `acme-api-key` would say whose key it is.
             label: label_of(r.label.as_deref().unwrap_or("SECRET")),
@@ -1133,6 +1165,8 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             remember: r.remember,
             keywords: lower(r.keywords),
             context: lower(r.context),
+            tests: r.tests,
+            matrix: r.matrix,
         });
     }
     Ok(Pack {

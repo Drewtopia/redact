@@ -11,3 +11,11 @@ regex = '''(?im)(?:^|:)[ \t]*_(?:authToken|password|auth)[ \t]*=[ \t]*["']?([^\s
 secretGroup = 1
 label = "SECRET"
 remember = "distinctive"
+
+matrix = false
+[[rules.tests]]
+input = "//pkgs.example.test/feed/npm/registry/:_authToken=FakeNpmToken123"
+expect = ["FakeNpmToken123"]
+[[rules.tests]]
+input = "_password=\"RmFrZVBhc3M=\""
+expect = ["RmFrZVBhc3M="]
