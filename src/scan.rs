@@ -792,6 +792,27 @@ mod tests {
     }
 
     #[test]
+    fn entra_client_secret_has_four_characters_before_q_tilde() {
+        // Three characters, a digit, `Q~`, then 31 to 34: 40 characters at most.
+        let key = format!("abc8{}{}", "Q~", body(34));
+        let tail = &key[key.len() - 12..];
+        hides(&key, tail, "CLIENT-SECRET");
+        let text = format!("here it is: {key} ok");
+        hides(&text, tail, "CLIENT-SECRET");
+        let out = azure(&text);
+        assert!(
+            out.starts_with("here it is: ") && out.ends_with(" ok"),
+            "{out}"
+        );
+        hides(&format!("\"{key}\""), tail, "CLIENT-SECRET");
+        // The generic assignment rule may win here; either placeholder hides it, start to end.
+        let out = azure(&format!("SECRET={key}"));
+        assert!(!out.contains("Q~") && !out.contains(tail), "{out}");
+        let short = format!("abc8{}{}", "Q~", body(31));
+        hides(&short, &short[short.len() - 12..], "CLIENT-SECRET");
+    }
+
+    #[test]
     fn not_a_name_tells_camel_case_from_random() {
         let c = pack::Check::NotAName;
         for name in [
