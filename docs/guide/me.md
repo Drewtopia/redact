@@ -1,4 +1,4 @@
-# Hiding yourself
+# Hide yourself
 
 Your GitHub username sits in plain URLs such as `github.com/<you>/project`, in git remotes, and in git config. No rule can tell that it is you. To hide it, turn on `me`:
 
@@ -24,5 +24,5 @@ You have nothing to keep in sync. If you change your git name, redact follows. A
 ```
 
 ::: tip The cost
-Your own repositories then read as `github.com/[ME-GITHUB-…]/project`. In Claude Code, the redact mod restores placeholders in commands, so `gh` and `git` still get the real value.
+Your own repositories then read as `github.com/[ME-GITHUB-…]/project`. A placeholder in a command is not your login, so the command fails unless something puts the real value back. The [Claude Code mod](../integrations/claude-code#placeholders-going-back-in) does this for local commands such as `git push` and `gh repo view`.
 :::

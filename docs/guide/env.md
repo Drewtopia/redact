@@ -7,6 +7,8 @@ Secrets often reach a command as environment variables, set by your shell profil
 env = ["ACME_*", "*_TOKEN", "DATABASE_URL"]
 ```
 
+redact skips entries that would hide ordinary text everywhere: entries under 3 characters, lines that start with `#`, and settings such as numbers, `true` and `development`. The settings are the same ones listed in [What is skipped](./dotenv#what-is-skipped).
+
 `*` matches any run of characters, anywhere in the name. `redact config ls` lists an exact name that is not set, so you can spot a missing value.
 
 redact reads the variables from its own environment. If a tool sets them only for the commands it runs, run redact under that tool too. For examples, see [fnox](../integrations/fnox) and [mise](../integrations/mise).

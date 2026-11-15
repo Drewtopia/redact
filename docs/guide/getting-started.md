@@ -107,6 +107,6 @@ Run `redact config ls` again. Your config file is no longer `missing`, and the l
 ## Next
 
 - [Hide environment variables](./env): the secrets your shell or tools set.
-- [Hiding yourself](./me): your git name and GitHub login.
+- [Hide yourself](./me): your git name and GitHub login.
 - [Integrations](../integrations/): examples with Claude Code, Codex, git hooks and more.
 - [Configuration](../reference/config): every setting.

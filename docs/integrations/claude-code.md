@@ -69,6 +69,11 @@ The mod does not put a value into a Bash or PowerShell command when the value ho
 
 When a tool prints a value the mod handed it, that value comes back hidden, even where no rule would find it.
 
+## What it misses
+
+- **PDFs named with `@`.** The mod cannot read a PDF's text, so an `@`-mentioned PDF goes to Claude unscanned. Images also go unscanned, because they reach Claude as pictures.
+- **An `allow` added mid-session.** The mod keeps hiding a value it hid earlier in the session, wherever it turns up. Start a new session for the `allow` to take effect.
+
 ## When redact cannot run
 
 The mod fails closed. It withholds the text instead of passing it on raw when the redact binary:
