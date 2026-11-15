@@ -68,27 +68,3 @@ A change is breaking, and gets the `!`, when it:
 7. Renames a pack or rule id, since a user's `disable = ["pack:rule"]` then fails.
 
 Hiding more is a `feat:`.
-
-## Make a release
-
-Maintainers only.
-
-1. Open the release PR: `gh pr list --label "autorelease: pending"`. Its title is the next version, and its body becomes the release notes.
-2. Edit the body if you want, then squash-merge it once its checks pass. Edit just before you merge, because each merge to `main` rewrites the PR.
-3. About five minutes later the `vX.Y.Z` tag exists and the release is published with all six platforms' files.
-
-To pick the number yourself, for example 1.0.0, end a PR's description with `Release-As: 1.0.0` before you merge it.
-
-Don't push tags or edit a version by hand: release-please does both, and a pushed tag builds nothing.
-
-If the build fails, the release stays a draft, so no one installs a half-uploaded one. Fix the cause, then run the `release` workflow from the Actions tab with the tag, such as `v0.3.0`.
-
-### The release App
-
-release-please acts as the `drewtopia-release` GitHub App, because GitHub runs no checks on a PR that the built-in `GITHUB_TOKEN` opens, and `main` requires them. The App needs:
-
-- repository permissions Contents, Issues and Pull requests: read and write, installed on this repo
-- repo variable `RELEASE_APP_CLIENT_ID`: the App's Client ID, which starts `Iv`
-- repo secret `RELEASE_APP_PRIVATE_KEY`: a private key from the App's Credentials → Key pairs
-
-If the `release-please` run fails at its token step, one of these is wrong. To replace the key, make a new one under Key pairs, set the secret to it with `gh secret set RELEASE_APP_PRIVATE_KEY < key.pem`, then delete the old key. The same App can serve other repos: install it there and add the same variable and secret.
