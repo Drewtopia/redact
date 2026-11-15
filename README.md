@@ -117,7 +117,7 @@ env_files = ["~/work/.env"]
 
 `env_files` hides each value in a dotenv file, including the private keys dotenvx keeps in `.env.keys`. It skips empty values, `encrypted:` values, `DOTENV_PUBLIC_KEY*`, and settings that would wreck ordinary text if hidden everywhere: numbers, `true`/`false`, `localhost`, `development` and the like. A file that is not there is listed by `redact config ls`; `--env-file <path>` makes a missing file an error.
 
-A word list is one word or phrase per line; `#` starts a note. The file name is the label, so `customers.txt` hides each line as `[CUSTOMERS-…]`. Every `.toml` and `.txt` in `~/.config/redact/packs/` loads too.
+A word list is one word or phrase per line; `#` starts a note. Each line hides as `[WORDLIST-…]`: not the file name, which could say what the list hides. `redact scan --explain` still names the file. Every `.toml` and `.txt` in `~/.config/redact/packs/` loads too.
 
 ## Packs
 

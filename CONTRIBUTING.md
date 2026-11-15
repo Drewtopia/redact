@@ -20,7 +20,7 @@ CI also runs `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`
 ## Add a rule
 
 1. Pick the pack in `packs/` the tool belongs to (`azure.toml`, `http.toml`, ...), or start a new one with the same header.
-2. Add a `[[rules]]` entry. `regex` finds it, `secretGroup` is the capture group to hide, `label` names the placeholder (`[API-KEY-…]`), and `keywords` let redact skip the regex when none of them appear:
+2. Add a `[[rules]]` entry. `regex` finds it, `secretGroup` is the capture group to hide, `label` names the placeholder (`[SECRET-…]`, one of the kinds in [Labels](docs/packs/index.md#labels)), and `keywords` let redact skip the regex when none of them appear:
 
    ```toml
    [[rules]]
@@ -28,7 +28,7 @@ CI also runs `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`
    description = "API key headers: x-api-key, api-key, ..."
    regex = '''(?im)^[ \t]*(?:x-api-key|api-key)[ \t]*:[ \t]*(.+?)[ \t]*$'''
    secretGroup = 1
-   label = "API-KEY"
+   label = "SECRET"
    keywords = ["-key", "api-key"]
    ```
 

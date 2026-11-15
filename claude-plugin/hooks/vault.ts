@@ -92,9 +92,8 @@ function hideKnown(text: string, all: string[], tags: Set<string>): string {
   return out
 }
 
-// A word list's label is its file name, so it can be anything (`123-customers`,
-// `v1.2`): fold it into the placeholder's shape. One named literal.txt must not
-// mint the hook's own LITERAL tags.
+// A pack's label can be anything (`123-customers`, `v1.2`): fold it into the
+// placeholder's shape. A label of LITERAL must not mint the hook's own tags.
 function tagLabel(label: string): string {
   const t = label.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^[-0-9]+|-+$/g, '') || 'HIDDEN'
   return t === LITERAL ? `${LITERAL}-LIST` : t

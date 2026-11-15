@@ -16,5 +16,5 @@ Personal data: phone numbers, card numbers (Luhn-checked), IBANs (mod-97-checked
 | `ipv4` | `[IP-…]` | An IPv4 address |  |
 | `mac-address` | `[MAC-…]` | A MAC address: aa:bb:cc:dd:ee:ff or AA-BB-CC-DD-EE-FF |  |
 | `ipv6` | `[IP-…]` | An IPv6 address, full or with :: (four or more groups, so a time such as 12:30:45 is not one) |  |
-| `us-ssn` | `[SSN-…]` | A US Social Security number: 123-45-6789. Only beside SSN, SS# or social security |  |
-| `uk-nino` | `[NINO-…]` | A UK National Insurance number: QQ 12 34 56 C. Only beside NINO, NI number or national insurance |  |
+| `us-ssn` | `[NATIONAL-ID-…]` | A US Social Security number: 123-45-6789. Only beside SSN, SS# or social security |  |
+| `uk-nino` | `[NATIONAL-ID-…]` | A UK National Insurance number: QQ 12 34 56 C. Only beside NINO, NI number or national insurance |  |

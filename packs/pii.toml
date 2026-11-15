@@ -171,7 +171,7 @@ id = "us-ssn"
 description = "A US Social Security number: 123-45-6789. Only beside SSN, SS# or social security"
 regex = '''(?:^|[^0-9-])([0-9]{3}-[0-9]{2}-[0-9]{4})(?:[^0-9-]|$)'''
 secretGroup = 1
-label = "SSN"
+label = "NATIONAL-ID"
 context = ["ssn", "ssns", "ss#", "social security"]
 
 matrix = false
@@ -187,7 +187,7 @@ id = "uk-nino"
 description = "A UK National Insurance number: QQ 12 34 56 C. Only beside NINO, NI number or national insurance"
 regex = '''(?:^|[^A-Za-z0-9_]|\\[nrt])([A-CEGHJ-PR-TW-Z][A-CEGHJ-NPR-TW-Z] ?[0-9]{2} ?[0-9]{2} ?[0-9]{2} ?[A-D])\b'''
 secretGroup = 1
-label = "NINO"
+label = "NATIONAL-ID"
 context = ["nino", "ni number", "ni no", "national insurance"]
 
 matrix = false

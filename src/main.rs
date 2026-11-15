@@ -342,7 +342,7 @@ fn print_packs(w: &mut impl Write, loaded: &pack::Loaded, json: bool) -> std::io
         let words: Vec<_> = loaded
             .words
             .iter()
-            .map(|l| serde_json::json!({"label": l.label, "entries": l.words.len(), "source": l.source}))
+            .map(|l| serde_json::json!({"label": l.label, "name": l.name, "entries": l.words.len(), "source": l.source}))
             .collect();
         let v = serde_json::json!({"packs": packs, "words": words});
         return writeln!(

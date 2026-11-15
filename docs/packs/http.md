@@ -6,5 +6,5 @@ Cookie and Set-Cookie values, and API key headers such as Ocp-Apim-Subscription-
 
 | Rule | Hides as | What it finds | Hidden everywhere after |
 | :- | :- | :- | :- |
-| `cookie` | `[COOKIE-…]` | The value of a Cookie or Set-Cookie header (curl -v prefixes &gt; and &lt; are fine) |  |
-| `key-header` | `[API-KEY-…]` | API key headers: Ocp-Apim-Subscription-Key, x-functions-key, x-api-key, api-key, x-auth-token, x-goog-api-key, Proxy-Authorization |  |
+| `cookie` | `[SECRET-…]` | The value of a Cookie or Set-Cookie header (curl -v prefixes &gt; and &lt; are fine) |  |
+| `key-header` | `[SECRET-…]` | API key headers: Ocp-Apim-Subscription-Key, x-functions-key, x-api-key, api-key, x-auth-token, x-goog-api-key, Proxy-Authorization |  |

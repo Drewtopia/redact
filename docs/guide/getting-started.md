@@ -104,6 +104,26 @@ redact writes `~/.config/redact/config.toml` with its settings switched on. It h
 
 Run `redact config ls` again. Your config file is no longer `missing`, and the lines after it show what it loads.
 
+## Upgrade
+
+A new release doesn't update what you installed. To move to the newest version:
+
+```sh
+mise use -g github:Drewtopia/redact@latest
+```
+
+To pin a version, or to go back to one, name it: `github:Drewtopia/redact@0.2.1`. With cargo, run the `cargo install` command again with `--force`.
+
+The Claude Code mod updates on its own schedule. To update it now, run this and then restart Claude Code:
+
+```sh
+claude plugin marketplace update redact && claude plugin update redact@redact
+```
+
+The binary and the mod share one version number. `redact --version` and the mod's version in the `/plugin` menu should match.
+
+[CHANGELOG.md](https://github.com/Drewtopia/redact/blob/main/CHANGELOG.md) lists what each version changed. While the version is 0.x, a change in the middle number (0.2 → 0.3) can break a config or a placeholder you rely on.
+
 ## Next
 
 - [Hide environment variables](./env): the secrets your shell or tools set.
