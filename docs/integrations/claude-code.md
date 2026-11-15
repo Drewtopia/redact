@@ -60,6 +60,8 @@ Bash, PowerShell, Write, Edit, MultiEdit, NotebookEdit, Read, Glob, and Grep get
 
 A Bash or PowerShell command that would send a real value to another machine is refused, unless every host it names is in the `restoreHosts` setting. The list starts empty. Each entry covers its subdomains, so `example.com` also covers `api.example.com`.
 
+List only names you control. A domain where anyone can make a subdomain, such as `github.io`, `vercel.app` or `amazonaws.com`, lets anyone receive your values: list `you.github.io` or the full bucket host, not the shared domain.
+
 ```text
 restoreHosts = api.example.com, registry.example.org
 ```
