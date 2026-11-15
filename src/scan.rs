@@ -847,6 +847,7 @@ mod tests {
         for first in [".bc", "~bc", "-bc", "abc"] {
             let key = format!("{first}{rest}");
             for text in [
+                key.clone(),
                 format!("x={key}"),
                 format!("\"{key}\""),
                 format!("line\\n{key}"),
