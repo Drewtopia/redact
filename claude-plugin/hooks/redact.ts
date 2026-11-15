@@ -23,13 +23,73 @@ const LIVE_TAG_TOOLS = new Set(['Agent', 'Task'])
 // A shell command that writes into git history or posts to GitHub, GitLab or
 // Azure DevOps keeps its placeholders, so a commit message or issue body
 // cannot carry a real value off the machine.
-// One shell argument can combine quoted, escaped and unquoted pieces.
-// Bash escapes with a backslash; PowerShell uses a backtick.
-const SHELL_WORD = /(?:"(?:[^"\\`]|[\\`].)*"|'[^']*'|[\\`][^\r\n]|[^\s"'\\`])+/.source
-const PUBLISHES = new RegExp(
-  String.raw`\bgit\b(?:[ \t]+-[cC][ \t]*${SHELL_WORD}|[ \t]+--(?:git-dir|work-tree|namespace|super-prefix|config-env|attr-source)(?:[ \t]+|=)${SHELL_WORD}|[ \t]+--?[\w-]+(?:=${SHELL_WORD})?)*[ \t]+(?:commit|tag|notes|send-email)\b|\bgh(?:[ \t]+(?:-R[ \t]*|--(?:repo|hostname)(?:[ \t]+|=))${SHELL_WORD})*[ \t]+(?:issue|pr|release|gist|discussion|api|repo[ \t]+(?:create|edit))\b|\bglab[ \t]+(?:issue|mr|release|snippet|api)\b|\baz[ \t]+(?:repos|boards|devops|pipelines|rest)\b`,
-  'i',
-)
+//
+// The command is split into shell words, quotes and escapes removed, as the
+// shell would hand them to git: `"--work-tree"` is `--work-tree`. One pass over
+// the text, so no input can make the check slow. Bash escapes with a
+// backslash; PowerShell uses a backtick.
+function simpleCommands(text: string): string[][] {
+  const out: string[][] = [[]]
+  let word = ''
+  let started = false
+  let quote = ''
+  const end = () => {
+    if (started) out[out.length - 1].push(word)
+    word = ''
+    started = false
+  }
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (quote === "'") {
+      if (c === "'") quote = ''
+      else word += c
+    } else if ((c === '\\' || c === '`') && i + 1 < text.length) {
+      word += text[++i]
+      started = true
+    } else if (quote === '"') {
+      if (c === '"') quote = ''
+      else word += c
+    } else if (c === '"' || c === "'") {
+      quote = c
+      started = true
+    } else if (/[;&|(){}\r\n]/.test(c)) {
+      end()
+      out.push([])
+    } else if (/\s/.test(c)) end()
+    else {
+      word += c
+      started = true
+    }
+  }
+  end()
+  return out
+}
+
+// Options that take the next word as their value, lowercase (`-c` is also `-C`).
+const GIT_VALUE_OPTS = new Set(['-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env', '--attr-source'])
+const GH_VALUE_OPTS = new Set(['-r', '--repo', '--hostname'])
+const PUBLISH: Record<string, (sub: string, next: string) => boolean> = {
+  git: (sub) => ['commit', 'tag', 'notes', 'send-email'].includes(sub),
+  gh: (sub, next) => ['issue', 'pr', 'release', 'gist', 'discussion', 'api'].includes(sub) || (sub === 'repo' && ['create', 'edit'].includes(next)),
+  glab: (sub) => ['issue', 'mr', 'release', 'snippet', 'api'].includes(sub),
+  az: (sub) => ['repos', 'boards', 'devops', 'pipelines', 'rest'].includes(sub),
+}
+
+// A quoted word that is itself a command (`sh -c '…'`, `"$(…)"`) is read too.
+function publishes(command: string, depth = 0): boolean {
+  for (const words of simpleCommands(command)) {
+    for (let i = 0; i < words.length; i++) {
+      if (depth < 4 && /\s/.test(words[i]) && publishes(words[i], depth + 1)) return true
+      const tool = /^(?:.*[\\/])?(git|gh|glab|az)(?:\.exe|\.cmd)?$/i.exec(words[i])?.[1]?.toLowerCase()
+      if (!tool) continue
+      const takesValue = tool === 'git' ? GIT_VALUE_OPTS : tool === 'gh' ? GH_VALUE_OPTS : new Set<string>()
+      let k = i + 1
+      while (k < words.length && words[k].startsWith('-')) k += takesValue.has(words[k].toLowerCase()) ? 2 : 1
+      if (PUBLISH[tool]((words[k] ?? '').toLowerCase(), (words[k + 1] ?? '').toLowerCase())) return true
+    }
+  }
+  return false
+}
 
 // Claude Code's shell tools, each with the characters that make a restored
 // value run as code in it. PowerShell also reads @ , % as syntax, curly
@@ -132,8 +192,8 @@ export const register: Register = (on, options) => {
   //    tool that runs on this machine. Out: result, text and context.
   on('tool.call', async ($, e, next) => {
     const command = e.tool in SHELL_ACTIVE ? (e as { command?: unknown }).command : undefined
-    const publishes = typeof command === 'string' && PUBLISHES.test(command)
-    const isLocal = restoreTools.has(e.tool) && !publishes
+    const isPublish = typeof command === 'string' && publishes(command)
+    const isLocal = restoreTools.has(e.tool) && !isPublish
     // Real values this call was handed: whatever the tool prints of them
     // comes back hidden, even bare and short, where no rule would fire.
     const handed = new Set<string>()
@@ -188,8 +248,18 @@ export const register: Register = (on, options) => {
     const placed = ([v]: [string, string]) => unique.some((s) => s === v || (v.length >= 4 && s.includes(v)))
     if (!inContext.every(placed)) return { deny: 'redact: a hidden value in this result could not be put back in place, so the result was withheld. Narrow the call and retry.' }
     const fix = (s: string): string => {
-      let out = lookup.get(s) ?? s
-      for (const [v, tag] of inContext) out = out === v ? tag : v.length >= 4 ? out.split(v).join(tag) : out
+      const leaf = lookup.get(s) ?? s
+      // A value found with its field name can hold one the scan of this string
+      // hid on its own (a token on one line of a password). Hiding that first
+      // would leave the rest of the password showing, so the longer values are
+      // hidden first, from the raw string, then what the string's own scan found.
+      const wide = inContext.filter(([v]) => s === v || (v.length >= 4 && s.includes(v)))
+      if (wide.length === 0) return leaf
+      const own = [...valuesIn(leaf)]
+      // A short value can only be put back where it is the whole string.
+      if (own.some(([v]) => v.length < 4 && v !== s)) throw new Error('redact: a short hidden value cannot be placed')
+      let out = s
+      for (const [v, tag] of [...wide, ...own].sort(([a], [b]) => b.length - a.length)) out = out === v ? tag : v.length >= 4 ? out.split(v).join(tag) : out
       return out
     }
     const st2: WalkState = { incomplete: false }

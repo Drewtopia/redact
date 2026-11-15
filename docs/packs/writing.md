@@ -49,6 +49,7 @@ remember = "distinctive"
 | `secretGroup` | The capture group to hide. `0`, the default, is the whole match |
 | `label` | What the placeholder says. Defaults to the rule id |
 | `within` | Run only inside a JSON object whose own fields match this regex, whatever their order and wherever nested objects sit |
+| `withinKey` | Run only inside a JSON object that is the value of a key matching this regex, such as `'''^data$'''` for `"data": {…}`. With `within` too, the object must pass both |
 | `except` | Leave a found value alone when the value matches this regex. See [Exceptions](#exceptions) |
 | `exceptMatch` | Leave a find alone when the whole match matches this regex. See [Exceptions](#exceptions) |
 | `remember` | Also hide the value everywhere else in the text: `"distinctive"` or `"any"`. See [Remember](#remember) |

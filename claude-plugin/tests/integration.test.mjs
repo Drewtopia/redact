@@ -162,3 +162,50 @@ label = "ORG"
   assert.ok(!`${r.stdout}${r.stderr}`.toLowerCase().includes('fabrikam'))
   assert.equal(JSON.parse(r.stdout)[0].pack, 'VALUE')
 })
+
+test('a multiline password holding a token-shaped line is hidden whole', async () => {
+  // Built in two parts so the source holds no token-shaped string.
+  const token = 'gh' + 'p_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8'
+  const h = hook(() => ({ password: `firstline\n${token}\nsecondline`, user: 'ann' }))
+  const r = await h.call({ tool: 'Read', file_path: 'synthetic.json' })
+  assert.equal(r.deny, undefined, JSON.stringify(r))
+  for (const part of ['firstline', 'secondline', token]) assert.ok(!JSON.stringify(r).includes(part), JSON.stringify(r))
+  assert.equal(r.result.user, 'ann')
+})
+
+test('quoted Git option names and nested shells cannot restore into a commit', async () => {
+  const h = hook((e) => e.tool === 'Read' ? { password: 'quotedpassword42' } : 'ok')
+  const tag = (await h.call({ tool: 'Read', file_path: 'synthetic.json' })).result.password
+  for (const command of [
+    `git "--work-tree" . commit -m "${tag}"`,
+    `git '--git-dir' repo/.git commit -m "${tag}"`,
+    `git --work-tree . "commit" -m "${tag}"`,
+    `git -C repo c"ommit" -m "${tag}"`,
+    `sh -c 'git commit -m ${tag}'`,
+    `echo "$(git commit -m ${tag})"`,
+    `cd repo && git commit -m "${tag}"`,
+  ]) {
+    await h.call({ tool: 'Bash', command })
+    assert.equal(h.seen.at(-1).command, command)
+  }
+  await h.call({ tool: 'Bash', command: `git --work-tree . log --grep=${tag}` })
+  assert.equal(h.seen.at(-1).command, 'git --work-tree . log --grep=quotedpassword42')
+})
+
+test('many Git options are checked in linear time', async () => {
+  const h = hook(() => 'ok')
+  const command = `git ${'--work-tree '.repeat(40)}status`
+  const start = performance.now()
+  await h.call({ tool: 'Bash', command })
+  assert.ok(performance.now() - start < 1000, `${Math.round(performance.now() - start)} ms`)
+})
+
+test("a structured Kubernetes Secret keeps its metadata visible", async () => {
+  const result = { kind: 'Secret', data: { key: 'c2VjcmV0' }, metadata: { name: 'sample12', labels: { app: 'frontend' } } }
+  const h = hook(() => result)
+  const r = await h.call({ tool: 'Read', file_path: 'synthetic.json' })
+  assert.equal(r.deny, undefined, JSON.stringify(r))
+  assert.notEqual(r.result.data.key, 'c2VjcmV0')
+  assert.equal(r.result.metadata.name, 'sample12')
+  assert.equal(r.result.metadata.labels.app, 'frontend')
+})

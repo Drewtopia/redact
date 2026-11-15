@@ -58,7 +58,7 @@ Bash, PowerShell, Write, Edit, MultiEdit, NotebookEdit, Read, Glob, and Grep get
 
 ### Not into git history or a pull request
 
-These commands keep their placeholders: `git commit`, `git tag`, `gh pr`, `gh issue`, `gh api`, `glab mr`, and `az repos`. Git's global options, such as `--work-tree` and `--git-dir`, do not bypass this check. A commit message or an issue body cannot carry the value off the machine.
+These commands keep their placeholders: `git commit`, `git tag`, `gh pr`, `gh issue`, `gh api`, `glab mr`, and `az repos`. Git's global options, such as `--work-tree` and `--git-dir`, do not get past this check, quoted or not, and neither does a command inside `sh -c '…'` or `$(…)`. A commit message or an issue body cannot carry the value off the machine.
 
 ::: warning A file still gets the real value
 Write puts the real value into a file, and a later `git add` and `git commit` would publish it. The [pre-commit check](./git-ci) catches that.
