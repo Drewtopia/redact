@@ -11,6 +11,7 @@ redact draws on the projects below. Thank you to their authors. [Third-party not
 | [worktrunk](https://github.com/max-sixty/worktrunk) | Config layers merged in a fixed order, and typos in config reported rather than ignored |
 | [dotenvx](https://dotenvx.com) | Hiding every value in a `.env` file, `.env.keys` included |
 | [gitleaks](https://github.com/gitleaks/gitleaks) | The `regex`, `keywords` and `secretGroup` field names of its rule files |
+| [Betterleaks](https://github.com/betterleaks/betterleaks) | The shape of an Entra client secret: three characters and a digit before `Q~` |
 | [redact-transcripts](https://github.com/crossvault/redact-transcripts) by crossVault | The real lengths of Groq, xAI and Google OAuth keys. Apache-2.0 notice retained below |
 
 The docs are built with [VitePress](https://vitepress.dev).

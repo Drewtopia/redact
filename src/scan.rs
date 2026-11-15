@@ -799,10 +799,15 @@ mod tests {
         hides(&key, tail, "CLIENT-SECRET");
         let text = format!("here it is: {key} ok");
         hides(&text, tail, "CLIENT-SECRET");
-        assert!(azure(&text).starts_with("here it is: ") && azure(&text).ends_with(" ok"));
+        let out = azure(&text);
+        assert!(
+            out.starts_with("here it is: ") && out.ends_with(" ok"),
+            "{out}"
+        );
         hides(&format!("\"{key}\""), tail, "CLIENT-SECRET");
-        // The generic assignment rule may win here; either placeholder hides it.
-        assert!(!azure(&format!("SECRET={key}")).contains(tail));
+        // The generic assignment rule may win here; either placeholder hides it, start to end.
+        let out = azure(&format!("SECRET={key}"));
+        assert!(!out.contains("Q~") && !out.contains(tail), "{out}");
         let short = format!("abc8{}{}", "Q~", body(31));
         hides(&short, &short[short.len() - 12..], "CLIENT-SECRET");
     }
