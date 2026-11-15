@@ -57,6 +57,8 @@ remember = "distinctive"
 | `context` | Clue words. Hide a found value only when one of these is near it. See [Clue words](#clue-words) |
 | `check` | Hide a found value only when it passes a check: `"luhn"` for card numbers, `"iban"` for the IBAN mod-97 check, or `"not-a-name"` for a token that is not a camelCase name (words of 3+ letters cover under 70% of it). Long runs of digits that are not cards stay visible |
 | `entropy` | Hide a found value only when its Shannon entropy is above this many bits per character, as in gitleaks: `entropy = 3.5`. Equal is not enough. Random keys score near 4 or more, and words and repeated text score lower |
+| `tests` | Sample inputs and what the rule hides in each. See [Rule tests](#rule-tests) |
+| `matrix` | `false` for a rule that finds values only beside a name, so none of its tests is the bare value. Defaults to `true`. See [Rule tests](#rule-tests) |
 
 ### Exceptions
 
@@ -78,6 +80,28 @@ With `within`, redact also tests `exceptMatch` against each JSON object's own fi
 Matching ignores case and takes whole words. `_`, `-`, and a camelCase hump count as word edges, so `phone` is found in `mobile_phone` and `homePhone`, but not in `phones`.
 
 redact looks up to 100 bytes either side of where the value starts. That covers the shapes personal data comes in: `Phone: …`, `"homePhone": "…"`, `… (mobile)`, a YAML list under `phone:`, and a label on the line above. It misses a value further below its label, such as the rows under a table or CSV header. It can also hide too much: in `phone: …` followed by `order: 555-010-0200`, the order number reads as a phone number.
+
+## Rule tests
+
+Each `[[rules.tests]]` entry gives an `input` and `expect`, the list of values the rule hides in it. `expect = []` says the rule hides nothing there:
+
+```toml
+[[rules.tests]]
+input = '{"customerId": "C-123456"}'
+expect = ["C-123456"]
+
+[[rules.tests]]
+input = '{"customerId": "C-12"}'
+expect = []
+```
+
+A test whose input is just its one value is also tried in each place a value turns up: on a line of its own, after a literal `\n`, in double and single quotes, after `=` and `: `, and as a JSON and a YAML value. The rule must hide it in all of them. With a letter straight before the value, the rule must not hide part of the longer word.
+
+A rule that finds values only beside a name, such as `password: …`, has no bare value to try, so it sets `matrix = false`.
+
+With every built-in pack on, each value a test expects must be hidden by that test's own rule, so a broader rule cannot hide a miss.
+
+redact's own test suite runs the built-in packs' tests. It fails if a built-in rule has no test that hides a value, or has neither a bare-value test nor `matrix = false`. In a pack you write, redact checks the tests' fields when the pack loads, but does not run them.
 
 ## Regex syntax
 

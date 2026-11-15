@@ -12,6 +12,11 @@ secretGroup = 1
 label = "SECRET"
 keywords = ["kind: secret", "kind: \"secret\"", "kind: 'secret'"]
 
+matrix = false
+[[rules.tests]]
+input = "apiVersion: v1\nkind: Secret\ndata:\n  password: RmFrZVBhc3N3b3Jk\n"
+expect = ["RmFrZVBhc3N3b3Jk"]
+
 [[rules]]
 id = "secret-data-json"
 description = "A base64 value in a Secret (kubectl get secret -o json)"
@@ -21,6 +26,11 @@ secretGroup = 1
 label = "SECRET"
 keywords = ["\"kind\": \"secret\"", "\"kind\":\"secret\""]
 
+matrix = false
+[[rules.tests]]
+input = "{\"kind\": \"Secret\", \"data\": {\"password\": \"RmFrZVBhc3N3b3Jk\"}, \"metadata\": {\"name\": \"sample12345\"}}"
+expect = ["RmFrZVBhc3N3b3Jk"]
+
 [[rules]]
 id = "client-key-data"
 description = "A client key in a kubeconfig (client-key-data)"
@@ -28,3 +38,8 @@ regex = '''(?i)client-key-data"?\s*:\s*["']?([A-Za-z0-9+/=]{16,})'''
 secretGroup = 1
 label = "PRIVATE-KEY"
 keywords = ["client-key-data"]
+
+matrix = false
+[[rules.tests]]
+input = "    client-key-data: LS0tLS1CRUdJTiBGQUtFIEtFWS0tLS0t"
+expect = ["LS0tLS1CRUdJTiBGQUtFIEtFWS0tLS0t"]

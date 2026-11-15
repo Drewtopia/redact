@@ -30,6 +30,11 @@ secretGroup = 1
 label = "TENANT-ID"
 keywords = ["tenant", "microsoftonline", "sts.windows"]
 
+matrix = false
+[[rules.tests]]
+input = "{\"tenantId\": \"00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c\"}"
+expect = ["00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c"]
+
 [[rules]]
 id = "subscription-id"
 description = "A subscription GUID after subscriptionId, /subscriptions/ or --subscription"
@@ -37,6 +42,11 @@ regex = '''(?i)(?:subscription(?:[_-]?id)?["']?[ \t]*[:=][ \t]*["']?|/subscripti
 secretGroup = 1
 label = "SUBSCRIPTION-ID"
 keywords = ["subscription"]
+
+matrix = false
+[[rules.tests]]
+input = "/subscriptions/00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c/resourceGroups/rg"
+expect = ["00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c"]
 
 [[rules]]
 id = "subscription-record-id"
@@ -47,6 +57,11 @@ label = "SUBSCRIPTION-ID"
 within = '''(?i)"isDefault"\s*:'''
 keywords = ["isdefault"]
 
+matrix = false
+[[rules.tests]]
+input = "{\"id\": \"00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c\", \"isDefault\": true}"
+expect = ["00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c"]
+
 [[rules]]
 id = "app-id"
 description = "An app or client GUID after appId or clientId"
@@ -54,6 +69,14 @@ regex = '''(?i)(?:client|app|application)[_-]?id["']?[ \t]*[:=][ \t]*["']?([0-9a
 secretGroup = 1
 label = "APP-ID"
 keywords = ["client", "app"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"appId\": \"00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c\"}"
+expect = ["00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c"]
+[[rules.tests]]
+input = "{\"appId\": \"04b07795-8ddb-461a-bbee-02f9e1bf7b46\"}"
+expect = []
 
 [[rules]]
 id = "object-id"
@@ -63,6 +86,11 @@ secretGroup = 1
 label = "OBJECT-ID"
 keywords = ["object", "principal"]
 
+matrix = false
+[[rules.tests]]
+input = "\"principalId\": \"00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c\""
+expect = ["00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c"]
+
 [[rules]]
 id = "identity-id"
 description = "An Azure DevOps identity GUID in an identity URL"
@@ -70,6 +98,11 @@ regex = '''(?i)/_apis/identities/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4
 secretGroup = 1
 label = "IDENTITY-ID"
 keywords = ["identities"]
+
+matrix = false
+[[rules.tests]]
+input = "https://vssps.dev.azure.com/fabrikamq/_apis/identities/00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c"
+expect = ["00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c"]
 
 # --- People --------------------------------------------------------------------
 
@@ -83,6 +116,11 @@ within = '''(?i)"(?:uniqueName|userPrincipalName|principalName|mailAddress)"\s*:
 remember = "distinctive"
 keywords = ["uniquename", "principalname"]
 
+matrix = false
+[[rules.tests]]
+input = "{\"displayName\": \"Jordan Quillfake\", \"uniqueName\": \"jordan.fake@fabrikamq.example\"}"
+expect = ["Jordan Quillfake"]
+
 [[rules]]
 id = "work-item-person"
 description = "The flat form: \"System.AssignedTo\": \"Name <email>\""
@@ -91,6 +129,11 @@ secretGroup = 1
 label = "PERSON"
 remember = "distinctive"
 keywords = ["system.", "microsoft.vsts."]
+
+matrix = false
+[[rules.tests]]
+input = "{\"System.AssignedTo\": \"Jordan Quillfake <jordan.fake@fabrikamq.example>\"}"
+expect = ["Jordan Quillfake"]
 
 # --- Your own hosts: the <name> part is yours, the suffix is Microsoft's ---------
 
@@ -103,6 +146,11 @@ label = "DATAVERSE-ENV"
 remember = "distinctive"
 keywords = ["dynamics.com"]
 
+matrix = false
+[[rules.tests]]
+input = "https://fabrikamq-dev.crm4.dynamics.com/api"
+expect = ["fabrikamq-dev"]
+
 [[rules]]
 id = "web-app"
 description = "<name>.azurewebsites.net and <name>.powerappsportals.com"
@@ -111,6 +159,11 @@ secretGroup = 1
 label = "WEB-APP"
 remember = "distinctive"
 keywords = ["azurewebsites", "powerappsportals"]
+
+matrix = false
+[[rules.tests]]
+input = "https://fabrikamq-api.azurewebsites.net"
+expect = ["fabrikamq-api"]
 
 [[rules]]
 id = "azure-resource"
@@ -121,6 +174,11 @@ label = "AZURE-RESOURCE"
 remember = "distinctive"
 keywords = ["vault.azure", "windows.net", "azurecr"]
 
+matrix = false
+[[rules.tests]]
+input = "https://fabrikamq-kv.vault.azure.net/secrets/x"
+expect = ["fabrikamq-kv"]
+
 [[rules]]
 id = "tenant-name"
 description = "<name>.sharepoint.com and <name>.onmicrosoft.com"
@@ -129,6 +187,11 @@ secretGroup = 1
 label = "TENANT-NAME"
 remember = "any"
 keywords = ["sharepoint", "onmicrosoft"]
+
+matrix = false
+[[rules.tests]]
+input = "https://fabrikamq.sharepoint.com/sites/x"
+expect = ["fabrikamq"]
 
 # --- Azure DevOps: found by place, not listed ------------------------------------
 
@@ -141,6 +204,11 @@ label = "ORG"
 remember = "any"
 keywords = ["dev.azure.com"]
 
+matrix = false
+[[rules.tests]]
+input = "https://dev.azure.com/fabrikamq/"
+expect = ["fabrikamq"]
+
 [[rules]]
 id = "ado-project-url"
 description = "dev.azure.com/<org>/<project>"
@@ -149,6 +217,11 @@ secretGroup = 1
 label = "PROJECT"
 remember = "any"
 keywords = ["dev.azure.com"]
+
+matrix = false
+[[rules.tests]]
+input = "https://dev.azure.com/fabrikamq/Northwind%20App/_git/repo"
+expect = ["Northwind%20App"]
 
 [[rules]]
 id = "ado-repo-url"
@@ -159,6 +232,11 @@ label = "REPO"
 remember = "distinctive"
 keywords = ["/_git/"]
 
+matrix = false
+[[rules.tests]]
+input = "https://dev.azure.com/fabrikamq/Proj/_git/northwind-api"
+expect = ["northwind-api"]
+
 [[rules]]
 id = "work-item-project"
 description = "A work item's TeamProject, and the first part of AreaPath and IterationPath"
@@ -167,6 +245,11 @@ secretGroup = 1
 label = "PROJECT"
 remember = "any"
 keywords = ["system."]
+
+matrix = false
+[[rules.tests]]
+input = "{\"System.TeamProject\": \"Northwind App\"}"
+expect = ["Northwind App"]
 
 [[rules]]
 id = "project-record"
@@ -178,6 +261,11 @@ within = '''(?i)"state"\s*:\s*"wellFormed"'''
 remember = "any"
 keywords = ["wellformed"]
 
+matrix = false
+[[rules.tests]]
+input = "{\"name\": \"Northwind App\", \"state\": \"wellFormed\"}"
+expect = ["Northwind App"]
+
 [[rules]]
 id = "repo-record"
 description = "The name in an az repos record"
@@ -187,6 +275,11 @@ label = "REPO"
 within = '''(?i)"(?:remoteUrl|sshUrl)"\s*:'''
 remember = "distinctive"
 keywords = ["remoteurl", "sshurl"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"name\": \"northwind-api\", \"remoteUrl\": \"https://example.test/r\"}"
+expect = ["northwind-api"]
 
 # --- az account show / list ------------------------------------------------------
 
@@ -199,6 +292,11 @@ label = "TENANT-NAME"
 remember = "any"
 keywords = ["tenantdisplayname"]
 
+matrix = false
+[[rules.tests]]
+input = "{\"tenantDisplayName\": \"Fabrikam Q Ltd\"}"
+expect = ["Fabrikam Q Ltd"]
+
 [[rules]]
 id = "subscription-name"
 description = "The name of a subscription in an az account record"
@@ -208,6 +306,11 @@ label = "SUBSCRIPTION-NAME"
 within = '''(?i)"isDefault"\s*:'''
 remember = "distinctive"
 keywords = ["isdefault"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"name\": \"Contoso Dev\", \"isDefault\": true}"
+expect = ["Contoso Dev"]
 
 [[rules]]
 id = "signed-in-user"
@@ -219,6 +322,11 @@ within = '''(?i)"type"\s*:\s*"(?:user|servicePrincipal)"'''
 remember = "distinctive"
 keywords = ["user", "serviceprincipal"]
 
+matrix = false
+[[rules.tests]]
+input = "{\"user\": {\"name\": \"jordan.fake@fabrikamq.example\", \"type\": \"user\"}}"
+expect = ["jordan.fake@fabrikamq.example"]
+
 [[rules]]
 id = "identity-email"
 description = "The sign-in name or email in an identity record"
@@ -227,6 +335,11 @@ secretGroup = 1
 label = "EMAIL"
 remember = "distinctive"
 keywords = ["uniquename", "principalname", "mail"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"mailAddress\": \"jordan.fake@fabrikamq.example\"}"
+expect = ["jordan.fake@fabrikamq.example"]
 
 # --- az ad user / signed-in-user (Microsoft Graph user records) -------------------
 
@@ -239,6 +352,11 @@ label = "OBJECT-ID"
 within = '''(?i)"userPrincipalName"\s*:'''
 keywords = ["userprincipalname"]
 
+matrix = false
+[[rules.tests]]
+input = "{\"id\": \"00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c\", \"userPrincipalName\": \"jordan.fake@fabrikamq.example\"}"
+expect = ["00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c"]
+
 [[rules]]
 id = "graph-user-detail"
 description = "Job, office and address fields of a Graph user record"
@@ -247,6 +365,11 @@ secretGroup = 1
 label = "USER-DETAIL"
 within = '''(?i)"userPrincipalName"\s*:'''
 keywords = ["userprincipalname"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"jobTitle\": \"Lead Fakesmith\", \"userPrincipalName\": \"jordan.fake@fabrikamq.example\"}"
+expect = ["Lead Fakesmith"]
 
 [[rules]]
 id = "graph-company"
@@ -257,6 +380,11 @@ label = "EMPLOYER"
 remember = "any"
 keywords = ["companyname"]
 
+matrix = false
+[[rules.tests]]
+input = "{\"companyName\": \"Fabrikam Q Ltd\"}"
+expect = ["Fabrikam Q Ltd"]
+
 [[rules]]
 id = "phone"
 description = "A phone number in a Graph user record (mobilePhone, businessPhones)"
@@ -265,6 +393,11 @@ secretGroup = 1
 label = "PHONE"
 within = '''(?i)"(?:mobilePhone|businessPhones|faxNumber)"\s*:'''
 keywords = ["phone", "faxnumber"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"mobilePhone\": \"+44 7700 900123\"}"
+expect = ["+44 7700 900123"]
 
 [[rules]]
 id = "identity-guids"
@@ -276,6 +409,11 @@ within = '''(?i)"(?:uniqueName|principalName|userPrincipalName|mailAddress)"\s*:
 remember = "distinctive"
 keywords = ["uniquename", "principalname"]
 
+matrix = false
+[[rules.tests]]
+input = "{\"originId\": \"00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c\", \"principalName\": \"jordan.fake@fabrikamq.example\"}"
+expect = ["00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c"]
+
 [[rules]]
 id = "user-entitlement-id"
 description = "The id of a member in az devops user list: one per person"
@@ -285,6 +423,11 @@ label = "IDENTITY-ID"
 within = '''(?i)"lastAccessedDate"\s*:'''
 remember = "distinctive"
 keywords = ["lastaccesseddate"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"id\": \"00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c\", \"lastAccessedDate\": \"2026-01-01\"}"
+expect = ["00000001-7b4d-4e8a-9c21-5d6e7f8a9b0c"]
 
 # --- az pipelines variable-group list ---------------------------------------------
 
@@ -297,6 +440,11 @@ label = "PIPELINE-VAR"
 remember = "distinctive"
 keywords = ["\"value\""]
 
+matrix = false
+[[rules.tests]]
+input = "{\"variables\": {\"DbPass\": {\"value\": \"Zq8vFakeVar42\"}}}"
+expect = ["Zq8vFakeVar42"]
+
 [[rules]]
 id = "directory-alias"
 description = "directoryAlias in an Azure DevOps user record: a short sign-in name with no @"
@@ -305,6 +453,11 @@ secretGroup = 1
 label = "USER"
 remember = "any"
 keywords = ["directoryalias"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"directoryAlias\": \"jquillfake\"}"
+expect = ["jquillfake"]
 
 [[rules]]
 id = "ado-org-ssh"
@@ -315,6 +468,11 @@ label = "ORG"
 remember = "any"
 keywords = ["ssh.dev.azure.com", "vs-ssh.visualstudio"]
 
+matrix = false
+[[rules.tests]]
+input = "git@ssh.dev.azure.com:v3/fabrikamq/Northwind/northwind-api"
+expect = ["fabrikamq"]
+
 [[rules]]
 id = "ado-project-ssh"
 description = "The project in an Azure Repos SSH URL: ssh.dev.azure.com:v3/<org>/<project>/..."
@@ -323,6 +481,11 @@ secretGroup = 1
 label = "PROJECT"
 remember = "any"
 keywords = ["ssh.dev.azure.com", "vs-ssh.visualstudio"]
+
+matrix = false
+[[rules.tests]]
+input = "git@ssh.dev.azure.com:v3/fabrikamq/Northwind/api"
+expect = ["Northwind"]
 
 # --- Second review: more Azure shapes -------------------------------------------
 
@@ -335,6 +498,11 @@ label = "USER"
 remember = "distinctive"
 keywords = ["uniquename", "principalname"]
 
+matrix = false
+[[rules.tests]]
+input = "{\"principalName\": \"FABRIKAMQ\\\\jquillfake\"}"
+expect = ["FABRIKAMQ\\\\jquillfake"]
+
 [[rules]]
 id = "ado-org-visualstudio"
 description = "The org in the older <org>.visualstudio.com Azure DevOps URLs"
@@ -346,6 +514,14 @@ except = '''(?i)^(?:vs-ssh|pkgs|app|marketplace|vssps|aex|vsaex|vsrm|status|vsas
 remember = "any"
 keywords = ["visualstudio.com"]
 
+matrix = false
+[[rules.tests]]
+input = "https://fabrikamq.visualstudio.com/Proj"
+expect = ["fabrikamq"]
+[[rules.tests]]
+input = "https://marketplace.visualstudio.com/items"
+expect = []
+
 [[rules]]
 id = "keyvault-secret-value"
 description = "The value of az keyvault secret show (a record whose id holds /secrets/)"
@@ -354,6 +530,11 @@ secretGroup = 1
 label = "SECRET"
 within = '''(?i)/secrets/'''
 keywords = ["/secrets/"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"id\": \"https://kv.vault.azure.net/secrets/db/1\", \"value\": \"Zq8vFakeKv42\"}"
+expect = ["Zq8vFakeKv42"]
 
 [[rules]]
 id = "account-key-value"
@@ -364,6 +545,11 @@ label = "KEY"
 within = '''(?i)"keyName"\s*:'''
 keywords = ["keyname"]
 
+matrix = false
+[[rules.tests]]
+input = "{\"keyName\": \"key1\", \"value\": \"RmFrZUtleQ==\"}"
+expect = ["RmFrZUtleQ=="]
+
 [[rules]]
 id = "service-key"
 description = "primaryKey, secondaryKey and *MasterKey fields (Cosmos DB, Service Bus, Event Hubs keys list)"
@@ -371,6 +557,11 @@ regex = '''(?i)"[A-Za-z]*(?:MasterKey|primaryKey|secondaryKey)"\s*:\s*"((?:[^"\\
 secretGroup = 1
 label = "KEY"
 keywords = ["masterkey", "primarykey", "secondarykey"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"primaryMasterKey\": \"RmFrZU1hc3RlcktleTEyMzQ=\"}"
+expect = ["RmFrZU1hc3RlcktleTEyMzQ="]
 
 [[rules]]
 id = "ado-project-visualstudio"
@@ -381,6 +572,11 @@ label = "PROJECT"
 remember = "any"
 keywords = ["visualstudio.com/"]
 
+matrix = false
+[[rules.tests]]
+input = "https://fabrikamq.visualstudio.com/Northwind/_git/x"
+expect = ["Northwind"]
+
 [[rules]]
 id = "ado-org-artifacts"
 description = "The org in Azure Artifacts feed URLs: pkgs.dev.azure.com/<org>/"
@@ -390,6 +586,11 @@ label = "ORG"
 remember = "any"
 keywords = ["pkgs.dev.azure.com"]
 
+matrix = false
+[[rules.tests]]
+input = "https://pkgs.dev.azure.com/fabrikamq/_packaging/feed/npm/registry/"
+expect = ["fabrikamq"]
+
 [[rules]]
 id = "ado-org-artifacts-vs"
 description = "The org in older Azure Artifacts feed URLs: <org>.pkgs.visualstudio.com"
@@ -398,3 +599,8 @@ secretGroup = 1
 label = "ORG"
 remember = "any"
 keywords = ["pkgs.visualstudio.com"]
+
+matrix = false
+[[rules.tests]]
+input = "https://fabrikamq.pkgs.visualstudio.com/_packaging"
+expect = ["fabrikamq"]

@@ -21,6 +21,13 @@ except = '''(?i)@(?:[a-z0-9-]+\.)*example\.(?:com|org|net)$'''
 # remembering every address made email-heavy input slow and memory-hungry.
 keywords = ["@"]
 
+[[rules.tests]]
+input = "jordan.fake@fabrikamq.example"
+expect = ["jordan.fake@fabrikamq.example"]
+[[rules.tests]]
+input = "write to docs@example.com"
+expect = []
+
 [[rules]]
 id = "git-person"
 description = "The name in Author:, Commit:, Tagger:, Signed-off-by: and Co-authored-by: lines"
@@ -30,6 +37,11 @@ label = "PERSON"
 remember = "distinctive"
 keywords = ["author", "commit", "tagger", "signed-off-by", "co-authored-by"]
 
+matrix = false
+[[rules.tests]]
+input = "Author: Jordan Quillfake <jordan.fake@fabrikamq.example>"
+expect = ["Jordan Quillfake"]
+
 [[rules]]
 id = "git-config-user"
 description = "user.name in git config -l"
@@ -38,6 +50,11 @@ secretGroup = 1
 label = "PERSON"
 remember = "distinctive"
 keywords = ["user.name"]
+
+matrix = false
+[[rules.tests]]
+input = "user.name=Jordan Quillfake\nuser.email=jordan.fake@fabrikamq.example"
+expect = ["Jordan Quillfake"]
 
 [[rules]]
 id = "github-login"
@@ -49,6 +66,11 @@ within = '''(?i)"(?:html_url|is_bot)"\s*:'''
 remember = "any"
 keywords = ["\"login\""]
 
+matrix = false
+[[rules.tests]]
+input = "{\"login\": \"jqfake\", \"html_url\": \"https://github.com/jqfake\"}"
+expect = ["jqfake"]
+
 [[rules]]
 id = "github-profile"
 description = "The name, company, blog, location, bio and handle in a GitHub user record"
@@ -58,3 +80,8 @@ label = "USER-DETAIL"
 within = '''(?i)"(?:site_admin|public_repos|user_view_type|is_bot)"\s*:'''
 remember = "distinctive"
 keywords = ["site_admin", "public_repos", "is_bot"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"login\": \"jqfake\", \"name\": \"Jordan Quillfake\", \"site_admin\": false}"
+expect = ["Jordan Quillfake"]
