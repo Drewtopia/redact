@@ -92,6 +92,53 @@ function hideKnown(text: string, all: string[], tags: Set<string>): string {
   return out
 }
 
+// A command handed a value can print part of it (`cut -c1-12`, `${v:0:8}`),
+// which no rule and no whole-value match finds. So any run of SLICE_MIN or
+// more characters taken from a handed value is hidden too. An encoded form
+// (base64, hex) still gets through.
+const SLICE_MIN = 6
+// Every value handed to a tool this session: a slice can come back later
+// (`printf %s [SECRET-…] > f`, then `cut -c1-12 f`).
+const handedEver = new Set<string>()
+const KINDS = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/]
+const WORD_MAX = 10
+
+function hideSlices(text: string, v: string, tags: Set<string>): string {
+  if (v.length < SLICE_MIN) return text
+  const windows = new Map<string, number>()
+  for (let i = 0; i + SLICE_MIN <= v.length; i++) {
+    const w = v.slice(i, i + SLICE_MIN)
+    if (!windows.has(w)) windows.set(w, i)
+  }
+  // Cheap check first: most output holds no part of the value.
+  if (![...windows.keys()].some((w) => text.includes(w))) return text
+  const label = labelOf(byValue.get(v)) ?? 'SECRET'
+  let out = ''
+  let p = 0
+  while (p < text.length) {
+    const i = p + SLICE_MIN <= text.length ? windows.get(text.slice(p, p + SLICE_MIN)) : undefined
+    if (i === undefined) {
+      out += text[p++]
+      continue
+    }
+    let k = SLICE_MIN
+    while (p + k < text.length && i + k < v.length && text[p + k] === v[i + k]) k++
+    const run = text.slice(p, p + k)
+    // One kind of character (`passwo`, `123456`) reads as a word or a
+    // number, not a piece of a token: a human password must not hide every
+    // later `password`.
+    // A run of WORD_MAX or more is hidden whatever it holds: a passphrase
+    // such as `correcthorsebattery` is one kind all through.
+    if (run.length < WORD_MAX && KINDS.filter((re) => re.test(run)).length < 2) {
+      out += text[p++]
+      continue
+    }
+    out += mint(label, run, tags)
+    p += k
+  }
+  return out
+}
+
 // A pack's label can be anything (`123-customers`, `v1.2`): fold it into the
 // placeholder's shape. A label of LITERAL must not mint the hook's own tags.
 function tagLabel(label: string): string {
@@ -252,6 +299,9 @@ export async function scrub($: any, texts: string[], o: ScanOptions): Promise<{ 
     return out
   })
   // Built once all pieces minted, so a value found in one is hidden in the rest.
-  const all = knownValues(o.handed ?? new Set())
-  return { masked: minted.map((t) => hideKnown(t, all, tags)), tags }
+  const handed = o.handed ?? new Set<string>()
+  const all = knownValues(handed)
+  for (const v of handed) if (v.length >= SLICE_MIN) handedEver.add(v)
+  const hide = (t: string) => [...handedEver].reduce((s, v) => hideSlices(s, v, tags), hideKnown(t, all, tags))
+  return { masked: minted.map(hide), tags }
 }

