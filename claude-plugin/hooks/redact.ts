@@ -110,6 +110,8 @@ type Budget = { budget: { remainingMs: number } }
 const countHidden = (tags: Set<string>): number => [...tags].filter((t) => !isLiteral(t)).length
 
 let warned = false
+// The full path locate found after the bare name failed, used from then on.
+let located: string | undefined
 
 // Masks `texts` in one run of the binary, inside the hook's time budget.
 async function run($: any, next: Budget, binary: string, texts: string[], extra: Partial<ScanOptions> = {}) {
@@ -117,9 +119,12 @@ async function run($: any, next: Budget, binary: string, texts: string[], extra:
   const timeoutMs = next.budget.remainingMs - 300
   if (timeoutMs < 200) throw new Error('redact: out of time')
   return scrub($, texts, {
-    binary,
+    binary: located ?? binary,
     timeoutMs,
     ...extra,
+    onLocated: (path) => {
+      located = path
+    },
     onBroken: (why) => {
       if (warned) return
       warned = true

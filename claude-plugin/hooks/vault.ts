@@ -141,6 +141,38 @@ export type ScanOptions = {
   // Called once with the reason when the binary cannot run, so the person
   // learns why everything is being withheld.
   onBroken?: (why: string) => void
+  // Called with the full path when the bare name failed and locate found it.
+  onLocated?: (path: string) => void
+}
+
+// Where installers put redact. A session started by an app or service that
+// was running before redact was installed has a PATH without it, so when the
+// bare name fails to start, these folders are tried before withholding.
+// A configured path (one holding a slash) is used as given.
+export async function locate($: any, name: string): Promise<string | undefined> {
+  if (/[\\/]/.test(name)) return undefined
+  const home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE'))
+  const miseData = await $.env.get('MISE_DATA_DIR')
+  const xdgData = await $.env.get('XDG_DATA_HOME')
+  const localAppData = await $.env.get('LOCALAPPDATA')
+  const cargoHome = await $.env.get('CARGO_HOME')
+  const dirs = [
+    miseData && `${miseData}/shims`,
+    xdgData && `${xdgData}/mise/shims`,
+    home && `${home}/.local/share/mise/shims`,
+    localAppData && `${localAppData}/mise/shims`,
+    cargoHome && `${cargoHome}/bin`,
+    home && `${home}/.cargo/bin`,
+    home && `${home}/.local/bin`,
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+  ].filter((d): d is string => Boolean(d))
+  for (const dir of dirs) {
+    for (const file of [name, `${name}.exe`]) {
+      if (await $.fs.exists(`${dir}/${file}`)) return `${dir}/${file}`
+    }
+  }
+  return undefined
 }
 
 // Masks each text. Throws when the binary fails, so the hook withholds.
@@ -149,15 +181,23 @@ export async function scrub($: any, texts: string[], o: ScanOptions): Promise<{ 
   if (texts.length === 0) return { masked: [], tags }
   const pieces = o.escape ? texts.map((t) => escapeLiteralTags(t, tags)) : texts
   const joined = pieces.join(SEP)
-  const argv = [o.binary, 'scan', '--json']
   // An env var, not --command: a build too old to know it still runs.
+  const exec = (binary: string) =>
+    $.process.run([binary, 'scan', '--json'], { stdin: joined, timeoutMs: o.timeoutMs, ...(o.command ? { env: { REDACT_COMMAND: o.command } } : {}) })
   let r: { exitCode: number; stdout: string; stderr: string; isStdoutTruncated: boolean }
   try {
-    r = await $.process.run(argv, { stdin: joined, timeoutMs: o.timeoutMs, ...(o.command ? { env: { REDACT_COMMAND: o.command } } : {}) })
+    r = await exec(o.binary)
   } catch (err) {
-    const why = `could not run \`${o.binary}\` (${err instanceof Error ? err.message : String(err)})`
-    o.onBroken?.(why)
-    throw new Error(why)
+    const found = await locate($, o.binary).catch(() => undefined)
+    try {
+      if (!found) throw err
+      r = await exec(found)
+      o.onLocated?.(found)
+    } catch {
+      const why = `could not run \`${o.binary}\` (${err instanceof Error ? err.message : String(err)})`
+      o.onBroken?.(why)
+      throw new Error(why)
+    }
   }
   if (r.exitCode !== 0 || r.isStdoutTruncated) {
     const why = `\`${o.binary} scan\` exit ${r.exitCode}: ${r.stderr.trim().split('\n')[0] ?? ''}`
