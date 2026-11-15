@@ -85,7 +85,15 @@ The mod fails closed. It withholds the text instead of passing it on raw when th
 - is too old
 - exits with an error, such as a pack that will not load
 
-A toast says why. If `redact` is not on Claude Code's `PATH`, set the `binary` setting to its full path.
+A toast says why.
+
+If `redact` is not on Claude Code's `PATH`, the mod looks for it where installers put it before it gives up:
+
+- mise's shims folder (`$MISE_DATA_DIR`, `$XDG_DATA_HOME/mise`, `~/.local/share/mise` or `%LOCALAPPDATA%\mise`)
+- `$CARGO_HOME/bin` and `~/.cargo/bin`
+- `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin`
+
+This covers a session started by an app or service that was already running when you installed redact, so its `PATH` was set before redact existed. If the mod still cannot find it, set the `binary` setting to its full path. A `binary` that holds a path is used as given.
 
 ## Settings
 
