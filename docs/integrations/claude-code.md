@@ -58,7 +58,9 @@ Bash, PowerShell, Write, Edit, MultiEdit, NotebookEdit, Read, Glob, and Grep get
 
 ### Not into git history or a pull request
 
-These commands keep their placeholders: `git commit`, `git tag`, `gh pr`, `gh issue`, `gh api`, `glab mr`, and `az repos`. Git's global options, such as `--work-tree` and `--git-dir`, do not get past this check, quoted or not, and neither does a command inside `sh -c '…'` or `$(…)`. A commit message or an issue body cannot carry the value off the machine.
+These commands keep their placeholders: `git commit`, `git tag`, `gh pr`, `gh issue`, `gh api`, `glab mr`, and `az repos`. A commit message or an issue body cannot carry the value off the machine.
+
+The check reads the command's text with its quotes and escapes taken out. A command that names `git` and `commit` anywhere keeps its placeholders, in either order and however they are quoted, split or nested. So `git log --grep=commit` keeps them too. It is a check on text, not a sandbox: a command that builds the word `git` or `commit` while it runs can still get a real value.
 
 ::: warning A file still gets the real value
 Write puts the real value into a file, and a later `git add` and `git commit` would publish it. The [pre-commit check](./git-ci) catches that.

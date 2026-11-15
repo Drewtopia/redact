@@ -62,11 +62,12 @@ export function restore(text: string, onValue?: (v: string) => void): string {
 export const isLiteral = (tag: string): boolean => /^\[LITERAL-[0-9a-f]{8}\]$/.test(tag)
 
 // The real value behind each live placeholder in `text`, with its placeholder.
-export function valuesIn(text: string): Map<string, string> {
+// With `literals`, also each LITERAL tag with the placeholder text it escapes.
+export function valuesIn(text: string, { literals = false } = {}): Map<string, string> {
   const out = new Map<string, string>()
   for (const t of text.match(TAG) ?? []) {
     const v = byTag.get(t)
-    if (v !== undefined && !isLiteral(t)) out.set(v, t)
+    if (v !== undefined && (literals || !isLiteral(t))) out.set(v, t)
   }
   return out
 }

@@ -61,13 +61,13 @@ struct Record<'a> {
     key: Option<&'a str>,
 }
 
+/// An object's own fields so far, as byte ranges, and the key it is the value of.
+type Open<'a> = (Vec<(usize, usize)>, Option<&'a str>);
+
 /// Every object in the text, each with only its own fields, so a nested object
 /// (`"user": {…}`) between two fields does not split them apart and field order
 /// does not matter. Braces inside JSON strings are not structure. Text outside
 /// every object counts as one more record; an unclosed object runs to the end.
-/// An object's own fields so far, as byte ranges, and the key it is the value of.
-type Open<'a> = (Vec<(usize, usize)>, Option<&'a str>);
-
 fn records(text: &str) -> Vec<Record<'_>> {
     let b = text.as_bytes();
     // Each open object, with where its current piece began.
@@ -132,12 +132,18 @@ fn records(text: &str) -> Vec<Record<'_>> {
 }
 
 /// The JSON key before the `{` at `open`: `data` in `"data" : {`. None when
-/// the object is not a key's value, or the key holds an escaped quote.
+/// the object is not a key's value. A key with an escape in it (`da\u0074a`)
+/// comes back as a lone `\`, which every `withinKey` accepts: unread, it
+/// could be any key, so the rule runs.
 fn key_before(text: &str, open: usize) -> Option<&str> {
     let before = text[..open].trim_end().strip_suffix(':')?.trim_end();
     let inner = before.strip_suffix('"')?;
     let start = inner.rfind('"')?;
-    (!inner[..start].ends_with('\\')).then(|| &inner[start + 1..])
+    let key = &inner[start + 1..];
+    if key.contains('\\') || inner[..start].ends_with('\\') {
+        return Some("\\");
+    }
+    Some(key)
 }
 
 pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
@@ -162,7 +168,7 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                             )
             })
     };
-    // Built on first use, and only if a `within` rule runs.
+    // Built on first use, and only if a `within` or `withinKey` rule runs.
     let recs: OnceLock<Vec<Record>> = OnceLock::new();
 
     let mut spans = Vec::new();
@@ -187,10 +193,9 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                     // sits in a field beside the match, not in it.
                     .filter(|r| {
                         rule.within.as_ref().is_none_or(|w| w.is_match(&r.joined))
-                            && rule
-                                .within_key
-                                .as_ref()
-                                .is_none_or(|k| r.key.is_some_and(|key| k.is_match(key)))
+                            && rule.within_key.as_ref().is_none_or(|k| {
+                                r.key.is_some_and(|key| key == "\\" || k.is_match(key))
+                            })
                             && (rule.within.is_none()
                                 || !rule
                                     .except_match
@@ -1034,21 +1039,29 @@ mod tests {
 
     #[test]
     fn a_json_secret_hides_its_data_and_leaves_metadata_visible() {
-        for text in [
+        let compact = azure(
             r#"{"kind":"Secret","data":{"key":"c2VjcmV0","other":"b3RoZXJ2YWx1ZQ=="},"metadata":{"name":"sample12","labels":{"app":"frontend"}}}"#,
+        );
+        assert!(
+            !compact.contains("c2VjcmV0") && !compact.contains("b3RoZXJ2YWx1ZQ=="),
+            "{compact}"
+        );
+        assert!(
+            compact.contains("sample12") && compact.contains("frontend"),
+            "{compact}"
+        );
+
+        let pretty = azure(
             "{\n  \"kind\": \"Secret\",\n  \"metadata\": {\"name\": \"sample12\"},\n  \"data\" : {\n    \"key\": \"c2VjcmV0\"\n  }\n}",
-        ] {
-            let out = azure(text);
-            assert!(
-                !out.contains("c2VjcmV0") && !out.contains("b3RoZXJ2YWx1ZQ"),
-                "{out}"
-            );
-            assert!(out.contains("sample12"), "{out}");
-            assert!(
-                !text.contains("frontend") || out.contains("frontend"),
-                "{out}"
-            );
-        }
+        );
+        assert!(
+            !pretty.contains("c2VjcmV0") && pretty.contains("sample12"),
+            "{pretty}"
+        );
+
+        // A key spelled with an escape could be `data`, so its values are hidden.
+        let escaped = azure(r#"{"kind":"Secret","da\u0074a":{"key":"c2VjcmV0"}}"#);
+        assert!(!escaped.contains("c2VjcmV0"), "{escaped}");
     }
 
     #[test]

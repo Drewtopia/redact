@@ -209,3 +209,39 @@ test("a structured Kubernetes Secret keeps its metadata visible", async () => {
   assert.equal(r.result.metadata.name, 'sample12')
   assert.equal(r.result.metadata.labels.app, 'frontend')
 })
+
+test('a publish command keeps its placeholders however it is spelled', async () => {
+  const h = hook((e) => e.tool === 'Read' ? { password: 'spelledpassword42' } : 'ok')
+  const tag = (await h.call({ tool: 'Read', file_path: 'synthetic.json' })).result.password
+  for (const [tool, command] of [
+    ['Bash', 'x=`git commit -m "TAG"`'],
+    ['Bash', 'git \\\ncommit -m "TAG"'],
+    ['Bash', "git $'commit' -m TAG"],
+    ['Bash', 'git {commit,} -m TAG'],
+    ['Bash', 'git $(echo commit) -m TAG'],
+    ['Bash', 'c=commit; git $c -m TAG'],
+    ['Bash', 'git -c alias.ci=commit ci -m TAG'],
+    ['Bash', 'az -o json repos pr create --description TAG'],
+    ['Bash', 'gh -R o/r repo edit --description TAG'],
+    ['PowerShell', '& "C:\\Program Files\\Git\\cmd\\git.exe" commit -m "TAG"'],
+    ['PowerShell', 'C:\\tools\\git.exe commit -m "TAG"'],
+    ['PowerShell', "Start-Process git -ArgumentList 'commit','-m','TAG'"],
+  ]) {
+    const c = command.replaceAll('TAG', tag)
+    await h.call({ tool, command: c })
+    assert.equal(h.seen.at(-1).command, c, command)
+  }
+})
+
+test('placeholder text beside a value found by name stays escaped', async () => {
+  let first
+  const h = hook((e) => e.file_path === 'a.json' ? { password: 'firstsecret42' }
+    : e.file_path === 'b.json' ? { password: 'secondsecret42', log: `used secondsecret42 and ${first}` } : 'ok')
+  first = (await h.call({ tool: 'Read', file_path: 'a.json' })).result.password
+  const r = await h.call({ tool: 'Read', file_path: 'b.json' })
+  assert.equal(r.deny, undefined, JSON.stringify(r))
+  assert.ok(!r.result.log.includes('secondsecret42'), r.result.log)
+  await h.call({ tool: 'Write', file_path: 'synthetic.txt', content: r.result.log })
+  const written = h.seen.at(-1).content
+  assert.ok(!written.includes('firstsecret42') && written.includes(first), written)
+})

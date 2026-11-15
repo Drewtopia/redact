@@ -24,71 +24,32 @@ const LIVE_TAG_TOOLS = new Set(['Agent', 'Task'])
 // Azure DevOps keeps its placeholders, so a commit message or issue body
 // cannot carry a real value off the machine.
 //
-// The command is split into shell words, quotes and escapes removed, as the
-// shell would hand them to git: `"--work-tree"` is `--work-tree`. One pass over
-// the text, so no input can make the check slow. Bash escapes with a
-// backslash; PowerShell uses a backtick.
-function simpleCommands(text: string): string[][] {
-  const out: string[][] = [[]]
-  let word = ''
-  let started = false
-  let quote = ''
-  const end = () => {
-    if (started) out[out.length - 1].push(word)
-    word = ''
-    started = false
-  }
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]
-    if (quote === "'") {
-      if (c === "'") quote = ''
-      else word += c
-    } else if ((c === '\\' || c === '`') && i + 1 < text.length) {
-      word += text[++i]
-      started = true
-    } else if (quote === '"') {
-      if (c === '"') quote = ''
-      else word += c
-    } else if (c === '"' || c === "'") {
-      quote = c
-      started = true
-    } else if (/[;&|(){}\r\n]/.test(c)) {
-      end()
-      out.push([])
-    } else if (/\s/.test(c)) end()
-    else {
-      word += c
-      started = true
-    }
-  }
-  end()
-  return out
-}
+// This reads the command's text, not its meaning: a shell has too many ways to
+// split, quote, alias or expand a word for a parser here to follow them all.
+// So it fails closed. With quote and escape characters taken out, a command
+// that names a tool anywhere and one of its publishing words anywhere (in
+// either order) publishes: `git log --grep=commit` keeps its placeholders too.
+// Each test is one pass over the text, so no command can make it slow.
+// Each line: words that must all appear, the tool first.
+const PUBLISH_WORDS: RegExp[][] = [
+  ['git', 'commit|tag|notes|send-email'],
+  ['gh', 'issue|pr|release|gist|discussion|api'],
+  ['gh', 'repo', 'create|edit'],
+  ['glab', 'issue|mr|release|snippet|api'],
+  ['az', 'repos|boards|devops|pipelines|rest'],
+].map(([tool, ...words]) => [
+  // A tool's name on its own, or at the end of a path: `C:\Git\cmd\git.exe`.
+  new RegExp(String.raw`(?:^|[^\w.-])${tool}(?:\.exe|\.cmd)?(?![\w.-])`, 'i'),
+  ...words.map((w) => new RegExp(String.raw`(?:^|[^\w.-])(?:${w})(?![\w.-])`, 'i')),
+])
 
-// Options that take the next word as their value, lowercase (`-c` is also `-C`).
-const GIT_VALUE_OPTS = new Set(['-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env', '--attr-source'])
-const GH_VALUE_OPTS = new Set(['-r', '--repo', '--hostname'])
-const PUBLISH: Record<string, (sub: string, next: string) => boolean> = {
-  git: (sub) => ['commit', 'tag', 'notes', 'send-email'].includes(sub),
-  gh: (sub, next) => ['issue', 'pr', 'release', 'gist', 'discussion', 'api'].includes(sub) || (sub === 'repo' && ['create', 'edit'].includes(next)),
-  glab: (sub) => ['issue', 'mr', 'release', 'snippet', 'api'].includes(sub),
-  az: (sub) => ['repos', 'boards', 'devops', 'pipelines', 'rest'].includes(sub),
-}
-
-// A quoted word that is itself a command (`sh -c '…'`, `"$(…)"`) is read too.
-function publishes(command: string, depth = 0): boolean {
-  for (const words of simpleCommands(command)) {
-    for (let i = 0; i < words.length; i++) {
-      if (depth < 4 && /\s/.test(words[i]) && publishes(words[i], depth + 1)) return true
-      const tool = /^(?:.*[\\/])?(git|gh|glab|az)(?:\.exe|\.cmd)?$/i.exec(words[i])?.[1]?.toLowerCase()
-      if (!tool) continue
-      const takesValue = tool === 'git' ? GIT_VALUE_OPTS : tool === 'gh' ? GH_VALUE_OPTS : new Set<string>()
-      let k = i + 1
-      while (k < words.length && words[k].startsWith('-')) k += takesValue.has(words[k].toLowerCase()) ? 2 : 1
-      if (PUBLISH[tool]((words[k] ?? '').toLowerCase(), (words[k + 1] ?? '').toLowerCase())) return true
-    }
-  }
-  return false
+function publishes(command: string): boolean {
+  // Bash reads `gi\t`, `"g"it` and `$'git'` as git; PowerShell does the same
+  // with a backtick. Removing those characters joins the word again, and
+  // reading them as spaces keeps a Windows path's parts apart.
+  const quotes = /["'`\\$]/g
+  const forms = [command.replace(quotes, ''), command.replace(quotes, ' ')]
+  return forms.some((text) => PUBLISH_WORDS.some((all) => all.every((re) => re.test(text))))
 }
 
 // Claude Code's shell tools, each with the characters that make a restored
@@ -244,23 +205,30 @@ export const register: Register = (on, options) => {
       inContext.push([value, mint(tag.slice(1, -10), value, tags)])
     }
     inContext.sort(([a], [b]) => b.length - a.length)
+    // Where a hidden value can be put back: the whole string, or inside it when
+    // it is long enough not to match by chance.
+    const sitsIn = (s: string, v: string) => s === v || (v.length >= 4 && s.includes(v))
+    const replaceAll = (s: string, found: [string, string][]): string => {
+      let out = s
+      for (const [v, tag] of found) out = out === v ? tag : v.length >= 4 ? out.split(v).join(tag) : out
+      return out
+    }
     // One that sits in no single string (it ran from a name into its value) cannot be put back.
-    const placed = ([v]: [string, string]) => unique.some((s) => s === v || (v.length >= 4 && s.includes(v)))
+    const placed = ([v]: [string, string]) => unique.some((s) => sitsIn(s, v))
     if (!inContext.every(placed)) return { deny: 'redact: a hidden value in this result could not be put back in place, so the result was withheld. Narrow the call and retry.' }
     const fix = (s: string): string => {
-      const leaf = lookup.get(s) ?? s
-      // A value found with its field name can hold one the scan of this string
-      // hid on its own (a token on one line of a password). Hiding that first
-      // would leave the rest of the password showing, so the longer values are
-      // hidden first, from the raw string, then what the string's own scan found.
-      const wide = inContext.filter(([v]) => s === v || (v.length >= 4 && s.includes(v)))
-      if (wide.length === 0) return leaf
-      const own = [...valuesIn(leaf)]
+      const masked = lookup.get(s) ?? s
+      // A value found with its field name can hold one this string's own scan
+      // hid (a token on one line of a password). Hiding the inner one first
+      // would leave the rest of the password showing, so the string is rebuilt
+      // from its raw text, longest value first. Its own finds include the
+      // LITERAL tags that stand for placeholder text, so that text stays escaped.
+      const byName = inContext.filter(([v]) => sitsIn(s, v))
+      if (byName.length === 0) return masked
+      const ownFinds = [...valuesIn(masked, { literals: true })]
       // A short value can only be put back where it is the whole string.
-      if (own.some(([v]) => v.length < 4 && v !== s)) throw new Error('redact: a short hidden value cannot be placed')
-      let out = s
-      for (const [v, tag] of [...wide, ...own].sort(([a], [b]) => b.length - a.length)) out = out === v ? tag : v.length >= 4 ? out.split(v).join(tag) : out
-      return out
+      if (ownFinds.some(([v]) => !sitsIn(s, v))) throw new Error('redact: a hidden value cannot be placed')
+      return replaceAll(s, [...byName, ...ownFinds].sort(([a], [b]) => b.length - a.length))
     }
     const st2: WalkState = { incomplete: false }
     const result = walk(r.result, fix, st2)
