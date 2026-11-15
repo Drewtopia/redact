@@ -7,7 +7,7 @@ keywords = ["ya29.", "project_id", "projectid", "projects/", "--project", "priva
 [[rules]]
 id = "access-token"
 description = "A Google OAuth access token (ya29.)"
-regex = '''\b(ya29\.[0-9A-Za-z_-]{20,})'''
+regex = '''(?:^|[^A-Za-z0-9_]|\\[nrt])(ya29\.[0-9A-Za-z_-]{20,})'''
 secretGroup = 1
 label = "TOKEN"
 keywords = ["ya29."]
@@ -24,7 +24,7 @@ keywords = ["project_id", "projectid"]
 [[rules]]
 id = "project-path"
 description = "The project in a resource path: projects/<id>/..."
-regex = '''\bprojects/([a-z][a-z0-9-]{4,28}[a-z0-9])\b'''
+regex = '''(?:^|[^A-Za-z0-9_]|\\[nrt])projects/([a-z][a-z0-9-]{4,28}[a-z0-9])\b'''
 secretGroup = 1
 label = "PROJECT"
 remember = "any"
