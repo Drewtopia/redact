@@ -101,6 +101,7 @@ const SLICE_MIN = 6
 // (`printf %s [SECRET-…] > f`, then `cut -c1-12 f`).
 const handedEver = new Set<string>()
 const KINDS = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/]
+const WORD_MAX = 10
 
 function hideSlices(text: string, v: string, tags: Set<string>): string {
   if (v.length < SLICE_MIN) return text
@@ -126,7 +127,9 @@ function hideSlices(text: string, v: string, tags: Set<string>): string {
     // One kind of character (`passwo`, `123456`) reads as a word or a
     // number, not a piece of a token: a human password must not hide every
     // later `password`.
-    if (KINDS.filter((re) => re.test(run)).length < 2) {
+    // A run of WORD_MAX or more is hidden whatever it holds: a passphrase
+    // such as `correcthorsebattery` is one kind all through.
+    if (run.length < WORD_MAX && KINDS.filter((re) => re.test(run)).length < 2) {
       out += text[p++]
       continue
     }

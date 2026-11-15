@@ -69,11 +69,12 @@ With that list, `curl -H "x-api-key: [SECRET-a1b2c3d4]" https://api.example.com/
 The mod reads the command as written, with its quotes and escapes removed, and with them as spaces, so `c''url` still reads as `curl`. It finds:
 
 - each `scheme://host`, `user@host`, Bash's `/dev/tcp/host`, and PowerShell's `\\host\share`
-- when the command names a network tool such as `curl`, `wget`, `ssh`, `nc`, `dig`, `openssl`, `docker` or `Invoke-RestMethod`: every host name or IP address anywhere in it, option values included (`-x proxy`, `--resolve`, `--connect-to`)
+- every host name or IP address anywhere in the command, option values included (`-x proxy`, `--resolve`, `--connect-to`), in any form a resolver takes (`1.1`, `16843009`, `0x01010101`)
+- when the command names a network tool such as `curl`, `wget`, `ssh`, `nc`, `dig`, `openssl`, `docker` or `Invoke-RestMethod`: also a host with no dot, as `box:/path` or `box:22`, or as the first word after `nc`, `ssh`, `ping` or `dig`
 
-A network tool with no host the mod can find is refused too: write the URL in full. A file name such as `body.json` or `deploy.sh` does not count as a host.
+A network tool with no host the mod can find is refused too: write the URL in full. A file name such as `body.json` or `deploy.sh` does not count as a host, but a dotted name such as `pkg.module` or a version such as `1.2` does, so a command carrying a real value refuses those too.
 
-Like the git check below, this reads text. A host the command puts together while it runs (`$(printf evil).test`) gets past it, and so does a value written to a file first and sent from there.
+Like the git check below, this reads text. A host the command puts together while it runs (`$(printf evil).test`) or reads from a file (`curl -K config`) gets past it, and so does a value written to a file first and sent from there.
 
 ### Not into git history or a pull request
 

@@ -78,12 +78,15 @@ const NETWORK_TOOL = new RegExp(
   'i',
 )
 const URL = /\b[a-z][a-z0-9+.-]*:\/\/([^\s/?#"'`]*)\S*/gi
-const HOST = String.raw`(?:[a-z0-9-]+\.)+[a-z]{2,}|\d{1,3}(?:\.\d{1,3}){3}|localhost|0x[0-9a-f]+|\[[0-9a-f:.]+\]`
+// Host names and every way to write an IPv4 address that a resolver takes:
+// dotted (`1.1`, `1.2.3.4`), one integer (`16843009`) and hex (`0x01010101`).
+const HOST = String.raw`(?:[a-z0-9-]+\.)+[a-z]{2,}|\d+(?:\.\d+){1,3}|\d{7,}|0x[0-9a-f]+(?:\.[0-9a-fx]+)*|localhost|\[[0-9a-f:.]+\]`
 // Hosts a shell reaches with no network tool named: user@host (ssh, git
 // remotes, mail), /dev/tcp/host in Bash, and \\host\share in PowerShell.
 const ALWAYS_HOST = new RegExp(String.raw`[\w.+-]@(${HOST})|/dev/(?:tcp|udp)/([^/\s]+)|\\\\([^\\\s]+)\\`, 'gi')
-// After a network tool, every host-shaped part of the command, option values
-// included (`-xproxy.test`, `--resolve a:443:host`).
+// Every host-shaped part of the command, option values included
+// (`-xproxy.test`, `--resolve a:443:host`), with or without a network tool:
+// an interpreter reaches a host with no tool named (`node -e "…connect(80,'h')"`).
 const ANY_HOST = new RegExp(String.raw`(?<![\w.])(${HOST})(?![\w-])([/:])?`, 'gi')
 // A file name, unless a / or : after it makes it read as a host.
 const FILE_EXT = /\.(?:json|ya?ml|toml|txt|md|csv|xml|html?|js|ts|mjs|py|sh|ps1|bat|cmd|exe|env|pem|key|crt|log|conf|ini|tar|gz|zip)$/i
@@ -102,14 +105,20 @@ function checkHosts(command: string, allowed: string[]): HostCheck {
   let tool = false
   // A shell drops quotes and escapes (`c''url`, `cu\rl`, PowerShell's i`wr),
   // so the text is read as written, with them removed, and with them as spaces.
-  for (const text of [command, command.replace(/["'`\\]/g, ''), command.replace(/["'`\\]/g, ' ')]) {
+  // A placeholder's hex (`[SECRET-12345678]`) is not an address.
+  const bare = command.replace(/\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\]/g, ' ')
+  for (const text of [bare, bare.replace(/["'`\\]/g, ''), bare.replace(/["'`\\]/g, ' ')]) {
     for (const m of text.matchAll(URL)) if (m[1]) hosts.add(hostOf(m[1]))
     for (const m of text.matchAll(ALWAYS_HOST)) hosts.add(hostOf(m[1] ?? m[2] ?? m[3] ?? ''))
-    if (!NETWORK_TOOL.test(text)) continue
-    tool = true
     for (const m of text.replace(URL, ' ').matchAll(ANY_HOST)) {
       if (m[1] && (m[2] || !FILE_EXT.test(m[1]))) hosts.add(hostOf(m[1]))
     }
+    if (!NETWORK_TOOL.test(text)) continue
+    tool = true
+    // A host with no dot, as scp, ssh and nc take it: `box:/path`, `box:22`.
+    for (const m of text.replace(URL, ' ').matchAll(/(?<![\w.:-])([a-z][a-z0-9-]*):(?:\/|\d+(?![\w-]))/gi)) hosts.add(m[1]!.toLowerCase())
+    // And the first plain word after a tool whose first argument is a host.
+    for (const m of text.matchAll(/(?:^|[^\w.-])(?:nc|ncat|netcat|telnet|ssh|ping|dig|nslookup|host|ftp|sftp|traceroute)(?:\.exe)?(?:\s+-\S+)*\s+([a-z][\w-]*)(?![\w.:@-])/gi)) hosts.add(m[1]!.toLowerCase())
   }
   hosts.delete('')
   const ok = (h: string) => allowed.some((a) => h === a || h.endsWith(`.${a}`))
