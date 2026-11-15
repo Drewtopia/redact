@@ -2,7 +2,7 @@
 schema_version = 1
 id = "kubernetes"
 description = "The values of a Kubernetes Secret's data (YAML and JSON), and client keys in a kubeconfig"
-keywords = ["kind: secret", "\"kind\": \"secret\"", "\"kind\":\"secret\"", "client-key-data"]
+keywords = ["kind: secret", "kind: \"secret\"", "kind: 'secret'", "\"kind\": \"secret\"", "\"kind\":\"secret\"", "client-key-data"]
 
 [[rules]]
 id = "secret-data-yaml"
@@ -10,12 +10,13 @@ description = "A base64 value on an indented line of a Secret (kubectl get secre
 regex = '''(?m)^[ \t]+[A-Za-z0-9_.-]+:[ \t]+([A-Za-z0-9+/]{8,}={0,2})[ \t]*$'''
 secretGroup = 1
 label = "SECRET"
-keywords = ["kind: secret"]
+keywords = ["kind: secret", "kind: \"secret\"", "kind: 'secret'"]
 
 [[rules]]
 id = "secret-data-json"
 description = "A base64 value in a Secret (kubectl get secret -o json)"
 regex = '''(?i)"[^"]+"\s*:\s*"([A-Za-z0-9+/]{8,}={0,2})"'''
+withinKey = '''^(?:data|stringData)$'''
 secretGroup = 1
 label = "SECRET"
 keywords = ["\"kind\": \"secret\"", "\"kind\":\"secret\""]

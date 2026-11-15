@@ -57,7 +57,12 @@ fn common_word(v: &str) -> bool {
 struct Record<'a> {
     pieces: Vec<(usize, &'a str)>,
     joined: String,
+    /// The key this object is the value of: `data` in `"data": {…}`.
+    key: Option<&'a str>,
 }
+
+/// An object's own fields so far, as byte ranges, and the key it is the value of.
+type Open<'a> = (Vec<(usize, usize)>, Option<&'a str>);
 
 /// Every object in the text, each with only its own fields, so a nested object
 /// (`"user": {…}`) between two fields does not split them apart and field order
@@ -65,9 +70,9 @@ struct Record<'a> {
 /// every object counts as one more record; an unclosed object runs to the end.
 fn records(text: &str) -> Vec<Record<'_>> {
     let b = text.as_bytes();
-    // Each open object: its finished pieces, and where its current piece began.
-    let mut stack: Vec<(Vec<(usize, usize)>, usize)> = vec![(Vec::new(), 0)];
-    let mut done: Vec<Vec<(usize, usize)>> = Vec::new();
+    // Each open object, with where its current piece began.
+    let mut stack: Vec<(Open, usize)> = vec![((Vec::new(), None), 0)];
+    let mut done: Vec<Open> = Vec::new();
     let (mut in_string, mut escaped) = (false, false);
     for (i, &c) in b.iter().enumerate() {
         if in_string {
@@ -86,47 +91,84 @@ fn records(text: &str) -> Vec<Record<'_>> {
                     .last_mut()
                     .expect("the outermost record is never popped here");
                 if i > top.1 {
-                    top.0.push((top.1, i));
+                    top.0.0.push((top.1, i));
                 }
-                stack.push((Vec::new(), i + 1));
+                stack.push(((Vec::new(), key_before(text, i)), i + 1));
             }
             b'}' if stack.len() > 1 => {
-                let (mut pieces, start) = stack.pop().expect("checked above");
+                let ((mut pieces, key), start) = stack.pop().expect("checked above");
                 if i > start {
                     pieces.push((start, i));
                 }
-                done.push(pieces);
+                done.push((pieces, key));
                 stack.last_mut().expect("the outermost record remains").1 = i + 1;
             }
             _ => {}
         }
     }
-    while let Some((mut pieces, start)) = stack.pop() {
+    while let Some(((mut pieces, key), start)) = stack.pop() {
         if b.len() > start {
             pieces.push((start, b.len()));
         }
-        done.push(pieces);
+        done.push((pieces, key));
     }
     // Braces and quotes are ASCII, so every cut is on a character boundary.
     done.into_iter()
-        .filter(|p| !p.is_empty())
-        .map(|p| {
+        .filter(|(p, _)| !p.is_empty())
+        .map(|(p, key)| {
             let pieces: Vec<(usize, &str)> = p.into_iter().map(|(s, e)| (s, &text[s..e])).collect();
             let joined = pieces
                 .iter()
                 .map(|(_, t)| *t)
                 .collect::<Vec<_>>()
                 .join("\n");
-            Record { pieces, joined }
+            Record {
+                pieces,
+                joined,
+                key,
+            }
         })
         .collect()
+}
+
+/// The JSON key before the `{` at `open`: `data` in `"data" : {`. None when
+/// the object is not a key's value. A key with an escape in it (`da\u0074a`)
+/// comes back as a lone `\`, which every `withinKey` accepts: unread, it
+/// could be any key, so the rule runs.
+fn key_before(text: &str, open: usize) -> Option<&str> {
+    let before = text[..open].trim_end().strip_suffix(':')?.trim_end();
+    let inner = before.strip_suffix('"')?;
+    let start = inner.rfind('"')?;
+    let key = &inner[start + 1..];
+    if key.contains('\\') || inner[..start].ends_with('\\') {
+        return Some("\\");
+    }
+    Some(key)
 }
 
 pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
     // Keywords are a cheap test that a pack or rule could match at all.
     let low = text.to_lowercase();
-    let has = |keys: &[String]| keys.is_empty() || keys.iter().any(|k| low.contains(k.as_str()));
-    // Built on first use, and only if a `within` rule runs.
+    // Formatting around a keyword must not exclude a regex that accepts it.
+    // Build the whitespace-free text only when a spaced keyword needs it.
+    let compact: OnceLock<String> = OnceLock::new();
+    let has = |keys: &[String]| {
+        keys.is_empty()
+            || keys.iter().any(|k| {
+                low.contains(k.as_str())
+                    || k.chars().any(|c| c.is_ascii_whitespace())
+                        && compact
+                            .get_or_init(|| {
+                                low.chars().filter(|c| !c.is_ascii_whitespace()).collect()
+                            })
+                            .contains(
+                                &k.chars()
+                                    .filter(|c| !c.is_ascii_whitespace())
+                                    .collect::<String>(),
+                            )
+            })
+    };
+    // Built on first use, and only if a `within` or `withinKey` rule runs.
     let recs: OnceLock<Vec<Record>> = OnceLock::new();
 
     let mut spans = Vec::new();
@@ -141,26 +183,32 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
             if !has(&rule.keywords) || !has(&rule.context) {
                 continue;
             }
-            let segments: Vec<(usize, &str)> = match &rule.within {
-                None => vec![(0, text)],
-                Some(w) => recs
-                    .get_or_init(|| records(text))
+            let segments: Vec<(usize, &str)> = if rule.within.is_none() && rule.within_key.is_none()
+            {
+                vec![(0, text)]
+            } else {
+                recs.get_or_init(|| records(text))
                     .iter()
                     // `exceptMatch` also skips a whole record: the name that decides
                     // sits in a field beside the match, not in it.
                     .filter(|r| {
-                        w.is_match(&r.joined)
-                            && !rule
-                                .except_match
-                                .as_ref()
-                                .is_some_and(|x| x.is_match(&r.joined))
+                        rule.within.as_ref().is_none_or(|w| w.is_match(&r.joined))
+                            && rule.within_key.as_ref().is_none_or(|k| {
+                                r.key.is_some_and(|key| key == "\\" || k.is_match(key))
+                            })
+                            && (rule.within.is_none()
+                                || !rule
+                                    .except_match
+                                    .as_ref()
+                                    .is_some_and(|x| x.is_match(&r.joined)))
                     })
                     .flat_map(|r| r.pieces.iter().copied())
-                    .collect(),
+                    .collect()
             };
             for (offset, seg) in segments {
                 let mut pos = 0;
                 while let Some(caps) = rule.re.captures_at(seg, pos) {
+                    let search_start = pos;
                     let whole = caps.get(0).unwrap();
                     let end = caps.get(rule.group).map_or(whole.end(), |m| m.end());
                     // Look again from the end of the hidden part, not of the whole
@@ -185,7 +233,11 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                         .as_ref()
                         .is_some_and(|x| x.is_match(whole.as_str()))
                     {
-                        pos = m.start();
+                        // Group zero, or a capture at the match's start, must
+                        // not send the next search back to the same position.
+                        if m.start() > search_start {
+                            pos = m.start();
+                        }
                         continue;
                     }
                     // Trailing whitespace is not part of a value: on a CRLF line
@@ -242,14 +294,14 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
     }
     let mut hidden: HashSet<String> = words.iter().map(|w| label_key(&w.text)).collect();
     spans.extend(find_words(text, words, &loaded.allow)?);
-    // A label or rule name can be a key or file name (`CONTOSO_TOKEN`,
+    // A pack, label or rule name can be a key or file name (`CONTOSO_TOKEN`,
     // `contoso.txt`), so it can hold something being hidden: a listed word, a
     // remembered value, or any value a rule found. Such a name becomes VALUE,
     // in the placeholder and in --json and --explain alike. Only values short
     // enough to fit inside a name are worth checking.
     let longest = spans
         .iter()
-        .map(|s| s.label.len().max(s.rule.len()))
+        .map(|s| s.label.len().max(s.rule.len()).max(s.pack.len()))
         .max()
         .unwrap_or(0);
     hidden.extend(
@@ -275,6 +327,7 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
     for s in &mut spans {
         s.label = clean(&s.label);
         s.rule = clean(&s.rule);
+        s.pack = clean(&s.pack);
     }
     Ok(merge(spans))
 }
@@ -1126,6 +1179,71 @@ mod tests {
         // The line after keeps its own content.
         let out = azure("password: correct horse battery\nhost: db-host\n");
         assert!(out.contains("host: db-host"), "{out}");
+    }
+
+    #[test]
+    fn quoted_secret_flags_hide_the_whole_argument() {
+        for flag in ["--password", "--token", "--secret-key"] {
+            for value in [
+                r#""firstword secondword""#,
+                "'firstword secondword'",
+                r#""a secondword""#,
+            ] {
+                for separator in [" ", "="] {
+                    let out = azure(&format!(
+                        "tool {flag}{separator}{value} --host example.test"
+                    ));
+                    assert!(
+                        !out.contains("firstword") && !out.contains("secondword"),
+                        "{out}"
+                    );
+                    assert!(out.contains("--host example.test"), "{out}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn kubernetes_secrets_allow_json_whitespace_and_quoted_yaml_kind() {
+        for text in [
+            r#"{"kind" : "Secret", "data":{"key":"c2VjcmV0"}}"#,
+            "{\"kind\"\n:\t\"Secret\", \"data\":{\"key\":\"c2VjcmV0\"}}",
+            "kind: \"Secret\"\ndata:\n  key: c2VjcmV0\n",
+            "kind: 'Secret'\ndata:\n  key: c2VjcmV0\n",
+        ] {
+            let out = azure(text);
+            assert!(!out.contains("c2VjcmV0"), "{out}");
+        }
+        let ordinary =
+            "kind: ConfigMap\nmetadata:\n  name: secret-settings\ndata:\n  setting: value123\n";
+        assert_eq!(azure(ordinary), ordinary);
+    }
+
+    #[test]
+    fn a_json_secret_hides_its_data_and_leaves_metadata_visible() {
+        let compact = azure(
+            r#"{"kind":"Secret","data":{"key":"c2VjcmV0","other":"b3RoZXJ2YWx1ZQ=="},"metadata":{"name":"sample12","labels":{"app":"frontend"}}}"#,
+        );
+        assert!(
+            !compact.contains("c2VjcmV0") && !compact.contains("b3RoZXJ2YWx1ZQ=="),
+            "{compact}"
+        );
+        assert!(
+            compact.contains("sample12") && compact.contains("frontend"),
+            "{compact}"
+        );
+
+        let pretty = azure(
+            "{\n  \"kind\": \"Secret\",\n  \"metadata\": {\"name\": \"sample12\"},\n  \"data\" : {\n    \"key\": \"c2VjcmV0\"\n  }\n}",
+        );
+        assert!(
+            !pretty.contains("c2VjcmV0") && pretty.contains("sample12"),
+            "{pretty}"
+        );
+
+        // A key spelled with an escape could be `data`, so its values are hidden.
+        let escaped = azure(r#"{"kind":"Secret","da\u0074a":{"key":"c2VjcmV0"}}"#);
+        assert!(!escaped.contains("c2VjcmV0"), "{escaped}");
     }
 
     #[test]

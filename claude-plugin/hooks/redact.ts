@@ -1,5 +1,5 @@
 import type { Register, PromptContextBlock } from 'claude-code'
-import { scrub, restore, isLiteral, valuesIn, type ScanOptions } from './vault.ts'
+import { scrub, restore, isLiteral, mint, valuesIn, type ScanOptions } from './vault.ts'
 
 // redact for Claude Code: every text that enters the conversation goes
 // through the redact binary first, and the real value behind a placeholder
@@ -23,8 +23,34 @@ const LIVE_TAG_TOOLS = new Set(['Agent', 'Task'])
 // A shell command that writes into git history or posts to GitHub, GitLab or
 // Azure DevOps keeps its placeholders, so a commit message or issue body
 // cannot carry a real value off the machine.
-const PUBLISHES =
-  /\bgit\b(?:[ \t]+-[cC][ \t]+(?:"[^"]*"|'[^']*'|\S+)|[ \t]+--?[\w-]+(?:=\S+)?)*[ \t]+(?:commit|tag|notes|send-email)\b|\bgh[ \t]+(?:issue|pr|release|gist|discussion|api|repo[ \t]+(?:create|edit))\b|\bglab[ \t]+(?:issue|mr|release|snippet|api)\b|\baz[ \t]+(?:repos|boards|devops|pipelines|rest)\b/
+//
+// This reads the command's text, not its meaning: a shell has too many ways to
+// split, quote, alias or expand a word for a parser here to follow them all.
+// So it fails closed. With quote and escape characters taken out, a command
+// that names a tool anywhere and one of its publishing words anywhere (in
+// either order) publishes: `git log --grep=commit` keeps its placeholders too.
+// Each test is one pass over the text, so no command can make it slow.
+// Each line: words that must all appear, the tool first.
+const PUBLISH_WORDS: RegExp[][] = [
+  ['git', 'commit|tag|notes|send-email'],
+  ['gh', 'issue|pr|release|gist|discussion|api'],
+  ['gh', 'repo', 'create|edit'],
+  ['glab', 'issue|mr|release|snippet|api'],
+  ['az', 'repos|boards|devops|pipelines|rest'],
+].map(([tool, ...words]) => [
+  // A tool's name on its own, or at the end of a path: `C:\Git\cmd\git.exe`.
+  new RegExp(String.raw`(?:^|[^\w.-])${tool}(?:\.exe|\.cmd)?(?![\w.-])`, 'i'),
+  ...words.map((w) => new RegExp(String.raw`(?:^|[^\w.-])(?:${w})(?![\w.-])`, 'i')),
+])
+
+function publishes(command: string): boolean {
+  // Bash reads `gi\t`, `"g"it` and `$'git'` as git; PowerShell does the same
+  // with a backtick. Removing those characters joins the word again, and
+  // reading them as spaces keeps a Windows path's parts apart.
+  const quotes = /["'`\\$]/g
+  const forms = [command.replace(quotes, ''), command.replace(quotes, ' ')]
+  return forms.some((text) => PUBLISH_WORDS.some((all) => all.every((re) => re.test(text))))
+}
 
 // Claude Code's shell tools, each with the characters that make a restored
 // value run as code in it. PowerShell also reads @ , % as syntax, curly
@@ -127,8 +153,8 @@ export const register: Register = (on, options) => {
   //    tool that runs on this machine. Out: result, text and context.
   on('tool.call', async ($, e, next) => {
     const command = e.tool in SHELL_ACTIVE ? (e as { command?: unknown }).command : undefined
-    const publishes = typeof command === 'string' && PUBLISHES.test(command)
-    const isLocal = restoreTools.has(e.tool) && !publishes
+    const isPublish = typeof command === 'string' && publishes(command)
+    const isLocal = restoreTools.has(e.tool) && !isPublish
     // Real values this call was handed: whatever the tool prints of them
     // comes back hidden, even bare and short, where no rule would fire.
     const handed = new Set<string>()
@@ -157,22 +183,52 @@ export const register: Register = (on, options) => {
     for (const c of r.context ?? []) strings.push(c)
     const unique = [...new Set(strings)]
     const named = fields(r.result).join('\n')
-    const texts = named ? [named, ...unique] : unique
+    // Keep JSON structure for contextual rules, including fields too long or
+    // multiline for `fields`. Its escaped values are decoded before rewriting.
+    const structured = typeof r.result === 'object' && r.result !== null
+      ? JSON.stringify(r.result, (_key, value) => typeof value === 'bigint' ? String(value) : value)
+      : ''
+    const texts = [named, structured, ...unique]
     const { masked, tags } = await run($, next, binary, texts, { ...scan, escape: !LIVE_TAG_TOOLS.has(e.tool) })
     if (tags.size === 0) return r
 
-    const leaves = named ? masked.slice(1) : masked
+    const leaves = masked.slice(2)
     const lookup = new Map(unique.map((s, i) => [s, leaves[i] ?? s]))
     // Values this scan found with their field name, longest first. A placeholder
     // already in the result (a subagent's answer) was not found here.
-    const inContext = named ? [...valuesIn(masked[0] ?? '')].filter(([, t]) => tags.has(t)).sort(([a], [b]) => b.length - a.length) : []
+    const inContext = [...valuesIn(masked[0] ?? '')].filter(([, t]) => tags.has(t))
+    for (const [raw, tag] of valuesIn(masked[1] ?? '')) {
+      if (!tags.has(tag)) continue
+      // A match that cuts through JSON syntax cannot be mapped safely: throwing
+      // here makes the hook withhold the result through its catch handler.
+      const value: string = JSON.parse(`"${raw}"`)
+      inContext.push([value, mint(tag.slice(1, -10), value, tags)])
+    }
+    inContext.sort(([a], [b]) => b.length - a.length)
+    // Where a hidden value can be put back: the whole string, or inside it when
+    // it is long enough not to match by chance.
+    const sitsIn = (s: string, v: string) => s === v || (v.length >= 4 && s.includes(v))
+    const replaceAll = (s: string, found: [string, string][]): string => {
+      let out = s
+      for (const [v, tag] of found) out = out === v ? tag : v.length >= 4 ? out.split(v).join(tag) : out
+      return out
+    }
     // One that sits in no single string (it ran from a name into its value) cannot be put back.
-    const placed = ([v]: [string, string]) => unique.some((s) => s === v || (v.length >= 4 && s.includes(v)))
+    const placed = ([v]: [string, string]) => unique.some((s) => sitsIn(s, v))
     if (!inContext.every(placed)) return { deny: 'redact: a hidden value in this result could not be put back in place, so the result was withheld. Narrow the call and retry.' }
     const fix = (s: string): string => {
-      let out = lookup.get(s) ?? s
-      for (const [v, tag] of inContext) out = out === v ? tag : v.length >= 4 ? out.split(v).join(tag) : out
-      return out
+      const masked = lookup.get(s) ?? s
+      // A value found with its field name can hold one this string's own scan
+      // hid (a token on one line of a password). Hiding the inner one first
+      // would leave the rest of the password showing, so the string is rebuilt
+      // from its raw text, longest value first. Its own finds include the
+      // LITERAL tags that stand for placeholder text, so that text stays escaped.
+      const byName = inContext.filter(([v]) => sitsIn(s, v))
+      if (byName.length === 0) return masked
+      const ownFinds = [...valuesIn(masked, { literals: true })]
+      // A short value can only be put back where it is the whole string.
+      if (ownFinds.some(([v]) => !sitsIn(s, v))) throw new Error('redact: a hidden value cannot be placed')
+      return replaceAll(s, [...byName, ...ownFinds].sort(([a], [b]) => b.length - a.length))
     }
     const st2: WalkState = { incomplete: false }
     const result = walk(r.result, fix, st2)

@@ -22,6 +22,12 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: cargo build
+      - run: node --experimental-strip-types --test claude-plugin/tests/integration.test.mjs
 
   # The Claude Code mod's own tests, run by the engine itself. Needs no account.
   plugin:

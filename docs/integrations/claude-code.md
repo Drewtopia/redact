@@ -42,8 +42,9 @@ Your [config](../reference/config) applies as it does in a pipe: the same packs,
 Before Claude reads a tool result, the mod also:
 
 - Hides object keys, not only values.
-- Reads each field with its name, so `password: …` is hidden even when the value alone looks plain.
+- Reads each field with its name and scans the JSON structure, so long or multiline passwords and structured Kubernetes or Docker credentials are hidden even when their values alone look plain.
 - Withholds a result whose secret sits in a number, because a number cannot hold a placeholder.
+- Withholds a result if a match in its JSON cannot be mapped back to the original fields safely.
 
 The mod passes a Bash or PowerShell command's own text to redact as `--command`, through `REDACT_COMMAND`. A `command` [override](../reference/config#overrides) then applies to that command's output alone.
 
@@ -58,6 +59,8 @@ Bash, PowerShell, Write, Edit, MultiEdit, NotebookEdit, Read, Glob, and Grep get
 ### Not into git history or a pull request
 
 These commands keep their placeholders: `git commit`, `git tag`, `gh pr`, `gh issue`, `gh api`, `glab mr`, and `az repos`. A commit message or an issue body cannot carry the value off the machine.
+
+The check reads the command's text with its quotes and escapes taken out. A command that names `git` and `commit` anywhere keeps its placeholders, in either order and however they are quoted, split or nested. So `git log --grep=commit` keeps them too. It is a check on text, not a sandbox: a command that builds the word `git` or `commit` while it runs (`$'\x67it'`, `g[i]t`, `$(printf git)`) can still get a real value. It stops a placeholder going out by accident, not a model set on leaking one, which could also write the value to a file and commit that.
 
 ::: warning A file still gets the real value
 Write puts the real value into a file, and a later `git add` and `git commit` would publish it. The [pre-commit check](./git-ci) catches that.

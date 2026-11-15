@@ -66,6 +66,7 @@ struct RuleFile {
     secret_group: usize,
     label: Option<String>,
     within: Option<String>,
+    within_key: Option<String>,
     except: Option<String>,
     except_match: Option<String>,
     /// A checksum the value must pass: `"luhn"` (card numbers) or `"iban"`.
@@ -89,6 +90,9 @@ pub struct Rule {
     pub group: usize,
     pub label: String,
     pub within: Option<Regex>,
+    /// Run only inside a JSON object that is the value of a key matching this,
+    /// such as a Kubernetes Secret's `"data": {…}`.
+    pub within_key: Option<Regex>,
     /// A found value that matches this is left alone: a reference such as
     /// `$AZURE_TOKEN`, not a secret. Rust's regex has no lookahead, so this is
     /// how a rule says "but not these".
@@ -1062,6 +1066,12 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             }
             None => None,
         };
+        let within_key = match &r.within_key {
+            Some(w) => {
+                Some(Regex::new(w).map_err(|e| format!("{source}: rule {} withinKey: {e}", r.id))?)
+            }
+            None => None,
+        };
         let except = match &r.except {
             Some(x) => {
                 Some(Regex::new(x).map_err(|e| format!("{source}: rule {} except: {e}", r.id))?)
@@ -1107,6 +1117,7 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             re,
             group: r.secret_group,
             within,
+            within_key,
             except,
             except_match,
             check,
