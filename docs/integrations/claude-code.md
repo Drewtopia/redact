@@ -1,4 +1,4 @@
-# With Claude Code
+# Claude Code
 
 Anything that reaches Claude's conversation stays there. Claude Code sends it again on every turn, saves it in the session file, and copies it into every subagent. The only fix is to keep it out.
 
@@ -10,7 +10,7 @@ The `redact` mod sends everything that enters the conversation through redact be
 Before you install, turn off any other redacting mod, such as `transcript-redactor`. With two mods, the other one masks first. Its placeholders reach Claude, and redact cannot put the real value back.
 :::
 
-1. Install the binary. See [Getting started](./getting-started).
+1. Install the binary. See [Getting started](../guide/getting-started).
 2. Check that Claude Code can find it:
 
    ```sh
@@ -60,7 +60,7 @@ Bash, PowerShell, Write, Edit, MultiEdit, NotebookEdit, Read, Glob, and Grep get
 These commands keep their placeholders: `git commit`, `git tag`, `gh pr`, `gh issue`, `gh api`, `glab mr`, and `az repos`. A commit message or an issue body cannot carry the value off the machine.
 
 ::: warning A file still gets the real value
-Write puts the real value into a file, and a later `git add` and `git commit` would publish it. The [pre-commit check](./agents#git-and-ci) catches that.
+Write puts the real value into a file, and a later `git add` and `git commit` would publish it. The [pre-commit check](./git-ci) catches that.
 :::
 
 ### No shell code

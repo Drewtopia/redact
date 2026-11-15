@@ -11,6 +11,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },
+      { text: 'Integrations', link: '/integrations/' },
       { text: 'Packs', link: '/packs/' },
       { text: 'Reference', link: '/reference/config' },
     ],
@@ -19,11 +20,22 @@ export default defineConfig({
         text: 'Guide',
         items: [
           { text: 'Getting started', link: '/guide/getting-started' },
-          { text: 'With Claude Code', link: '/guide/claude-code' },
-          { text: 'With other agents', link: '/guide/agents' },
-          { text: 'With fnox and mise', link: '/guide/fnox-mise' },
-          { text: 'With .env files', link: '/guide/dotenv' },
+          { text: 'Hide environment variables', link: '/guide/env' },
+          { text: 'Hide .env files', link: '/guide/dotenv' },
           { text: 'Hiding yourself', link: '/guide/me' },
+          { text: 'Use with any tool', link: '/guide/any-tool' },
+        ],
+      },
+      {
+        text: 'Integrations',
+        items: [
+          { text: 'Overview', link: '/integrations/' },
+          { text: 'Claude Code', link: '/integrations/claude-code' },
+          { text: 'Codex CLI', link: '/integrations/codex' },
+          { text: 'Chat windows', link: '/integrations/clipboard' },
+          { text: 'Git hooks and CI', link: '/integrations/git-ci' },
+          { text: 'fnox', link: '/integrations/fnox' },
+          { text: 'mise', link: '/integrations/mise' },
         ],
       },
       {

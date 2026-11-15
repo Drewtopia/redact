@@ -50,7 +50,7 @@ Exit codes: 0 done, 2 bad usage, 3 a pack would not load or the scan failed. A f
 /plugin install redact --marketplace Drewtopia/redact
 ```
 
-**Codex CLI, plain Claude Code hooks, chat windows, git and CI:** see [With other agents](https://drewtopia.github.io/redact/guide/agents) and [With Claude Code](https://drewtopia.github.io/redact/guide/claude-code).
+**Anything else:** redact works with any tool that prints text. [Integrations](https://drewtopia.github.io/redact/integrations/) has examples for Claude Code, Codex CLI, chat windows, git hooks and CI, fnox and mise.
 
 ## What it hides
 
@@ -112,9 +112,9 @@ env_files = ["~/work/.env"]
 
 `me` asks git for your `user.name` and `user.email` (in the repo you run it from, and globally: a work email set by an `includeIf` counts when you run redact inside that repo) and reads your GitHub logins from gh's `hosts.yml`. They are hidden everywhere as `[ME-NAME-…]`, `[ME-EMAIL-…]` and `[ME-GITHUB-…]`, so your username stops showing in GitHub URLs and remotes. Nothing to keep in sync: change your git name and redact follows.
 
-`env` is how redact works with [fnox](https://github.com/jdx/fnox), [mise](https://mise.jdx.dev) or anything else that sets variables, without reading their files: `fnox exec -- redact`.
+`env` hides values that anything put in the environment, from your shell profile to a secrets manager, without redact reading that tool's files. Examples: [fnox](https://drewtopia.github.io/redact/integrations/fnox), [mise](https://drewtopia.github.io/redact/integrations/mise).
 
-`env_files` hides each value in a dotenv file, as [`dotenvx run`](https://dotenvx.com) does, including dotenvx's `.env.keys`. It skips empty values, `encrypted:` values, `DOTENV_PUBLIC_KEY*`, and settings that would wreck ordinary text if hidden everywhere: numbers, `true`/`false`, `localhost`, `development` and the like. A file that is not there is listed by `redact config ls`; `--env-file <path>` makes a missing file an error.
+`env_files` hides each value in a dotenv file, including the private keys dotenvx keeps in `.env.keys`. It skips empty values, `encrypted:` values, `DOTENV_PUBLIC_KEY*`, and settings that would wreck ordinary text if hidden everywhere: numbers, `true`/`false`, `localhost`, `development` and the like. A file that is not there is listed by `redact config ls`; `--env-file <path>` makes a missing file an error.
 
 A word list is one word or phrase per line; `#` starts a note. The file name is the label, so `customers.txt` hides each line as `[CUSTOMERS-…]`. Every `.toml` and `.txt` in `~/.config/redact/packs/` loads too.
 
