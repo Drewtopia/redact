@@ -22,6 +22,12 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: cargo build
+      - run: node --experimental-strip-types --test claude-plugin/tests/integration.test.mjs
 
   # The Claude Code mod's own tests, run by the engine itself. Needs no account.
   plugin:
@@ -51,3 +57,19 @@ jobs:
             echo "::error::This PR changes src/, packs/ or claude-plugin/ but no page under docs/ or README.md. Update the docs, or add the no-docs label if nothing a reader sees changed."
             exit 1
           fi
+
+  # VitePress fails a build on a dead internal link. docs.yml builds only after
+  # a merge to main, so build here too and catch it before the merge.
+  docs-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - run: npm ci
+        working-directory: docs
+      - run: npx vitepress build
+        working-directory: docs

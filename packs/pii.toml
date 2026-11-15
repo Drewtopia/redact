@@ -63,7 +63,7 @@ check = "luhn"
 [[rules]]
 id = "iban"
 description = "An IBAN, spaces allowed, passing the mod-97 check"
-regex = '''\b([A-Z]{2}[0-9]{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?)\b'''
+regex = '''(?:^|[^A-Za-z0-9_]|\\[nrt])([A-Z]{2}[0-9]{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?)\b'''
 secretGroup = 1
 label = "IBAN"
 check = "iban"
@@ -101,7 +101,7 @@ context = ["ssn", "ssns", "ss#", "social security"]
 [[rules]]
 id = "uk-nino"
 description = "A UK National Insurance number: QQ 12 34 56 C. Only beside NINO, NI number or national insurance"
-regex = '''\b([A-CEGHJ-PR-TW-Z][A-CEGHJ-NPR-TW-Z] ?[0-9]{2} ?[0-9]{2} ?[0-9]{2} ?[A-D])\b'''
+regex = '''(?:^|[^A-Za-z0-9_]|\\[nrt])([A-CEGHJ-PR-TW-Z][A-CEGHJ-NPR-TW-Z] ?[0-9]{2} ?[0-9]{2} ?[0-9]{2} ?[A-D])\b'''
 secretGroup = 1
 label = "NATIONAL-ID"
 context = ["nino", "ni number", "ni no", "national insurance"]

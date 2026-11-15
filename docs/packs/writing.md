@@ -35,7 +35,7 @@ remember = "distinctive"
 | `schema_version` | Always `1` |
 | `id` | The pack's name, shown by `redact packs` and `--explain` |
 | `description` | One line on what the pack hides |
-| `keywords` | The pack runs only when one of these appears, in any case. A cheap test before any regex runs |
+| `keywords` | The pack runs only when one of these appears, in any case. ASCII whitespace in a keyword is ignored when comparing, so formatting cannot skip a matching regex. A cheap test before any regex runs |
 | `allow` | Values never to hide, such as public IDs |
 | `default` | `false` makes the pack start switched off, for a user to turn on with `[packs] enable`. Defaults to `true` |
 
@@ -49,10 +49,11 @@ remember = "distinctive"
 | `secretGroup` | The capture group to hide. `0`, the default, is the whole match |
 | `label` | What the placeholder says. Defaults to `SECRET`. Pick a kind from [Labels](./#labels), not a name: a label shows in every placeholder |
 | `within` | Run only inside a JSON object whose own fields match this regex, whatever their order and wherever nested objects sit |
+| `withinKey` | Run only inside a JSON object that is the value of a key matching this regex, such as `'''^data$'''` for `"data": {…}`. With `within` too, the object must pass both |
 | `except` | Leave a found value alone when the value matches this regex. See [Exceptions](#exceptions) |
 | `exceptMatch` | Leave a find alone when the whole match matches this regex. See [Exceptions](#exceptions) |
 | `remember` | Also hide the value everywhere else in the text: `"distinctive"` or `"any"`. See [Remember](#remember) |
-| `keywords` | The rule runs only when one of these appears |
+| `keywords` | The rule runs only when one of these appears, with the same case and whitespace handling as pack keywords |
 | `context` | Clue words. Hide a found value only when one of these is near it. See [Clue words](#clue-words) |
 | `check` | Hide a found value only when it passes a check: `"luhn"` for card numbers, `"iban"` for the IBAN mod-97 check, or `"not-a-name"` for a token that is not a camelCase name (words of 3+ letters cover under 70% of it). Long runs of digits that are not cards stay visible |
 | `entropy` | Hide a found value only when its Shannon entropy is above this many bits per character, as in gitleaks: `entropy = 3.5`. Equal is not enough. Random keys score near 4 or more, and words and repeated text score lower |

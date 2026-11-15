@@ -3,7 +3,9 @@
   "name": "redact",
   "version": "0.2.1",
   "description": "Runs everything that enters the conversation through the redact binary: each hidden part becomes a placeholder, and the real value goes back into a tool that runs on this machine",
-  "author": { "name": "Drew" },
+  "author": {
+    "name": "Drew"
+  },
   "repository": "https://github.com/Drewtopia/redact",
   "license": "MIT OR Apache-2.0",
   "userConfig": {
