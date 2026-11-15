@@ -105,8 +105,9 @@ function checkHosts(command: string, allowed: string[]): HostCheck {
   let tool = false
   // A shell drops quotes and escapes (`c''url`, `cu\rl`, PowerShell's i`wr),
   // so the text is read as written, with them removed, and with them as spaces.
-  // A placeholder's hex (`[SECRET-12345678]`) is not an address.
-  const bare = command.replace(/\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\]/g, ' ')
+  // A placeholder reads as one host label: its hex (`[SECRET-12345678]`) is
+  // not an address, but `[SECRET-…].evil.test` sends the value as a DNS name.
+  const bare = command.replace(/\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\]/g, 'x')
   for (const text of [bare, bare.replace(/["'`\\]/g, ''), bare.replace(/["'`\\]/g, ' ')]) {
     for (const m of text.matchAll(URL)) if (m[1]) hosts.add(hostOf(m[1]))
     for (const m of text.matchAll(ALWAYS_HOST)) hosts.add(hostOf(m[1] ?? m[2] ?? m[3] ?? ''))
