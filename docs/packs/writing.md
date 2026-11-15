@@ -14,7 +14,7 @@ id = "customer-id"
 description = "A customer ID: C- and six digits"
 regex = '''"customerId"\s*:\s*"(C-[0-9]{6})"'''
 secretGroup = 1
-label = "CUSTOMER-ID"
+label = "ID"
 
 [[rules]]
 id = "account-owner"
@@ -47,7 +47,7 @@ remember = "distinctive"
 | `description` | One line on what it finds |
 | `regex` | Where to look, in Rust [`regex`](https://docs.rs/regex) syntax |
 | `secretGroup` | The capture group to hide. `0`, the default, is the whole match |
-| `label` | What the placeholder says. Defaults to the rule id |
+| `label` | What the placeholder says. Defaults to `SECRET`. Pick a kind from [Labels](./#labels), not a name: a label shows in every placeholder |
 | `within` | Run only inside a JSON object whose own fields match this regex, whatever their order and wherever nested objects sit |
 | `except` | Leave a found value alone when the value matches this regex. See [Exceptions](#exceptions) |
 | `exceptMatch` | Leave a find alone when the whole match matches this regex. See [Exceptions](#exceptions) |

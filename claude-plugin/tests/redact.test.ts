@@ -184,7 +184,7 @@ test('an @-mentioned UTF-16 file is scanned, not passed as binary', async ($, on
   expect(r.deny ?? '').toContain('holds something to hide')
 })
 
-test('a word list label that starts with a digit still masks', async ($, on) => {
+test('a pack label that starts with a digit still masks', async ($, on) => {
   fakeRedact(on, '123-CUSTOMERS')
   on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
   const out = String((await call($, { tool: 'Bash', command: 'cat .env' })).result)

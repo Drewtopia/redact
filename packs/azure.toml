@@ -1,6 +1,6 @@
 # Built-in pack: Azure and Azure DevOps.
 # Each rule's regex finds a spot; `secretGroup` is the capture group that gets hidden,
-# and `label` is what the placeholder says instead: [TENANT-ID-1a2b3c4d].
+# and `label` is what the placeholder says instead: [ID-1a2b3c4d].
 # `remember = "distinctive"` hides that value everywhere else in the same text when it
 # reads as a name; `"any"` does so for any capitalised or 5+ character value.
 schema_version = 1
@@ -27,7 +27,7 @@ id = "tenant-id"
 description = "A tenant GUID after tenantId, /tenants/ or --tenant"
 regex = '''(?i)(?:tenant(?:[_-]?id)?["']?[ \t]*[:=][ \t]*["']?|/tenants/|login\.microsoftonline\.com/|sts\.windows\.net/|--tenant[ \t=]+["']?)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b'''
 secretGroup = 1
-label = "TENANT-ID"
+label = "ID"
 keywords = ["tenant", "microsoftonline", "sts.windows"]
 
 [[rules]]
@@ -35,7 +35,7 @@ id = "subscription-id"
 description = "A subscription GUID after subscriptionId, /subscriptions/ or --subscription"
 regex = '''(?i)(?:subscription(?:[_-]?id)?["']?[ \t]*[:=][ \t]*["']?|/subscriptions/|--subscription[ \t=]+["']?)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b'''
 secretGroup = 1
-label = "SUBSCRIPTION-ID"
+label = "ID"
 keywords = ["subscription"]
 
 [[rules]]
@@ -43,7 +43,7 @@ id = "subscription-record-id"
 description = "The bare \"id\" in an az account record"
 regex = '''(?i)"id"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"'''
 secretGroup = 1
-label = "SUBSCRIPTION-ID"
+label = "ID"
 within = '''(?i)"isDefault"\s*:'''
 keywords = ["isdefault"]
 
@@ -52,7 +52,7 @@ id = "app-id"
 description = "An app or client GUID after appId or clientId"
 regex = '''(?i)(?:client|app|application)[_-]?id["']?[ \t]*[:=][ \t]*["']?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b'''
 secretGroup = 1
-label = "APP-ID"
+label = "ID"
 keywords = ["client", "app"]
 
 [[rules]]
@@ -60,7 +60,7 @@ id = "object-id"
 description = "An object or principal GUID after objectId or principalId"
 regex = '''(?i)(?:object|principal)[_-]?id["']?[ \t]*[:=][ \t]*["']?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b'''
 secretGroup = 1
-label = "OBJECT-ID"
+label = "ID"
 keywords = ["object", "principal"]
 
 [[rules]]
@@ -68,7 +68,7 @@ id = "identity-id"
 description = "An Azure DevOps identity GUID in an identity URL"
 regex = '''(?i)/_apis/identities/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b'''
 secretGroup = 1
-label = "IDENTITY-ID"
+label = "ID"
 keywords = ["identities"]
 
 # --- People --------------------------------------------------------------------
@@ -99,7 +99,7 @@ id = "dataverse-env"
 description = "<name>.crm11.dynamics.com"
 regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{1,62})\.crm[0-9]*\.dynamics\.com'''
 secretGroup = 1
-label = "DATAVERSE-ENV"
+label = "RESOURCE"
 remember = "distinctive"
 keywords = ["dynamics.com"]
 
@@ -108,7 +108,7 @@ id = "web-app"
 description = "<name>.azurewebsites.net and <name>.powerappsportals.com"
 regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{1,62})\.(?:(?:scm\.)?azurewebsites\.net|powerappsportals\.com)'''
 secretGroup = 1
-label = "WEB-APP"
+label = "RESOURCE"
 remember = "distinctive"
 keywords = ["azurewebsites", "powerappsportals"]
 
@@ -117,7 +117,7 @@ id = "azure-resource"
 description = "Key Vault, storage, SQL, Service Bus and container registry names"
 regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{1,62})\.(?:vault\.azure\.net|(?:blob|file|queue|table|dfs)\.core\.windows\.net|database\.windows\.net|servicebus\.windows\.net|azurecr\.io)'''
 secretGroup = 1
-label = "AZURE-RESOURCE"
+label = "RESOURCE"
 remember = "distinctive"
 keywords = ["vault.azure", "windows.net", "azurecr"]
 
@@ -126,7 +126,7 @@ id = "tenant-name"
 description = "<name>.sharepoint.com and <name>.onmicrosoft.com"
 regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{1,62})\.(?:sharepoint\.com|onmicrosoft\.com)'''
 secretGroup = 1
-label = "TENANT-NAME"
+label = "ORG"
 remember = "any"
 keywords = ["sharepoint", "onmicrosoft"]
 
@@ -195,7 +195,7 @@ id = "tenant-display-name"
 description = "tenantDisplayName: usually the organisation's own name"
 regex = '''(?i)"tenantDisplayName"\s*:\s*"((?:[^"\\]|\\.){1,})"'''
 secretGroup = 1
-label = "TENANT-NAME"
+label = "ORG"
 remember = "any"
 keywords = ["tenantdisplayname"]
 
@@ -204,7 +204,7 @@ id = "subscription-name"
 description = "The name of a subscription in an az account record"
 regex = '''(?i)"name"\s*:\s*"((?:[^"\\]|\\.){1,})"'''
 secretGroup = 1
-label = "SUBSCRIPTION-NAME"
+label = "RESOURCE"
 within = '''(?i)"isDefault"\s*:'''
 remember = "distinctive"
 keywords = ["isdefault"]
@@ -235,7 +235,7 @@ id = "graph-user-id"
 description = "The object id of a Graph user record"
 regex = '''(?i)"id"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"'''
 secretGroup = 1
-label = "OBJECT-ID"
+label = "ID"
 within = '''(?i)"userPrincipalName"\s*:'''
 keywords = ["userprincipalname"]
 
@@ -244,7 +244,7 @@ id = "graph-user-detail"
 description = "Job, office and address fields of a Graph user record"
 regex = '''(?i)"(?:jobTitle|officeLocation|department|streetAddress|city|state|postalCode|country|usageLocation|employeeId)"\s*:\s*"((?:[^"\\]|\\.){1,})"'''
 secretGroup = 1
-label = "USER-DETAIL"
+label = "PROFILE"
 within = '''(?i)"userPrincipalName"\s*:'''
 keywords = ["userprincipalname"]
 
@@ -253,7 +253,7 @@ id = "graph-company"
 description = "companyName: the employer"
 regex = '''(?i)"companyName"\s*:\s*"((?:[^"\\]|\\.){1,})"'''
 secretGroup = 1
-label = "EMPLOYER"
+label = "PROFILE"
 remember = "any"
 keywords = ["companyname"]
 
@@ -271,7 +271,7 @@ id = "identity-guids"
 description = "A person's id, originId and directory domain in an identity record: each points at one person"
 regex = '''(?i)"(?:id|originId|localId|domain)"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"'''
 secretGroup = 1
-label = "IDENTITY-ID"
+label = "ID"
 within = '''(?i)"(?:uniqueName|principalName|userPrincipalName|mailAddress)"\s*:'''
 remember = "distinctive"
 keywords = ["uniquename", "principalname"]
@@ -281,7 +281,7 @@ id = "user-entitlement-id"
 description = "The id of a member in az devops user list: one per person"
 regex = '''(?i)"id"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"'''
 secretGroup = 1
-label = "IDENTITY-ID"
+label = "ID"
 within = '''(?i)"lastAccessedDate"\s*:'''
 remember = "distinctive"
 keywords = ["lastaccesseddate"]
@@ -293,7 +293,7 @@ id = "pipeline-variable"
 description = "The value of each variable in a pipeline variable group: \"name\": {\"value\": \"…\"}, with or without isSecret"
 regex = '''(?i)"[^"]+"\s*:\s*\{[^{}]*?"value"\s*:\s*"((?:[^"\\]|\\.)+)"'''
 secretGroup = 1
-label = "PIPELINE-VAR"
+label = "ENV-VALUE"
 remember = "distinctive"
 keywords = ["\"value\""]
 
@@ -360,7 +360,7 @@ id = "account-key-value"
 description = "The value of az storage account keys list and similar keyName records"
 regex = '''(?i)"value"\s*:\s*"((?:[^"\\]|\\.)+)"'''
 secretGroup = 1
-label = "KEY"
+label = "SECRET"
 within = '''(?i)"keyName"\s*:'''
 keywords = ["keyname"]
 
@@ -369,7 +369,7 @@ id = "service-key"
 description = "primaryKey, secondaryKey and *MasterKey fields (Cosmos DB, Service Bus, Event Hubs keys list)"
 regex = '''(?i)"[A-Za-z]*(?:MasterKey|primaryKey|secondaryKey)"\s*:\s*"((?:[^"\\]|\\.){16,})"'''
 secretGroup = 1
-label = "KEY"
+label = "SECRET"
 keywords = ["masterkey", "primarykey", "secondarykey"]
 
 [[rules]]

@@ -122,7 +122,10 @@ pub struct Pack {
 }
 
 pub struct WordList {
+    /// The placeholder's label: fixed, as the name below may say what is hidden.
     pub label: String,
+    /// The variable, key or file it came from, for `--explain` and `--json`.
+    pub name: String,
     pub source: String,
     pub words: Vec<String>,
 }
@@ -360,7 +363,7 @@ fn unescape(s: &str) -> String {
 /// The values of a dotenv file: `KEY=value`, `export KEY=value`, single or double
 /// quotes (a double-quoted value may span lines), `#` comments. Skips empty
 /// values, settings (see `is_setting`), `encrypted:` values (ciphertext hides
-/// nothing) and `DOTENV_PUBLIC_KEY*`, as dotenvx does. The key is the label.
+/// nothing) and `DOTENV_PUBLIC_KEY*`, as dotenvx does. Each hides as [ENV-VALUE-…].
 fn dotenv_words(text: &str, source: &str) -> Vec<WordList> {
     let mut out = Vec::new();
     let mut lines = text.lines();
@@ -439,7 +442,8 @@ fn dotenv_words(text: &str, source: &str) -> Vec<WordList> {
             .collect();
         if !words.is_empty() {
             out.push(WordList {
-                label: label_of(key),
+                label: "ENV-VALUE".into(),
+                name: label_of(key),
                 source: source.to_string(),
                 words,
             });
@@ -449,7 +453,7 @@ fn dotenv_words(text: &str, source: &str) -> Vec<WordList> {
 }
 
 /// The variables an `env` list names: an exact name, or a prefix ending in `*`.
-/// Each value is a word, or a list with one per line; the variable name is the label.
+/// Each value is a word, or a list with one per line, hidden as [ENV-VALUE-…].
 fn env_words(
     patterns: &[String],
     vars: impl Iterator<Item = (String, String)>,
@@ -457,7 +461,8 @@ fn env_words(
     let mut lists: Vec<WordList> = vars
         .filter(|(name, _)| patterns.iter().any(|p| glob(p, name)))
         .map(|(name, value)| WordList {
-            label: label_of(&name),
+            label: "ENV-VALUE".into(),
+            name: label_of(&name),
             source: format!("${name}"),
             words: value
                 .lines()
@@ -468,7 +473,7 @@ fn env_words(
                 .collect(),
         })
         .collect();
-    lists.sort_by(|a, b| a.label.cmp(&b.label));
+    lists.sort_by(|a, b| a.name.cmp(&b.name));
     // An exact name that is not set: shown in `config ls`, so a missing hook is visible.
     let missing = patterns
         .iter()
@@ -730,6 +735,7 @@ impl Loader {
                 ));
                 self.loaded.words.push(WordList {
                     label: label.into(),
+                    name: label.into(),
                     source: "me".into(),
                     words,
                 });
@@ -1000,12 +1006,13 @@ impl Loader {
     }
 }
 
-/// A .txt list: one word or phrase per line, `#` starts a note. The file name is
-/// the label, so `customers.txt` hides each line as `[CUSTOMERS-…]`.
+/// A .txt list: one word or phrase per line, `#` starts a note. Each line hides
+/// as [WORDLIST-…]: the file name (`acme-customers.txt`) could say what is hidden.
 fn word_list(path: &Path, text: &str) -> WordList {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("word");
     WordList {
-        label: label_of(stem),
+        label: "WORDLIST".into(),
+        name: label_of(stem),
         source: path.display().to_string(),
         words: text
             .lines()
@@ -1101,7 +1108,8 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             ));
         }
         rules.push(Rule {
-            label: label_of(r.label.as_deref().unwrap_or(&r.id)),
+            // Not the id: `acme-api-key` would say whose key it is.
+            label: label_of(r.label.as_deref().unwrap_or("SECRET")),
             id: r.id,
             description: r.description,
             re,
@@ -1146,7 +1154,7 @@ mod tests {
             "A=`alpha-tick-1`\nB='bravo\nline-two'\nC=charlie-val-3\t# note\nD=delta-val-4\n";
         let got: Vec<(String, Vec<String>)> = dotenv_words(text, ".env")
             .into_iter()
-            .map(|w| (w.label, w.words))
+            .map(|w| (w.name, w.words))
             .collect();
         assert_eq!(
             got,
@@ -1176,7 +1184,7 @@ mod tests {
         let text = "ALPHA=\"alpha-value-1\" # a note\nBETA=bravo-value-2\nGAMMA='gamma-value-3' # another\nDELTA=\"multi\nline-value\" # end\nECHO=\"has \\\"quote\\\" inside\"\n";
         let got: Vec<(String, Vec<String>)> = dotenv_words(text, ".env")
             .into_iter()
-            .map(|w| (w.label, w.words))
+            .map(|w| (w.name, w.words))
             .collect();
         assert_eq!(
             got,
@@ -1213,7 +1221,7 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
             .iter()
             .map(|w| {
                 (
-                    w.label.as_str(),
+                    w.name.as_str(),
                     w.words.iter().map(String::as_str).collect(),
                 )
             })
@@ -1228,6 +1236,8 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
                 ("INLINE", vec!["bluefin-api"]),
             ]
         );
+        // The key names the value, so it stays out of the placeholder.
+        assert!(lists.iter().all(|w| w.label == "ENV-VALUE"));
     }
 
     #[test]
@@ -1275,7 +1285,7 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
             .iter()
             .map(|w| {
                 (
-                    w.label.as_str(),
+                    w.name.as_str(),
                     w.words.iter().map(String::as_str).collect(),
                 )
             })
@@ -1287,6 +1297,7 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
                 ("WORK-CUSTOMERS", vec!["Northwind Traders", "Contoso"])
             ]
         );
+        assert!(lists.iter().all(|w| w.label == "ENV-VALUE"));
         assert_eq!(
             missing,
             ["EMPLOYER"],

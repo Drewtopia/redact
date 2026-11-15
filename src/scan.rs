@@ -236,14 +236,14 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                 text: w.clone(),
                 label: list.label.clone(),
                 pack: "words".into(),
-                rule: list.label.clone(),
+                rule: list.name.clone(),
             });
         }
     }
     let mut hidden: HashSet<String> = words.iter().map(|w| label_key(&w.text)).collect();
     spans.extend(find_words(text, words, &loaded.allow)?);
-    // A label or rule name can be a key or file name (`CONTOSO_TOKEN`,
-    // `contoso.txt`), so it can hold something being hidden: a listed word, a
+    // A user pack's label, or a word list's rule name, can be a key or file
+    // name (`CONTOSO_TOKEN`, `contoso.txt`), so it can hold something being hidden: a listed word, a
     // remembered value, or any value a rule found. Such a name becomes VALUE,
     // in the placeholder and in --json and --explain alike. Only values short
     // enough to fit inside a name are worth checking.
@@ -540,7 +540,7 @@ mod tests {
     }
 
     /// The built-in packs' output, with each tag's random hex shown as `…`: a
-    /// random tag such as `[OBJECT-ID-a17946f0]` must not read as a leaked `7946`.
+    /// random tag such as `[ID-a17946f0]` must not read as a leaked `7946`.
     fn azure(text: &str) -> String {
         let loaded = pack::load(&pack::Options {
             files: vec![],
@@ -593,18 +593,10 @@ mod tests {
 
     #[test]
     fn ids_beside_their_names() {
-        hides(&format!(r#"{{"tenantId": "{G}"}}"#), G, "TENANT-ID");
-        hides(
-            &format!("/subscriptions/{G}/resourceGroups/rg"),
-            G,
-            "SUBSCRIPTION-ID",
-        );
-        hides(
-            &format!(r#"{{"id": "{G}", "isDefault": true}}"#),
-            G,
-            "SUBSCRIPTION-ID",
-        );
-        hides(&format!("export AZURE_CLIENT_ID={G}"), G, "APP-ID");
+        hides(&format!(r#"{{"tenantId": "{G}"}}"#), G, "ID");
+        hides(&format!("/subscriptions/{G}/resourceGroups/rg"), G, "ID");
+        hides(&format!(r#"{{"id": "{G}", "isDefault": true}}"#), G, "ID");
+        hides(&format!("export AZURE_CLIENT_ID={G}"), G, "ID");
     }
 
     /// A fake key body, built at run time so no key-shaped string sits in the repo.
@@ -768,16 +760,16 @@ mod tests {
     fn vendor_keys_by_shape() {
         // Real lengths, split so no key-shaped string sits in the repo.
         for (key, label) in [
-            (format!("{}_test_{}", "sk", body(24)), "API-KEY"),
-            (format!("{}_live_{}", "rk", body(24)), "API-KEY"),
-            (format!("{}_test_{}", "rk", body(24)), "API-KEY"),
-            (format!("wh{}_{}", "sec", body(32)), "API-KEY"),
-            (format!("gs{}_{}", "k", body(52)), "API-KEY"),
-            (format!("xa{}-{}", "i", body(80)), "API-KEY"),
-            (format!("gl{}-{}", "pat", body(20)), "TOKEN"),
-            (format!("gl{}-{}.01a2b3c4d", "pat", body(27)), "TOKEN"),
-            (format!("GOC{}-{}", "SPX", body(28)), "CLIENT-SECRET"),
-            (format!("1//0{}", body(100)), "TOKEN"),
+            (format!("{}_test_{}", "sk", body(24)), "SECRET"),
+            (format!("{}_live_{}", "rk", body(24)), "SECRET"),
+            (format!("{}_test_{}", "rk", body(24)), "SECRET"),
+            (format!("wh{}_{}", "sec", body(32)), "SECRET"),
+            (format!("gs{}_{}", "k", body(52)), "SECRET"),
+            (format!("xa{}-{}", "i", body(80)), "SECRET"),
+            (format!("gl{}-{}", "pat", body(20)), "SECRET"),
+            (format!("gl{}-{}.01a2b3c4d", "pat", body(27)), "SECRET"),
+            (format!("GOC{}-{}", "SPX", body(28)), "SECRET"),
+            (format!("1//0{}", body(100)), "SECRET"),
         ] {
             let text = format!("here it is: {key} ok");
             hides(&text, &key[key.len() - 12..], label);
@@ -796,20 +788,20 @@ mod tests {
         // Three characters, a digit, `Q~`, then 31 to 34: 40 characters at most.
         let key = format!("abc8{}{}", "Q~", body(34));
         let tail = &key[key.len() - 12..];
-        hides(&key, tail, "CLIENT-SECRET");
+        hides(&key, tail, "SECRET");
         let text = format!("here it is: {key} ok");
-        hides(&text, tail, "CLIENT-SECRET");
+        hides(&text, tail, "SECRET");
         let out = azure(&text);
         assert!(
             out.starts_with("here it is: ") && out.ends_with(" ok"),
             "{out}"
         );
-        hides(&format!("\"{key}\""), tail, "CLIENT-SECRET");
+        hides(&format!("\"{key}\""), tail, "SECRET");
         // The generic assignment rule may win here; either placeholder hides it, start to end.
         let out = azure(&format!("SECRET={key}"));
         assert!(!out.contains("Q~") && !out.contains(tail), "{out}");
         let short = format!("abc8{}{}", "Q~", body(31));
-        hides(&short, &short[short.len() - 12..], "CLIENT-SECRET");
+        hides(&short, &short[short.len() - 12..], "SECRET");
     }
 
     #[test]
@@ -837,6 +829,22 @@ mod tests {
         assert_eq!(pack::entropy("aaaa"), 0.0);
         assert_eq!(pack::entropy("abcd"), 2.0);
         assert_eq!(pack::entropy("aabb"), 1.0);
+    }
+
+    #[test]
+    fn a_rule_without_a_label_hides_as_secret_not_its_id() {
+        let d = tmp("nolabel");
+        let path = d.join("p.toml");
+        std::fs::write(&path, "schema_version = 1\nid = \"p\"\n[[rules]]\nid = \"acme-api-key\"\nregex = '(zqxkey[0-9]+)'\nsecretGroup = 1\n").unwrap();
+        let loaded = only(std::slice::from_ref(&path)).unwrap();
+        let text = "key zqxkey123";
+        let out = mask(
+            text,
+            &scan(text, &loaded).unwrap(),
+            &mut Tagger::new(None).unwrap(),
+        );
+        std::fs::remove_dir_all(&d).unwrap();
+        assert!(out.starts_with("key [SECRET-"), "{out}");
     }
 
     #[test]
@@ -1094,7 +1102,7 @@ mod tests {
             !out.contains(person) && !out.contains(tenant) && !out.contains(member),
             "{out}"
         );
-        assert_eq!(out.matches("[IDENTITY-ID-").count(), 5, "{out}");
+        assert_eq!(out.matches("[ID-").count(), 5, "{out}");
         assert!(out.contains("\"Basic\""), "{out}");
     }
 
@@ -1128,12 +1136,12 @@ mod tests {
         hides(
             "https://bluefin-uat.crm11.dynamics.com/api",
             "bluefin-uat",
-            "DATAVERSE-ENV",
+            "RESOURCE",
         );
         hides(
             "https://kv-bluefin.vault.azure.net/secrets/x",
             "kv-bluefin",
-            "AZURE-RESOURCE",
+            "RESOURCE",
         );
         keeps("see https://portal.azure.com and https://make.powerapps.com");
     }
@@ -1184,7 +1192,9 @@ mod tests {
         );
         let kinds: Vec<&str> = loaded.sources.iter().map(|s| s.kind).collect();
         std::fs::remove_dir_all(&d).unwrap();
-        assert!(out.contains("[CUSTOMERS-"), "{out}");
+        // The file name stays out of the placeholder: it can name what is hidden.
+        assert!(out.contains("[WORDLIST-"), "{out}");
+        assert!(!out.contains("CUSTOMERS"), "{out}");
         assert_eq!(kinds, ["config", "config", "folder", "words"]);
         assert!(loaded.sources[3].via.as_deref().unwrap().ends_with("lists"));
     }
@@ -1894,7 +1904,7 @@ mod tests {
     fn a_url_password_is_a_password_not_an_email() {
         let text = "postgres://billing:Tr0ub4dor-horse@db.example.com/prod";
         let out = azure(text);
-        assert!(out.contains("billing:[PASSWORD-…]@db.example.com"), "{out}");
+        assert!(out.contains("billing:[SECRET-…]@db.example.com"), "{out}");
         for (text, gone) in [
             ("email:ada@fabrikamq.example", "ada@"),
             ("<a href=\"mailto:ada@fabrikamq.example\">", "ada@"),
@@ -2193,9 +2203,14 @@ mod tests {
                     &phone_clues,
                     "[PHONE-",
                 ),
-                ("ssn", ssn(&mut rng), &ssn_clues, "[SSN-"),
-                ("nino", nino(&mut rng, false), &nino_clues, "[NINO-"),
-                ("spaced nino", nino(&mut rng, true), &nino_clues, "[NINO-"),
+                ("ssn", ssn(&mut rng), &ssn_clues, "[NATIONAL-ID-"),
+                ("nino", nino(&mut rng, false), &nino_clues, "[NATIONAL-ID-"),
+                (
+                    "spaced nino",
+                    nino(&mut rng, true),
+                    &nino_clues,
+                    "[NATIONAL-ID-",
+                ),
             ];
             for (kind, v, clues, tag) in clued {
                 // An extension after the number ("x123") is not part of it.
