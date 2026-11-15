@@ -125,7 +125,25 @@ fn records(text: &str) -> Vec<Record<'_>> {
 pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
     // Keywords are a cheap test that a pack or rule could match at all.
     let low = text.to_lowercase();
-    let has = |keys: &[String]| keys.is_empty() || keys.iter().any(|k| low.contains(k.as_str()));
+    // Formatting around a keyword must not exclude a regex that accepts it.
+    // Build the whitespace-free text only when a spaced keyword needs it.
+    let compact: OnceLock<String> = OnceLock::new();
+    let has = |keys: &[String]| {
+        keys.is_empty()
+            || keys.iter().any(|k| {
+                low.contains(k.as_str())
+                    || k.chars().any(|c| c.is_ascii_whitespace())
+                        && compact
+                            .get_or_init(|| {
+                                low.chars().filter(|c| !c.is_ascii_whitespace()).collect()
+                            })
+                            .contains(
+                                &k.chars()
+                                    .filter(|c| !c.is_ascii_whitespace())
+                                    .collect::<String>(),
+                            )
+            })
+    };
     // Built on first use, and only if a `within` rule runs.
     let recs: OnceLock<Vec<Record>> = OnceLock::new();
 
@@ -161,6 +179,7 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
             for (offset, seg) in segments {
                 let mut pos = 0;
                 while let Some(caps) = rule.re.captures_at(seg, pos) {
+                    let search_start = pos;
                     let whole = caps.get(0).unwrap();
                     let end = caps.get(rule.group).map_or(whole.end(), |m| m.end());
                     // Look again from the end of the hidden part, not of the whole
@@ -185,7 +204,11 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                         .as_ref()
                         .is_some_and(|x| x.is_match(whole.as_str()))
                     {
-                        pos = m.start();
+                        // Group zero, or a capture at the match's start, must
+                        // not send the next search back to the same position.
+                        if m.start() > search_start {
+                            pos = m.start();
+                        }
                         continue;
                     }
                     // Trailing whitespace is not part of a value: on a CRLF line
@@ -242,14 +265,14 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
     }
     let mut hidden: HashSet<String> = words.iter().map(|w| label_key(&w.text)).collect();
     spans.extend(find_words(text, words, &loaded.allow)?);
-    // A label or rule name can be a key or file name (`CONTOSO_TOKEN`,
+    // A pack, label or rule name can be a key or file name (`CONTOSO_TOKEN`,
     // `contoso.txt`), so it can hold something being hidden: a listed word, a
     // remembered value, or any value a rule found. Such a name becomes VALUE,
     // in the placeholder and in --json and --explain alike. Only values short
     // enough to fit inside a name are worth checking.
     let longest = spans
         .iter()
-        .map(|s| s.label.len().max(s.rule.len()))
+        .map(|s| s.label.len().max(s.rule.len()).max(s.pack.len()))
         .max()
         .unwrap_or(0);
     hidden.extend(
@@ -275,6 +298,7 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
     for s in &mut spans {
         s.label = clean(&s.label);
         s.rule = clean(&s.rule);
+        s.pack = clean(&s.pack);
     }
     Ok(merge(spans))
 }
@@ -944,6 +968,44 @@ mod tests {
         // The line after keeps its own content.
         let out = azure("password: correct horse battery\nhost: db-host\n");
         assert!(out.contains("host: db-host"), "{out}");
+    }
+
+    #[test]
+    fn quoted_secret_flags_hide_the_whole_argument() {
+        for flag in ["--password", "--token", "--secret-key"] {
+            for value in [
+                r#""firstword secondword""#,
+                "'firstword secondword'",
+                r#""a secondword""#,
+            ] {
+                for separator in [" ", "="] {
+                    let out = azure(&format!(
+                        "tool {flag}{separator}{value} --host example.test"
+                    ));
+                    assert!(
+                        !out.contains("firstword") && !out.contains("secondword"),
+                        "{out}"
+                    );
+                    assert!(out.contains("--host example.test"), "{out}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn kubernetes_secrets_allow_json_whitespace_and_quoted_yaml_kind() {
+        for text in [
+            r#"{"kind" : "Secret", "data":{"key":"c2VjcmV0"}}"#,
+            "{\"kind\"\n:\t\"Secret\", \"data\":{\"key\":\"c2VjcmV0\"}}",
+            "kind: \"Secret\"\ndata:\n  key: c2VjcmV0\n",
+            "kind: 'Secret'\ndata:\n  key: c2VjcmV0\n",
+        ] {
+            let out = azure(text);
+            assert!(!out.contains("c2VjcmV0"), "{out}");
+        }
+        let ordinary =
+            "kind: ConfigMap\nmetadata:\n  name: secret-settings\ndata:\n  setting: value123\n";
+        assert_eq!(azure(ordinary), ordinary);
     }
 
     #[test]

@@ -1,5 +1,5 @@
 import type { Register, PromptContextBlock } from 'claude-code'
-import { scrub, restore, isLiteral, valuesIn, type ScanOptions } from './vault.ts'
+import { scrub, restore, isLiteral, mint, valuesIn, type ScanOptions } from './vault.ts'
 
 // redact for Claude Code: every text that enters the conversation goes
 // through the redact binary first, and the real value behind a placeholder
@@ -23,8 +23,13 @@ const LIVE_TAG_TOOLS = new Set(['Agent', 'Task'])
 // A shell command that writes into git history or posts to GitHub, GitLab or
 // Azure DevOps keeps its placeholders, so a commit message or issue body
 // cannot carry a real value off the machine.
-const PUBLISHES =
-  /\bgit\b(?:[ \t]+-[cC][ \t]+(?:"[^"]*"|'[^']*'|\S+)|[ \t]+--?[\w-]+(?:=\S+)?)*[ \t]+(?:commit|tag|notes|send-email)\b|\bgh[ \t]+(?:issue|pr|release|gist|discussion|api|repo[ \t]+(?:create|edit))\b|\bglab[ \t]+(?:issue|mr|release|snippet|api)\b|\baz[ \t]+(?:repos|boards|devops|pipelines|rest)\b/
+// One shell argument can combine quoted, escaped and unquoted pieces.
+// Bash escapes with a backslash; PowerShell uses a backtick.
+const SHELL_WORD = /(?:"(?:[^"\\`]|[\\`].)*"|'[^']*'|[\\`][^\r\n]|[^\s"'\\`])+/.source
+const PUBLISHES = new RegExp(
+  String.raw`\bgit\b(?:[ \t]+-[cC][ \t]*${SHELL_WORD}|[ \t]+--(?:git-dir|work-tree|namespace|super-prefix|config-env|attr-source)(?:[ \t]+|=)${SHELL_WORD}|[ \t]+--?[\w-]+(?:=${SHELL_WORD})?)*[ \t]+(?:commit|tag|notes|send-email)\b|\bgh(?:[ \t]+(?:-R[ \t]*|--(?:repo|hostname)(?:[ \t]+|=))${SHELL_WORD})*[ \t]+(?:issue|pr|release|gist|discussion|api|repo[ \t]+(?:create|edit))\b|\bglab[ \t]+(?:issue|mr|release|snippet|api)\b|\baz[ \t]+(?:repos|boards|devops|pipelines|rest)\b`,
+  'i',
+)
 
 // Claude Code's shell tools, each with the characters that make a restored
 // value run as code in it. PowerShell also reads @ , % as syntax, curly
@@ -157,15 +162,28 @@ export const register: Register = (on, options) => {
     for (const c of r.context ?? []) strings.push(c)
     const unique = [...new Set(strings)]
     const named = fields(r.result).join('\n')
-    const texts = named ? [named, ...unique] : unique
+    // Keep JSON structure for contextual rules, including fields too long or
+    // multiline for `fields`. Its escaped values are decoded before rewriting.
+    const structured = typeof r.result === 'object' && r.result !== null
+      ? JSON.stringify(r.result, (_key, value) => typeof value === 'bigint' ? String(value) : value)
+      : ''
+    const texts = [named, structured, ...unique]
     const { masked, tags } = await run($, next, binary, texts, { ...scan, escape: !LIVE_TAG_TOOLS.has(e.tool) })
     if (tags.size === 0) return r
 
-    const leaves = named ? masked.slice(1) : masked
+    const leaves = masked.slice(2)
     const lookup = new Map(unique.map((s, i) => [s, leaves[i] ?? s]))
     // Values this scan found with their field name, longest first. A placeholder
     // already in the result (a subagent's answer) was not found here.
-    const inContext = named ? [...valuesIn(masked[0] ?? '')].filter(([, t]) => tags.has(t)).sort(([a], [b]) => b.length - a.length) : []
+    const inContext = [...valuesIn(masked[0] ?? '')].filter(([, t]) => tags.has(t))
+    for (const [raw, tag] of valuesIn(masked[1] ?? '')) {
+      if (!tags.has(tag)) continue
+      // A match that cuts through JSON syntax cannot be mapped safely: throwing
+      // here makes the hook withhold the result through its catch handler.
+      const value: string = JSON.parse(`"${raw}"`)
+      inContext.push([value, mint(tag.slice(1, -10), value, tags)])
+    }
+    inContext.sort(([a], [b]) => b.length - a.length)
     // One that sits in no single string (it ran from a name into its value) cannot be put back.
     const placed = ([v]: [string, string]) => unique.some((s) => s === v || (v.length >= 4 && s.includes(v)))
     if (!inContext.every(placed)) return { deny: 'redact: a hidden value in this result could not be put back in place, so the result was withheld. Narrow the call and retry.' }

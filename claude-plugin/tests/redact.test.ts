@@ -15,7 +15,9 @@ function fakeRedact(on: any, label = 'SECRET') {
     const text: string = e.init?.stdin ?? ''
     const bytes = (s: string) => new TextEncoder().encode(s).length
     // `password: x` stands for a rule keyed on a field name.
-    const spans = [...text.matchAll(/(?:TOKEN|PASSWORD)=(\S+)|^password: (\S+)$/gm)].map((m) => {
+    // A JSON string's closing quote is not part of the value, just as in
+    // the real scanner. Results are scanned as JSON as well as plain leaves.
+    const spans = [...text.matchAll(/(?:TOKEN|PASSWORD)=([^\s"]+)|^password: (\S+)$/gm)].map((m) => {
       const value = m[1] ?? m[2] ?? ""
       const start = bytes(text.slice(0, (m.index ?? 0) + m[0].length - value.length))
       return { start, end: start + bytes(value), label, pack: 'credentials', rule: 'named-secret' }

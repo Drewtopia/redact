@@ -11,6 +11,8 @@ Issues, PRs and tests are public. Build every example from made-up values with t
 ```sh
 cargo test                       # the scanner, the packs and the generated docs
 claude plugin test claude-plugin # the Claude Code mod (needs Claude Code, no account)
+cargo build                      # build the real scanner for the integration tests
+node --experimental-strip-types --test claude-plugin/tests/integration.test.mjs # Node 24
 ```
 
 CI also runs `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`.
