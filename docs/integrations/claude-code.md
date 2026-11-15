@@ -60,7 +60,7 @@ Bash, PowerShell, Write, Edit, MultiEdit, NotebookEdit, Read, Glob, and Grep get
 
 These commands keep their placeholders: `git commit`, `git tag`, `gh pr`, `gh issue`, `gh api`, `glab mr`, and `az repos`. A commit message or an issue body cannot carry the value off the machine.
 
-The check reads the command's text with its quotes and escapes taken out. A command that names `git` and `commit` anywhere keeps its placeholders, in either order and however they are quoted, split or nested. So `git log --grep=commit` keeps them too. It is a check on text, not a sandbox: a command that builds the word `git` or `commit` while it runs can still get a real value.
+The check reads the command's text with its quotes and escapes taken out. A command that names `git` and `commit` anywhere keeps its placeholders, in either order and however they are quoted, split or nested. So `git log --grep=commit` keeps them too. It is a check on text, not a sandbox: a command that builds the word `git` or `commit` while it runs (`$'\x67it'`, `g[i]t`, `$(printf git)`) can still get a real value. It stops a placeholder going out by accident, not a model set on leaking one, which could also write the value to a file and commit that.
 
 ::: warning A file still gets the real value
 Write puts the real value into a file, and a later `git add` and `git commit` would publish it. The [pre-commit check](./git-ci) catches that.
