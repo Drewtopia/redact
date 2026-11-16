@@ -10,6 +10,9 @@ docs/.vitepress/cache/
 .claude/*
 !.claude/settings.json
 
+# Sandcastle: share the config; .sandcastle/.gitignore keeps .env, logs and worktrees out.
+!.sandcastle/
+
 # playwright-cli writes snapshots and console logs into the folder it runs from.
 .playwright-cli/
 # lefthook: machine-only hooks
