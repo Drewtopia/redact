@@ -1,0 +1,37 @@
+# Local checks before CI. Set up with `mise install`, then `lefthook install`.
+# Machine-only hooks go in lefthook-local.yml, which git ignores.
+
+pre-commit:
+  parallel: true
+  commands:
+    fmt:
+      glob: "*.rs"
+      run: cargo fmt --check
+    # Staged lines only: the tree's existing fake values would fail a full scan.
+    secrets:
+      run: betterleaks git --staged --no-banner --redact -c .betterleaks.toml .
+
+commit-msg:
+  commands:
+    commit-check:
+      run: commit-check -m --no-banner {1}
+
+pre-push:
+  commands:
+    # CI's own checks, so a push does not wait on CI to find them.
+    check:
+      run: cargo clippy --all-targets -- -D warnings && cargo test
+      skip: [merge, rebase]
+    # A commit made where no hook ran reaches the push unchecked, so every pushed
+    # commit not yet on main is checked again. An all-zero sha is a branch deletion.
+    pushed-commits:
+      use_stdin: true
+      run: |
+        while read -r _ sha _ _; do
+          case "$sha" in *[!0]*) ;; *) continue ;; esac
+          for c in $(git rev-list "origin/main..$sha"); do
+            commit-check -m --no-banner --rev "$c" || exit 1
+          done
+          betterleaks git --no-banner --redact -c .betterleaks.toml --log-opts="origin/main..$sha" . || exit 1
+        done
+      skip: [merge, rebase]
