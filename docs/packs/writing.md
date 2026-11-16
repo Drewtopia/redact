@@ -127,3 +127,7 @@ printf '{"customerId": "C-123456"}' | redact scan --explain
 ## Test with fake values
 
 Build test values that look real but are not. `Fabrikam`, `Contoso`, and `Northwind` are Microsoft's own made-up company names, and `example.com` is reserved for examples.
+
+In this repo, a new secret-shaped value also carries a marker: `EXAMPLE`, `FAKE`, `Fabrikam`, `Contoso` or `Northwind`, anywhere in the value. The commit hooks scan added lines and pass a value with a marker; an unmarked one stops the commit as a possible real secret.
+
+GitHub's own push protection still blocks a fake value in a format it scans for, such as a GitLab token (`glpat-`) or a GitHub token (`ghp_`), marker or not. The rejected push prints a link: open it, allow the value as used in tests, and push again.
