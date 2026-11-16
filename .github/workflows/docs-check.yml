@@ -1,0 +1,35 @@
+# A change to what redact or the mod does comes with a docs change, or the
+# `no-docs` label saying why none is needed. This is its own workflow so that
+# adding or removing a label runs this check again, and only this check.
+name: docs-check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # The "Protect main" ruleset requires a check named `docs`; keep the job name.
+  docs:
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-docs') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Code changed without docs
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE"...HEAD)
+          if echo "$changed" | grep -qE '^(src|packs|claude-plugin)/' &&
+             ! echo "$changed" | grep -qE '^(docs/|README\.md$)'; then
+            echo "::error::This PR changes src/, packs/ or claude-plugin/ but no page under docs/ or README.md. Update the docs, or add the no-docs label if nothing a reader sees changed."
+            exit 1
+          fi
