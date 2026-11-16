@@ -1,5 +1,6 @@
-# PRs are squash-merged with their title as the commit message, and release-please
-# reads those messages for the version bump and changelog, so titles must parse.
+# PRs are squash-merged with the title as the commit subject and the body as the
+# rest of the message. release-please reads the title for the version bump and
+# changelog, so it must parse, and the body's trailers land on main as written.
 name: pr-title
 
 on:
@@ -10,6 +11,19 @@ permissions:
   pull-requests: read
 
 jobs:
+  # The redact mod can turn an agent's Co-Authored-By line into placeholder
+  # text (#81), and the squash merge would carry it onto main.
+  trailers:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if printf '%s\n' "$BODY" | grep -qiE '^(co-authored-by|signed-off-by):.*\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\]'; then
+            echo "::error::A trailer in the PR body holds placeholder text, and the body becomes the commit message on main."
+            exit 1
+          fi
+
   conventional-title:
     runs-on: ubuntu-latest
     steps:
