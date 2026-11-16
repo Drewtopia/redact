@@ -129,6 +129,15 @@ A label is letters and digits, starts with a letter, may join words with one `-`
 
 `"rule"` style and `[labels.words]` renames put a name in every placeholder. A file name such as `acme-customers.txt` can say what the list hides, so use them only for names you are happy for the model to see.
 
+`redact scan --explain` shows each label `[labels]` changed with the one it had before:
+
+```text
+credentials:github-token -> [GH-TOKEN-…] (was SECRET)
+p:VALUE -> [HIDDEN-…] (was ID)
+```
+
+A rule id, pack id or list name that holds something being hidden reads `VALUE`, as `p:VALUE` does here, so `--explain` never prints the value. The label before still shows, and reads `VALUE` too if it holds the value.
+
 ## Overrides
 
 An `[[override]]` applies its settings only when every condition it gives matches. Each condition is a glob, in which `*` matches anything:

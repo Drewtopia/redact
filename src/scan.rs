@@ -18,6 +18,10 @@ pub struct Span {
     pub label: String,
     pub pack: String,
     pub rule: String,
+    /// The label before `[labels]` changed it, for `--explain`. Cleaned as the
+    /// names are, so it is VALUE when it holds something being hidden.
+    #[serde(skip)]
+    pub was: Option<String>,
 }
 
 /// A value found by a rule, to hide everywhere else it appears too.
@@ -261,6 +265,7 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                         label: rule.label.clone(),
                         pack: pack.id.clone(),
                         rule: rule.id.clone(),
+                        was: None,
                     });
                     let keep = match rule.remember {
                         Remember::No => false,
@@ -325,6 +330,10 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
             .clone()
     };
     for s in &mut spans {
+        s.was = loaded
+            .kinds
+            .get(&format!("{}:{}", s.pack, s.rule))
+            .map(|k| clean(k));
         s.label = clean(&s.label);
         s.rule = clean(&s.rule);
         s.pack = clean(&s.pack);
@@ -423,6 +432,7 @@ fn find_words(text: &str, words: Vec<Word>, allow: &HashSet<String>) -> Result<V
             label: w.label.clone(),
             pack: w.pack.clone(),
             rule: w.rule.clone(),
+            was: None,
         });
     }
     Ok(out)
@@ -1145,6 +1155,36 @@ mod tests {
         assert_eq!(
             relabelled(cfg, Some("git log"), LABEL_TEXT).unwrap(),
             "key [SECRET-…] owner=[PERSON-…] ship to [WORDLIST-…]"
+        );
+    }
+
+    #[test]
+    fn explain_keeps_the_old_label_when_a_name_holds_a_hidden_value() {
+        let d = tmp("explain-was");
+        std::fs::write(d.join("p.toml"), "schema_version = 1\nid = \"p\"\n[[rules]]\nid = \"zuvio-key\"\nlabel = \"ID\"\nregex = '(zqxkey[0-9]+)'\nsecretGroup = 1\n[[rules]]\nid = \"tag\"\nlabel = \"ZUVIO\"\nregex = '(zqxtag[0-9]+)'\nsecretGroup = 1\n").unwrap();
+        std::fs::write(d.join("names.txt"), "Zuvio\n").unwrap();
+        std::fs::write(
+            d.join("config.toml"),
+            "import = [\"p.toml\", \"names.txt\"]\n[labels]\nstyle = \"generic\"\n",
+        )
+        .unwrap();
+        let loaded = only(&[d.join("config.toml")]);
+        std::fs::remove_dir_all(&d).unwrap();
+        let loaded = loaded.unwrap();
+        let spans = scan("key zqxkey1 tag zqxtag2 from Zuvio", &loaded).unwrap();
+        let seen: Vec<_> = spans
+            .iter()
+            .map(|s| (s.rule.as_str(), s.was.as_deref()))
+            .collect();
+        // The rule id holds a listed word, so it reads VALUE, but its old label
+        // still shows; an old label that holds the word reads VALUE too.
+        assert_eq!(
+            seen,
+            [
+                ("VALUE", Some("ID")),
+                ("tag", Some("VALUE")),
+                ("NAMES", Some("WORDLIST"))
+            ]
         );
     }
 
