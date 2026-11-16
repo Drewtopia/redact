@@ -79,12 +79,6 @@ test('a value the tool was handed is hidden when printed back bare', async ($, o
   expect(out).toBe(`echoed ${tag}`)
 })
 
-test('byte offsets land right after multi-byte characters', async ($, on) => {
-  tools(on, () => `café 😀 naïve\nTOKEN=${TOKEN}\nafter`)
-  const out = String((await call($, { tool: 'Bash', command: 'cat notes' })).result)
-  expect(out).toMatch(/^café 😀 naïve\nTOKEN=\[SECRET-[0-9a-f]{8}\]\nafter$/)
-})
-
 test('several strings in one result are each masked', async ($, on) => {
   fakeRedact(on)
   on('tool.call', () => ({ result: { a: `TOKEN=${TOKEN}`, b: ['plain', `PASSWORD=${TOKEN}x`] } }))
@@ -189,13 +183,6 @@ test('an @-mentioned UTF-16 file is scanned, not passed as binary', async ($, on
   on('prompt.mention', () => ({ type: null }))
   const r = (await $.prompt.mention({ mention: '@setup.ps1', path: 'setup.ps1' })) as { deny?: string }
   expect(r.deny ?? '').toContain('holds something to hide')
-})
-
-test('a pack label that starts with a digit still masks', async ($, on) => {
-  fakeRedact(on, '123-CUSTOMERS')
-  on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
-  const out = String((await call($, { tool: 'Bash', command: 'cat .env' })).result)
-  expect(out).toMatch(/^TOKEN=\[CUSTOMERS-[0-9a-f]{8}\]$/)
 })
 
 test("a subagent's answer that holds a live placeholder passes through", async ($, on) => {

@@ -148,7 +148,11 @@ function tagLabel(label: string): string {
 
 const labelOf = (tag: string | undefined): string | undefined => tag?.slice(1, -10)
 
-type Span = { start: number; end: number; label: string }
+// A part to hide, in UTF-16 indexes of the text it was found in.
+export type Span = { start: number; end: number; label: string }
+
+// The scan port: for each text, its spans, sorted and not overlapping.
+export type Scan = (texts: string[]) => Promise<Span[][]>
 
 // UTF-8 byte offsets (what the binary reports) to UTF-16 indexes (what a JS
 // string slices by). A lone surrogate travels as U+FFFD, three bytes.
@@ -180,10 +184,6 @@ export type ScanOptions = {
   binary: string
   command?: string
   timeoutMs: number
-  // Swap live placeholders in the text for LITERAL ones first: true for text
-  // read from outside (a file, a log), false where placeholders are handles.
-  escape?: boolean
-  handed?: Set<string>
   // Called once with the reason when the binary cannot run, so the person
   // learns why everything is being withheld.
   onBroken?: (why: string) => void
@@ -221,76 +221,95 @@ export async function locate($: any, name: string): Promise<string | undefined> 
   return undefined
 }
 
-// Masks each text. Throws when the binary fails, so the hook withholds.
-export async function scrub($: any, texts: string[], o: ScanOptions): Promise<{ masked: string[]; tags: Set<string> }> {
-  const tags = new Set<string>()
-  if (texts.length === 0) return { masked: [], tags }
-  const pieces = o.escape ? texts.map((t) => escapeLiteralTags(t, tags)) : texts
-  const joined = pieces.join(SEP)
-  // An env var, not --command: a build too old to know it still runs.
-  const exec = (binary: string) =>
-    $.process.run([binary, 'scan', '--json'], { stdin: joined, timeoutMs: o.timeoutMs, ...(o.command ? { env: { REDACT_COMMAND: o.command } } : {}) })
-  let r: { exitCode: number; stdout: string; stderr: string; isStdoutTruncated: boolean }
-  try {
-    r = await exec(o.binary)
-  } catch (err) {
-    const found = await locate($, o.binary).catch(() => undefined)
+// The redact binary behind the scan port. Throws when it fails, so the hook withholds.
+export function binaryScan($: any, o: ScanOptions): Scan {
+  return async (pieces) => {
+    if (pieces.length === 0) return []
+    const joined = pieces.join(SEP)
+    // An env var, not --command: a build too old to know it still runs.
+    const exec = (binary: string) =>
+      $.process.run([binary, 'scan', '--json'], { stdin: joined, timeoutMs: o.timeoutMs, ...(o.command ? { env: { REDACT_COMMAND: o.command } } : {}) })
+    let r: { exitCode: number; stdout: string; stderr: string; isStdoutTruncated: boolean }
     try {
-      if (!found) throw err
-      r = await exec(found)
-      o.onLocated?.(found)
-    } catch {
-      const why = `could not run \`${o.binary}\` (${err instanceof Error ? err.message : String(err)})`
+      r = await exec(o.binary)
+    } catch (err) {
+      const found = await locate($, o.binary).catch(() => undefined)
+      try {
+        if (!found) throw err
+        r = await exec(found)
+        o.onLocated?.(found)
+      } catch {
+        const why = `could not run \`${o.binary}\` (${err instanceof Error ? err.message : String(err)})`
+        o.onBroken?.(why)
+        throw new Error(why)
+      }
+    }
+    if (r.exitCode !== 0 || r.isStdoutTruncated) {
+      const why = `\`${o.binary} scan\` exit ${r.exitCode}: ${r.stderr.trim().split('\n')[0] ?? ''}`
       o.onBroken?.(why)
       throw new Error(why)
     }
-  }
-  if (r.exitCode !== 0 || r.isStdoutTruncated) {
-    const why = `\`${o.binary} scan\` exit ${r.exitCode}: ${r.stderr.trim().split('\n')[0] ?? ''}`
-    o.onBroken?.(why)
-    throw new Error(why)
-  }
-  const spans: unknown = JSON.parse(r.stdout)
-  // Spans of another shape would hide nothing and pass the text raw.
-  const size = byteLength(joined)
-  const ok = (s: any): s is Span =>
-    Number.isInteger(s?.start) && Number.isInteger(s?.end) && s.start >= 0 && s.start < s.end && s.end <= size && typeof s.label === 'string'
-  if (!Array.isArray(spans) || !spans.every(ok)) {
-    const why = `\`${o.binary} scan --json\` printed spans of an unknown shape`
-    o.onBroken?.(why)
-    throw new Error(why)
-  }
-  const at = byteIndexes(joined, spans.flatMap((s) => [s.start, s.end]))
-
-  // Each piece's spans, in piece-local UTF-16 indexes, cut at the joins.
-  let pos = 0
-  const parts = pieces.map((text) => {
-    const part = { text, at: pos, spans: [] as Span[] }
-    pos += text.length + SEP.length
-    return part
-  })
-  for (const s of spans) {
-    const a = at.get(s.start) ?? 0
-    const b = at.get(s.end) ?? joined.length
-    for (const p of parts) {
-      const lo = Math.max(a, p.at)
-      const hi = Math.min(b, p.at + p.text.length)
-      if (lo < hi) p.spans.push({ start: lo - p.at, end: hi - p.at, label: s.label })
+    const spans: unknown = JSON.parse(r.stdout)
+    // Spans of another shape would hide nothing and pass the text raw.
+    const size = byteLength(joined)
+    const ok = (s: any): s is Span =>
+      Number.isInteger(s?.start) && Number.isInteger(s?.end) && s.start >= 0 && s.start < s.end && s.end <= size && typeof s.label === 'string'
+    if (!Array.isArray(spans) || !spans.every(ok)) {
+      const why = `\`${o.binary} scan --json\` printed spans of an unknown shape`
+      o.onBroken?.(why)
+      throw new Error(why)
     }
-  }
+    const at = byteIndexes(joined, spans.flatMap((s) => [s.start, s.end]))
 
-  const minted = parts.map(({ text, spans: list }) => {
-    // Overlapping spans merge into one, under the first one's label.
-    list.sort((x, y) => x.start - y.start || y.end - x.end)
-    const merged: Span[] = []
-    for (const s of list) {
-      const last = merged[merged.length - 1]
-      if (last && s.start < last.end) last.end = Math.max(last.end, s.end)
-      else merged.push({ ...s })
+    // Each piece's spans, in piece-local UTF-16 indexes, cut at the joins.
+    let pos = 0
+    const parts = pieces.map((text) => {
+      const part = { text, at: pos, spans: [] as Span[] }
+      pos += text.length + SEP.length
+      return part
+    })
+    for (const s of spans) {
+      const a = at.get(s.start) ?? 0
+      const b = at.get(s.end) ?? joined.length
+      for (const p of parts) {
+        const lo = Math.max(a, p.at)
+        const hi = Math.min(b, p.at + p.text.length)
+        if (lo < hi) p.spans.push({ start: lo - p.at, end: hi - p.at, label: s.label })
+      }
     }
+
+    // Overlapping spans merge into one, under the first one's label: an older
+    // binary may not merge them itself.
+    return parts.map(({ spans: list }) => {
+      list.sort((x, y) => x.start - y.start || y.end - x.end)
+      const merged: Span[] = []
+      for (const s of list) {
+        const last = merged[merged.length - 1]
+        if (last && s.start < last.end) last.end = Math.max(last.end, s.end)
+        else merged.push({ ...s })
+      }
+      return merged
+    })
+  }
+}
+
+export type MaskOptions = {
+  // Swap live placeholders in the text for LITERAL ones first: true for text
+  // read from outside (a file, a log), false where placeholders are handles.
+  escape?: boolean
+  handed?: Set<string>
+}
+
+// Masks each text with what `scan` found in it. Throws when the scan fails.
+export async function scrub(scan: Scan, texts: string[], o: MaskOptions = {}): Promise<{ masked: string[]; tags: Set<string> }> {
+  const tags = new Set<string>()
+  if (texts.length === 0) return { masked: [], tags }
+  const pieces = o.escape ? texts.map((t) => escapeLiteralTags(t, tags)) : texts
+  const found = await scan(pieces)
+  const minted = pieces.map((text, i) => {
     let out = ''
     let cur = 0
-    for (const s of merged) {
+    for (const s of found[i] ?? []) {
       const label = tagLabel(s.label)
       out += text.slice(cur, s.start) + mint(label, text.slice(s.start, s.end), tags)
       cur = s.end
