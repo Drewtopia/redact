@@ -9,4 +9,4 @@ Words this project uses with one meaning. Code, docs and issues use them this wa
 - **Pack**: a set of rules in one TOML file, built in or your own, switched on and off as a whole or rule by rule.
 - **Rule**: one regex in a pack, with what to hide (`secretGroup`), its label, and the checks that keep it from firing on the wrong text.
 - **Word list**: words or phrases to hide wherever they appear: a `.txt` file, an `env` variable's value, or a dotenv value. In `[labels]` and `--explain` they are the `words` pack.
-- **Span**: one part of a text to hide, as byte offsets, with the label, pack and rule that found it. It never holds the value, so `--json` output is safe to log.
+- **Span**: one part of a text to hide, as byte offsets, with the label, pack and rule that found it. It never holds the value, so `--json` output is safe to log. A name it shows that holds a hidden value reads `VALUE` (`src/label.rs`).
