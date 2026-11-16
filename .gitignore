@@ -9,3 +9,6 @@ docs/.vitepress/cache/
 !.claude/
 .claude/*
 !.claude/settings.json
+
+# playwright-cli writes snapshots and console logs into the folder it runs from.
+.playwright-cli/
