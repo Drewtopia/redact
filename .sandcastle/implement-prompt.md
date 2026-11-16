@@ -39,7 +39,7 @@ Pick the highest-priority open issue that is not blocked by another open issue.
 ## Rules
 
 - Work on **one issue per iteration**. Do not attempt multiple issues in a single iteration.
-- Never close an issue, push, or open a PR. Drew reviews the branch and opens the PR; merging it closes the issue.
+- Never close an issue, push, or open a PR. A person reviews the branch and opens the PR; merging it closes the issue.
 - Do not leave commented-out code or TODO comments in committed code.
 - If you are blocked (missing context, failing tests you cannot fix, external dependency), leave a comment on the issue ending with `_Drafted by Claude Code, an AI agent._` and move on.
 

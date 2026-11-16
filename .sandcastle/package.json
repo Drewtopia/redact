@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build-image": "cd .. && sandcastle docker build-image --image-name sandcastle:redact --dockerfile .sandcastle/Dockerfile",
     "sandcastle": "cd .. && tsx .sandcastle/main.mts"
   },
   "devDependencies": {

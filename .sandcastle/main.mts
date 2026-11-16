@@ -17,11 +17,13 @@
 // execution with a planning phase).
 //
 // Usage, from the repo root:
+//   npm --prefix .sandcastle run build-image   (once, and after rust-toolchain.toml changes)
 //   npm --prefix .sandcastle run sandcastle
 // Sandcastle's Node deps live in .sandcastle/package.json so the Rust project stays Node-free.
+// The agent runs in the Docker image .sandcastle/Dockerfile builds, so nothing depends on the host's tools.
 
 import * as sandcastle from "@ai-hero/sandcastle";
-import { seatbelt } from "@ai-hero/sandcastle/sandboxes/seatbelt";
+import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -31,28 +33,8 @@ import { seatbelt } from "@ai-hero/sandcastle/sandboxes/seatbelt";
 // Each cycle works on one issue. Raise this to process more issues per run.
 const MAX_ITERATIONS = 10;
 
-// seatbelt() passes only PATH, HOME and TMPDIR and gives the agent a private
-// home, so rustup's proxies can't find the toolchain on their own. Point them at
-// the host's rustup and cargo homes. Cargo writes its registry cache and lock
-// files under CARGO_HOME, so that mount is writable; everything else is read-only.
-const home = process.env.HOME!;
-const cargoHome = process.env.CARGO_HOME ?? `${home}/.cargo`;
-const rustupHome = process.env.RUSTUP_HOME ?? `${home}/.rustup`;
-const readonly = (path: string) => ({ hostPath: path, sandboxPath: path, readonly: true });
-const sandbox = () =>
-  seatbelt({
-    env: { CARGO_HOME: cargoHome, RUSTUP_HOME: rustupHome },
-    mounts: [
-      { hostPath: cargoHome, sandboxPath: cargoHome },
-      readonly(rustupHome),
-      // The worktree sits under .sandcastle/worktrees/, so cargo walks up to the
-      // repo's own Cargo.toml looking for a workspace root and fails if it can't read it.
-      readonly(`${process.cwd()}/Cargo.toml`),
-      // The git hooks (lefthook.yml) run commit-check and betterleaks, mise tools
-      // whose interpreters and install roots sit outside the PATH dirs seatbelt exposes.
-      readonly(`${home}/.mise/installs`),
-    ],
-  });
+// Named here, not derived from the folder name, so every worktree of the repo uses one image.
+const IMAGE_NAME = "sandcastle:redact";
 
 // ---------------------------------------------------------------------------
 // Main loop
@@ -68,7 +50,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // This gives both agents a real, named branch that persists across phases.
   const sandbox = await sandcastle.createSandbox({
     branch,
-    sandbox: sandbox(),
+    sandbox: docker({ imageName: IMAGE_NAME }),
   });
 
   try {
