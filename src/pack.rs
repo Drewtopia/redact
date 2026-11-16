@@ -225,13 +225,21 @@ struct PackSelect {
 /// `[labels]`: what placeholders say. `style` picks the base label: `"kind"`
 /// (the rule's own label, the default), `"rule"` (the rule id, or a word
 /// list's file or variable name) or `"generic"` (`HIDDEN`). Every other key
-/// renames: a label the style gives (`SECRET = "CREDENTIAL"`), or one rule or
-/// list by what `--explain` prints (`"credentials:github-token"`, `"words:customers"`).
+/// renames a label the style gives (`SECRET = "CREDENTIAL"`), or is a pack's
+/// table renaming its rules (`[labels.credentials] github-token = "GH-TOKEN"`).
+/// Word lists, `env` variables and dotenv keys are the `words` pack.
 #[derive(Deserialize, Default)]
 struct LabelSelect {
     style: Option<String>,
     #[serde(flatten)]
-    renames: BTreeMap<String, String>,
+    renames: BTreeMap<String, Rename>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Rename {
+    Label(String),
+    Pack(BTreeMap<String, String>),
 }
 
 /// `[[override]]`: settings that apply when every condition given matches.
@@ -572,16 +580,6 @@ pub fn load(opts: &Options) -> Result<Loaded, String> {
     Ok(l.loaded)
 }
 
-/// A `[labels]` key as it matches: `pack:rule` lower-cased, `words:NAME` and a
-/// label as `label_of` writes them, so `words:acme_org` finds `ACME_ORG`.
-fn label_key_of(key: &str) -> String {
-    match key.split_once(':') {
-        Some(("words", name)) => format!("words:{}", label_of(name)),
-        Some(_) => key.trim().to_lowercase(),
-        None => label_of(key),
-    }
-}
-
 /// A rule id or list name as a label in the placeholder shape: `v1.2_key` is
 /// `V1-2-KEY`, `123-customers` is `CUSTOMERS`. The Claude Code mod folds the same way.
 fn fold_label(name: &str) -> String {
@@ -673,7 +671,7 @@ fn relabel(l: &mut Loader) -> Result<(), String> {
         let mut here: Vec<String> = produced.into_iter().collect();
         here.sort();
         return Err(format!(
-            "[labels] names no such label or pack:rule: {} (labels here: {}; `redact packs` lists the rules)",
+            "[labels] names no such label or rule: {} (labels here: {}; `redact packs` lists the rules)",
             unknown.join(", "),
             here.join(", ")
         ));
@@ -897,24 +895,45 @@ impl Loader {
         labels: &LabelSelect,
         via: &Path,
     ) -> Result<(), String> {
-        if labels.style.is_some() || !labels.renames.is_empty() {
+        let mut renames = Vec::new();
+        for (k, v) in &labels.renames {
+            match v {
+                Rename::Label(_) if k.contains(':') => {
+                    let (pack, rule) = k.split_once(':').unwrap_or_default();
+                    return Err(format!(
+                        "[labels] \"{k}\": rename one rule in its pack's table, as [labels.{pack}] {rule} = \"...\""
+                    ));
+                }
+                Rename::Label(to) => renames.push((label_of(k), k.clone(), to.clone())),
+                // Keys as they match: `pack:rule` lower-cased, a word list as
+                // `label_of` writes it, so `acme_org` finds `ACME_ORG`.
+                Rename::Pack(rules) => {
+                    for (r, to) in rules {
+                        let pack = k.trim().to_lowercase();
+                        let key = if pack == "words" {
+                            format!("words:{}", label_of(r))
+                        } else {
+                            format!("{pack}:{}", r.trim().to_lowercase())
+                        };
+                        renames.push((key, format!("{k}.{r}"), to.clone()));
+                    }
+                }
+            }
+        }
+        if labels.style.is_some() || !renames.is_empty() {
             let style = labels.style.as_deref().map(|s| format!("style {s}, "));
             self.record(
                 "labels",
                 "[labels]".into(),
-                format!(
-                    "{}{} renames",
-                    style.unwrap_or_default(),
-                    labels.renames.len()
-                ),
+                format!("{}{} renames", style.unwrap_or_default(), renames.len()),
                 Some(via),
             );
         }
         if let Some(st) = &labels.style {
             self.label_style = Some(st.clone());
         }
-        for (k, v) in &labels.renames {
-            self.labels.insert(label_key_of(k), (k.clone(), v.clone()));
+        for (key, written, to) in renames {
+            self.labels.insert(key, (written, to));
         }
         if !env.is_empty() {
             let (lists, missing) = env_words(env, std::env::vars());
@@ -1295,6 +1314,11 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             keywords: lower(r.keywords),
             context: lower(r.context),
         });
+    }
+    if f.id.eq_ignore_ascii_case("words") {
+        return Err(format!(
+            "{source}: pack id \"words\" is taken: word lists, env and dotenv keys are the words pack in [labels]"
+        ));
     }
     Ok(Pack {
         id: f.id,

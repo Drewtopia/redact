@@ -1122,14 +1122,13 @@ mod tests {
 
     #[test]
     fn labels_rename_a_kind_and_name_one_rule_or_list() {
-        let cfg = "[labels]\nSECRET = \"credential\"\n\"p:owner\" = \"ACCOUNT-OWNER\"\n\"words:customers\" = \"CUSTOMER\"\n";
+        let cfg = "[labels]\nSECRET = \"credential\"\n[labels.p]\nowner = \"ACCOUNT-OWNER\"\n[labels.words]\ncustomers = \"CUSTOMER\"\n";
         assert_eq!(
             relabelled(cfg, None, LABEL_TEXT).unwrap(),
             "key [CREDENTIAL-…] owner=[ACCOUNT-OWNER-…] ship to [CUSTOMER-…]"
         );
         // A rename applies to what the style gives, so it can rename HIDDEN too.
-        let cfg =
-            "[labels]\nstyle = \"generic\"\nHIDDEN = \"REDACTED\"\n\"p:acme-key\" = \"KEY\"\n";
+        let cfg = "[labels]\nstyle = \"generic\"\nHIDDEN = \"REDACTED\"\np.acme-key = \"KEY\"\n";
         assert_eq!(
             relabelled(cfg, None, LABEL_TEXT).unwrap(),
             "key [KEY-…] owner=[REDACTED-…] ship to [REDACTED-…]"
@@ -1190,7 +1189,8 @@ mod tests {
             ("[labels]\nSECRET = \"A__B\"\n", "A__B"),
             ("[labels]\nSECRET = \"A-_B\"\n", "A-_B"),
             ("[labels]\nSECRET = \"KEY-\"\n", "KEY-"),
-            ("[labels]\n\"p:no-such-rule\" = \"X\"\n", "p:no-such-rule"),
+            ("[labels.p]\nno-such-rule = \"X\"\n", "p.no-such-rule"),
+            ("[labels]\n\"p:owner\" = \"X\"\n", "[labels.p] owner"),
             ("[labels]\nSECRETS = \"X\"\n", "SECRETS"),
         ] {
             let err = relabelled(cfg, None, LABEL_TEXT).unwrap_err();
@@ -1201,7 +1201,17 @@ mod tests {
         }
         // A word list or variable that is not loaded here is not an error: an
         // unset variable is not one either.
-        assert!(relabelled("[labels]\n\"words:ACME_ORG\" = \"ORG\"\n", None, LABEL_TEXT).is_ok());
+        assert!(relabelled("[labels.words]\nACME_ORG = \"ORG\"\n", None, LABEL_TEXT).is_ok());
+    }
+
+    #[test]
+    fn a_pack_cannot_be_named_words() {
+        let d = tmp("words-pack");
+        std::fs::write(d.join("p.toml"), "schema_version = 1\nid = \"Words\"\n[[rules]]\nid = \"k\"\nregex = '(zqxkey[0-9]+)'\nsecretGroup = 1\n").unwrap();
+        std::fs::write(d.join("config.toml"), "import = [\"p.toml\"]\n").unwrap();
+        let err = only(&[d.join("config.toml")]).err().unwrap();
+        std::fs::remove_dir_all(&d).unwrap();
+        assert!(err.contains("\"words\" is taken"), "{err}");
     }
 
     #[test]

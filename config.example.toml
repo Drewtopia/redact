@@ -36,12 +36,13 @@
 
 # What placeholders say. Leave this out for [SECRET-…], [PERSON-…] and the like.
 # style: "kind" (the default), "rule" (the rule id: [GITHUB-TOKEN-…]) or "generic"
-# ([HIDDEN-…] everywhere). Any other key renames a label, or one rule or word list
-# as `redact scan --explain` names it. A list's own name can say what it hides.
+# ([HIDDEN-…] everywhere). Any other key renames a label. [labels.<pack>] renames
+# one rule; [labels.words] one word list or variable, whose name can say what it hides.
 # [labels]
 # style = "kind"
 # SECRET = "CREDENTIAL"
-# "credentials:github-token" = "GITHUB-TOKEN"
+# [labels.credentials]
+# github-token = "GITHUB-TOKEN"
 
 # --- Overrides -------------------------------------------------------------------
 

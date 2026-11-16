@@ -67,7 +67,7 @@ disable = ["identity"]
 | `me` | Hide your git `user.name` and `user.email`, and your GitHub logins | [Hide yourself](../guide/me) |
 | `allow` | Values never to hide, matched in any case. `$NAME` reads one from an environment variable | [Allow](#allow) |
 | `[packs]` | `enable` and `disable` lists of pack ids. `disable` also takes one rule as `pack:rule` | [Packs](#packs) |
-| `[labels]` | What placeholders say: a `style`, and renames of a label, a rule, or a word list | [Labels](#labels) |
+| `[labels]` | What placeholders say: a `style`, renames of a label, and `[labels.<pack>]` renames of a rule or word list | [Labels](#labels) |
 | `[[override]]` | Settings for one machine, folder, or command | [Overrides](#overrides) |
 
 In a symlinked config, an `import` path is relative to the file the link points to.
@@ -106,24 +106,28 @@ A placeholder's label says what kind of thing it hides, such as `[SECRET-…]` o
 
 ```toml
 [labels]
-style = "generic"                          # every placeholder is [HIDDEN-…]
-HIDDEN = "REDACTED"                        # ...or rather [REDACTED-…]
-"credentials:github-token" = "GH-TOKEN"    # except GitHub tokens
-"words:customers" = "CUSTOMER"             # and the customers.txt list
+style = "generic"              # every placeholder is [HIDDEN-…]
+HIDDEN = "REDACTED"            # ...or rather [REDACTED-…]
+
+[labels.credentials]           # except GitHub tokens
+github-token = "GH-TOKEN"
+
+[labels.words]                 # and the customers.txt list
+customers = "CUSTOMER"
 ```
 
 | Key | What it does |
 | :- | :- |
 | `style` | The label each placeholder starts from. `"kind"`, the default, is the rule's own label. `"rule"` is the rule id (`[GITHUB-TOKEN-…]`), or a word list's file name or a variable's name. `"generic"` is `HIDDEN` |
 | A label | Renames that label, as the style gives it: `SECRET = "CREDENTIAL"` |
-| `pack:rule` | Renames one rule, as `redact scan --explain` prints it: `"credentials:github-token"`. `--explain` then adds the label it had before, as `(was SECRET)` |
-| `words:name` | Renames one word list, `env` variable, or dotenv key, as `--explain` prints it: `"words:customers"`, `"words:ACME_ORG"` |
+| `[labels.<pack>]` | Renames one rule in that pack, by the id `redact packs` lists: `github-token = "GH-TOKEN"`. Under `[labels]`, `credentials.github-token = "GH-TOKEN"` is the same key. `redact scan --explain` adds the label it had before, as `(was SECRET)` |
+| `[labels.words]` | Renames one word list, `env` variable, or dotenv key: `customers = "CUSTOMER"`, `ACME_ORG = "ORG"`. Word lists, `env` and `env_files` are the `words` pack, so no pack can take that id |
 
-The most specific key wins: `pack:rule` or `words:name`, then a label, then the style. Keys match in any case.
+The most specific key wins: a rule or word list in a pack's table, then a label, then the style. Keys match in any case.
 
-A label is letters and digits, starts with a letter, may join words with one `-` or `_` (`GH-TOKEN`), and is not `LITERAL`, which the Claude Code mod keeps for itself. Anything else is an error. In `"rule"` style, a rule id or file name that does not fit is folded to fit: `v1.2_key` becomes `V1-2-KEY`. So is a key that names no label the style gives and no `pack:rule`, and the error lists the labels that exist. A `words:` key that matches nothing is not an error, as a variable can be set on one machine and not another.
+A label is letters and digits, starts with a letter, may join words with one `-` or `_` (`GH-TOKEN`), and is not `LITERAL`, which the Claude Code mod keeps for itself. Anything else is an error. In `"rule"` style, a rule id or file name that does not fit is folded to fit: `v1.2_key` becomes `V1-2-KEY`. So is a key that names no label the style gives and no rule, and the error lists the labels that exist. A `[labels.words]` key that matches nothing is not an error, as a variable can be set on one machine and not another.
 
-`"rule"` style and `words:` keys put a name in every placeholder. A file name such as `acme-customers.txt` can say what the list hides, so use them only for names you are happy for the model to see.
+`"rule"` style and `[labels.words]` renames put a name in every placeholder. A file name such as `acme-customers.txt` can say what the list hides, so use them only for names you are happy for the model to see.
 
 ## Overrides
 
