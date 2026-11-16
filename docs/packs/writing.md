@@ -47,7 +47,7 @@ remember = "distinctive"
 | `description` | One line on what it finds |
 | `regex` | Where to look, in Rust [`regex`](https://docs.rs/regex) syntax |
 | `secretGroup` | The capture group to hide. `0`, the default, is the whole match |
-| `label` | What the placeholder says. Defaults to `SECRET`. Pick a kind from [Labels](./#labels), not a name: a label shows in every placeholder |
+| `label` | What the placeholder says. Defaults to `SECRET`. Pick a kind from [Labels](./#labels), not a name: a label shows in every placeholder. Letters and digits, starting with a letter, words joined by one `-` or `_`, and not `LITERAL`; anything else stops the pack loading |
 | `within` | Run only inside a JSON object whose own fields match this regex, whatever their order and wherever nested objects sit |
 | `withinKey` | Run only inside a JSON object that is the value of a key matching this regex, such as `'''^data$'''` for `"data": {…}`. With `within` too, the object must pass both |
 | `except` | Leave a found value alone when the value matches this regex. See [Exceptions](#exceptions) |

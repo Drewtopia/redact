@@ -1,5 +1,6 @@
 //! Finding the parts of a text to hide, and swapping them for placeholders.
 
+use crate::label;
 use crate::pack::{Loaded, Remember, entropy};
 use aho_corasick::AhoCorasick;
 use hmac::{Hmac, KeyInit, Mac};
@@ -251,7 +252,7 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                         || pack.allow.contains(&value.to_lowercase())
                         || loaded.allow.contains(&value.to_lowercase())
                         || rule.except.as_ref().is_some_and(|x| x.is_match(value))
-                        || is_tag(value)
+                        || label::is_tag(value)
                         || rule.check.is_some_and(|c| !c.passes(value))
                         || rule.entropy.is_some_and(|min| entropy(value) <= min)
                         || !rule.context.is_empty()
@@ -322,7 +323,7 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
             .or_insert_with(|| {
                 let key = label_key(name);
                 if hidden.iter().any(|w| key.contains(w.as_str())) {
-                    "VALUE".to_string()
+                    label::VALUE.to_string()
                 } else {
                     name.to_string()
                 }
@@ -373,14 +374,6 @@ fn word_edge(s: &str, i: usize) -> bool {
         }
         _ => true,
     }
-}
-
-/// A placeholder this tool wrote, such as `[SECRET-a1b2c3d4]`: hiding it again
-/// would only swap one tag for another when redacted text is redacted again.
-fn is_tag(v: &str) -> bool {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"^\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\]$").unwrap())
-        .is_match(v)
 }
 
 /// Lower case with `-`, `_` and spaces folded together, to compare labels and words.
@@ -1252,6 +1245,21 @@ mod tests {
         let err = only(&[d.join("config.toml")]).err().unwrap();
         std::fs::remove_dir_all(&d).unwrap();
         assert!(err.contains("\"words\" is taken"), "{err}");
+    }
+
+    #[test]
+    fn a_pack_label_that_does_not_fit_a_placeholder_is_an_error() {
+        for bad in ["my.label", "LITERAL", "1KEY"] {
+            let d = tmp("bad-label");
+            std::fs::write(d.join("p.toml"), format!("schema_version = 1\nid = \"p\"\n[[rules]]\nid = \"k\"\nlabel = \"{bad}\"\nregex = '(zqxkey[0-9]+)'\nsecretGroup = 1\n")).unwrap();
+            std::fs::write(d.join("config.toml"), "import = [\"p.toml\"]\n").unwrap();
+            let err = only(&[d.join("config.toml")]).err().unwrap();
+            std::fs::remove_dir_all(&d).unwrap();
+            assert!(
+                err.contains("rule k label") && err.contains(bad),
+                "{bad}: {err}"
+            );
+        }
     }
 
     #[test]

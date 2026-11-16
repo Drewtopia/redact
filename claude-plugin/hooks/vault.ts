@@ -7,7 +7,7 @@
 
 // The binary's own shape, `[LABEL-1a2b3c4d]`, so a placeholder reads the same
 // whether redact ran in a pipe or here.
-const TAG = /\[[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-[0-9a-f]{8}\]/g
+export const TAG = /\[[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-[0-9a-f]{8}\]/g
 // A placeholder read back from a file stands for its own text: it restores
 // to that text, never to the value, so quoting one cannot leak the value.
 const LITERAL = 'LITERAL'

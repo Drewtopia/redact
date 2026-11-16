@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { register } from '../hooks/redact.ts'
+import { TAG } from '../hooks/vault.ts'
 
 // Build with `cargo build` first. These tests use the production hooks and
 // scanner together; only the tool beneath the redactor is a stand-in.
@@ -392,4 +393,35 @@ test('every long slice of a one-kind passphrase comes back hidden', async () => 
   const out = JSON.stringify(await h.call({ tool: 'Bash', command: `echo ${tag} | cut -c1-12` }))
   assert.ok(!out.includes(phrase.slice(0, 12)), out)
   assert.ok(out.includes('head ') && out.includes(' tail'), out)
+})
+
+test('every label the binary gives fits the placeholder shape the mod reads', () => {
+  const pack = join(dir, 'odd.toml')
+  writeFileSync(pack, `schema_version = 1
+id = "odd"
+[[rules]]
+id = "v1.2_key"
+regex = "(zqxkey[0-9]+)"
+secretGroup = 1
+[[rules]]
+id = "literal"
+regex = "(zqxlit[0-9]+)"
+secretGroup = 1
+`)
+  const list = join(dir, '123-customers.txt')
+  writeFileSync(list, 'Northwind Traders\n')
+  const fits = new RegExp(`^${TAG.source}$`)
+  for (const labels of ['', '[labels]\nstyle = "rule"\n', '[labels]\nstyle = "generic"\n']) {
+    const cfg = join(dir, 'contract.toml')
+    writeFileSync(cfg, `import = [${JSON.stringify(pack)}, ${JSON.stringify(list)}]\n${labels}`)
+    const r = spawnSync(binary, ['packs', '--json'], { encoding: 'utf8', timeout: 3000, env: { ...process.env, REDACT_CONFIG: cfg } })
+    assert.equal(r.status, 0, r.stderr)
+    const out = JSON.parse(r.stdout)
+    const all = [...out.packs.flatMap((p) => p.rules.map((x) => x.label)), ...out.words.map((w) => w.label)]
+    assert.ok(all.length > 3, labels)
+    for (const label of all) {
+      assert.ok(fits.test(`[${label}-0123abcd]`), `${labels || 'default'}: ${label}`)
+      assert.notEqual(label, 'LITERAL')
+    }
+  }
 })

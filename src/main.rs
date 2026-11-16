@@ -2,6 +2,7 @@
 //!
 //! Exit codes: 0 done, 2 bad usage, 3 a pack would not load or the scan failed.
 
+mod label;
 mod pack;
 #[cfg(test)]
 mod rule_tests;

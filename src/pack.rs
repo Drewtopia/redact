@@ -1,5 +1,6 @@
 //! Loading packs (.toml rule files) and word lists (.txt, one word per line).
 
+use crate::label;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -501,7 +502,7 @@ fn dotenv_words(text: &str, source: &str) -> Vec<WordList> {
         if !words.is_empty() {
             out.push(WordList {
                 label: "ENV-VALUE".into(),
-                name: label_of(key),
+                name: label::of(key),
                 source: source.to_string(),
                 words,
             });
@@ -520,7 +521,7 @@ fn env_words(
         .filter(|(name, _)| patterns.iter().any(|p| glob(p, name)))
         .map(|(name, value)| WordList {
             label: "ENV-VALUE".into(),
-            name: label_of(&name),
+            name: label::of(&name),
             source: format!("${name}"),
             words: value
                 .lines()
@@ -606,24 +607,6 @@ pub fn load(opts: &Options) -> Result<Loaded, String> {
     Ok(l.loaded)
 }
 
-/// A rule id or list name as a label in the placeholder shape: `v1.2_key` is
-/// `V1-2-KEY`, `123-customers` is `CUSTOMERS`. The Claude Code mod folds the same way.
-fn fold_label(name: &str) -> String {
-    let mut out = String::new();
-    for c in name.chars() {
-        if c.is_ascii_alphanumeric() {
-            out.push(c.to_ascii_uppercase());
-        } else if !out.is_empty() && !out.ends_with('-') {
-            out.push('-');
-        }
-    }
-    let out = out.trim_start_matches(|c: char| c.is_ascii_digit() || c == '-');
-    match out.trim_end_matches('-') {
-        "" => "HIDDEN".into(),
-        t => t.into(),
-    }
-}
-
 /// Applies `[labels]`: the style's base label for each rule and word list,
 /// then a rename of that label, then a rename of that one rule or list.
 fn relabel(l: &mut Loader) -> Result<(), String> {
@@ -633,22 +616,15 @@ fn relabel(l: &mut Loader) -> Result<(), String> {
             "[labels] style \"{style}\": use \"kind\", \"rule\" or \"generic\""
         ));
     }
-    // The shape the Claude Code mod reads back as a placeholder, and not the
-    // LITERAL tags it mints itself.
-    let shape = Regex::new(r"^[A-Za-z][A-Za-z0-9]*(?:[-_][A-Za-z0-9]+)*$").unwrap();
     let mut renames = BTreeMap::new();
     for (key, (written, value)) in &l.labels {
-        let label = label_of(value);
-        if !shape.is_match(value) || label == "LITERAL" {
-            return Err(format!(
-                "[labels] {written} = \"{value}\": a label is letters and digits, starts with a letter, may join words with one - or _, and is not LITERAL"
-            ));
-        }
+        let label =
+            label::check(value).map_err(|e| format!("[labels] {written} = \"{value}\": {e}"))?;
         renames.insert(key.as_str(), label);
     }
     let base = |kind: &str, rule: &str| match style {
-        "rule" => fold_label(rule),
-        "generic" => "HIDDEN".to_string(),
+        "rule" => label::fold(rule),
+        "generic" => label::HIDDEN.to_string(),
         _ => kind.to_string(),
     };
     let mut used = HashSet::new();
@@ -930,14 +906,14 @@ impl Loader {
                         "[labels] \"{k}\": rename one rule in its pack's table, as [labels.{pack}] {rule} = \"...\""
                     ));
                 }
-                Rename::Label(to) => renames.push((label_of(k), k.clone(), to.clone())),
+                Rename::Label(to) => renames.push((label::of(k), k.clone(), to.clone())),
                 // Keys as they match: `pack:rule` lower-cased, a word list as
-                // `label_of` writes it, so `acme_org` finds `ACME_ORG`.
+                // `label::of` writes it, so `acme_org` finds `ACME_ORG`.
                 Rename::Pack(rules) => {
                     for (r, to) in rules {
                         let pack = k.trim().to_lowercase();
                         let key = if pack == "words" {
-                            format!("words:{}", label_of(r))
+                            format!("words:{}", label::of(r))
                         } else {
                             format!("{pack}:{}", r.trim().to_lowercase())
                         };
@@ -1221,7 +1197,7 @@ fn word_list(path: &Path, text: &str) -> WordList {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("word");
     WordList {
         label: "WORDLIST".into(),
-        name: label_of(stem),
+        name: label::of(stem),
         source: path.display().to_string(),
         words: text
             .lines()
@@ -1246,10 +1222,6 @@ fn read_text(path: &Path) -> std::io::Result<String> {
         Some(rest) => rest.to_string(),
         None => text,
     })
-}
-
-pub fn label_of(name: &str) -> String {
-    name.trim().to_uppercase().replace(['_', ' '], "-")
 }
 
 fn lower(v: Vec<String>) -> Vec<String> {
@@ -1331,7 +1303,11 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
         rules.push(Rule {
             // Not the id: `acme-api-key` would say whose key it is, unless
             // `[labels] style = "rule"` asks for it.
-            label: label_of(r.label.as_deref().unwrap_or("SECRET")),
+            label: match &r.label {
+                Some(l) => label::check(l)
+                    .map_err(|e| format!("{source}: rule {} label \"{l}\": {e}", r.id))?,
+                None => label::SECRET.into(),
+            },
             id: r.id,
             description: r.description,
             re,
