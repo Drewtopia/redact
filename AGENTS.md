@@ -14,6 +14,10 @@ The five default roles, each label named for its role: `needs-triage`, `needs-in
 
 Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root, created when first needed. See `docs/agents/domain.md`.
 
+### Docs pages
+
+Writing, moving or syncing a page on the docs site under `docs/`, including the docs a code change owes: see `docs/agents/writing-docs.md`.
+
 ### Releases
 
 release-please makes every release; never push a tag or edit a version by hand. See `docs/agents/releases.md`.
