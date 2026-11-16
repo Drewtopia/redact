@@ -4,6 +4,9 @@
 pre-commit:
   parallel: true
   commands:
+    # Whitespace errors and leftover merge conflict markers in staged lines.
+    conflict-markers:
+      run: git diff --cached --check
     fmt:
       glob: "*.rs"
       run: cargo fmt --check
