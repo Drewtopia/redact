@@ -183,6 +183,9 @@ pub struct Source {
     pub kind: &'static str,
     pub path: String,
     pub detail: String,
+    /// The id of the pack this file loaded, so `[packs]` can mark it off.
+    #[serde(skip)]
+    pub pack: Option<String>,
     pub via: Option<String>,
     /// `false`: redact looked for this file and it was not there.
     pub found: bool,
@@ -237,6 +240,41 @@ struct ConfigFile {
     /// Settings that apply only on a machine, in a folder, or for a command.
     #[serde(default, rename = "override")]
     overrides: Vec<Override>,
+}
+
+/// The settings a config file and its `[[override]]` sections share. They are
+/// read as fields of each, not as a `#[serde(flatten)]` struct, so a typo's
+/// error keeps its line, column and list of known keys.
+struct Settings<'a> {
+    env: &'a [String],
+    env_files: &'a [String],
+    allow: &'a [String],
+    packs: &'a PackSelect,
+    labels: &'a LabelSelect,
+}
+
+impl ConfigFile {
+    fn settings(&self) -> Settings<'_> {
+        Settings {
+            env: &self.env,
+            env_files: &self.env_files,
+            allow: &self.allow,
+            packs: &self.packs,
+            labels: &self.labels,
+        }
+    }
+}
+
+impl Override {
+    fn settings(&self) -> Settings<'_> {
+        Settings {
+            env: &self.env,
+            env_files: &self.env_files,
+            allow: &self.allow,
+            packs: &self.packs,
+            labels: &self.labels,
+        }
+    }
 }
 
 /// `[packs]`: switch built-in or loaded packs on (`enable`) or off (`disable`) by id.
@@ -579,10 +617,11 @@ pub fn load(opts: &Options) -> Result<Loaded, String> {
     if opts.builtin {
         for (name, text) in BUILTIN {
             let pack = compile(text, &format!("built-in {name}"))?;
-            l.record(
+            l.record_pack(
                 "builtin",
                 name.to_string(),
                 format!("{} rules", pack.rules.len()),
+                &pack.id,
                 None,
             );
             l.loaded.packs.push(pack);
@@ -602,83 +641,8 @@ pub fn load(opts: &Options) -> Result<Loaded, String> {
     for f in &opts.env_files {
         l.env_file(f, None, true)?;
     }
-    select_packs(&mut l)?;
-    relabel(&mut l)?;
+    l.layered.apply(&mut l.loaded)?;
     Ok(l.loaded)
-}
-
-/// Applies `[labels]`: the style's base label for each rule and word list,
-/// then a rename of that label, then a rename of that one rule or list.
-fn relabel(l: &mut Loader) -> Result<(), String> {
-    let style = l.label_style.as_deref().unwrap_or("kind");
-    if !matches!(style, "kind" | "rule" | "generic") {
-        return Err(format!(
-            "[labels] style \"{style}\": use \"kind\", \"rule\" or \"generic\""
-        ));
-    }
-    let mut renames = BTreeMap::new();
-    for (key, (written, value)) in &l.labels {
-        let label =
-            label::check(value).map_err(|e| format!("[labels] {written} = \"{value}\": {e}"))?;
-        renames.insert(key.as_str(), label);
-    }
-    let base = |kind: &str, rule: &str| match style {
-        "rule" => label::fold(rule),
-        "generic" => label::HIDDEN.to_string(),
-        _ => kind.to_string(),
-    };
-    let mut used = HashSet::new();
-    let mut produced = HashSet::new();
-    let mut kinds = HashMap::new();
-    let mut relabel_one = |key: String, label: &mut String, rule: &str| {
-        let b = base(label, rule);
-        produced.insert(b.clone());
-        let new = match renames.get(key.as_str()) {
-            Some(l) => {
-                used.insert(key.clone());
-                l.clone()
-            }
-            None => match renames.get(b.as_str()) {
-                Some(l) => {
-                    used.insert(b.clone());
-                    l.clone()
-                }
-                None => b,
-            },
-        };
-        if new != *label {
-            kinds.insert(key, std::mem::replace(label, new));
-        }
-    };
-    let loaded = &mut l.loaded;
-    for p in loaded.packs.iter_mut().chain(loaded.off.iter_mut()) {
-        for r in &mut p.rules {
-            relabel_one(format!("{}:{}", p.id, r.id), &mut r.label, &r.id);
-        }
-    }
-    for w in &mut loaded.words {
-        relabel_one(format!("words:{}", w.name), &mut w.label, &w.name);
-    }
-    loaded.kinds = kinds;
-    // A word list or variable may be loaded on one machine and not another,
-    // as `env` may be set or not: only a rule or label that matches nothing is a typo.
-    let mut unknown: Vec<&str> = l
-        .labels
-        .iter()
-        .filter(|(k, _)| !k.starts_with("words:") && !used.contains(*k) && !produced.contains(*k))
-        .map(|(_, (written, _))| written.as_str())
-        .collect();
-    if !unknown.is_empty() {
-        unknown.sort();
-        let mut here: Vec<String> = produced.into_iter().collect();
-        here.sort();
-        return Err(format!(
-            "[labels] names no such label or rule: {} (labels here: {}; `redact packs` lists the rules)",
-            unknown.join(", "),
-            here.join(", ")
-        ));
-    }
-    Ok(())
 }
 
 /// The packs folder and config file in `home`, each listed as missing when it is not there.
@@ -695,71 +659,6 @@ fn user_layer(l: &mut Loader, home: Option<PathBuf>) -> Result<(), String> {
         l.file(&config, None)?;
     } else {
         l.missing("config", tilde(&config), "missing", None);
-    }
-    Ok(())
-}
-
-/// Applies `[packs]`: a pack runs when it is on by default and not disabled, or
-/// when enabled. `disable` also takes one rule as `pack:rule`, as `--explain`
-/// prints it. A name that matches nothing is an error, so a typo is caught.
-fn select_packs(l: &mut Loader) -> Result<(), String> {
-    let ids: HashSet<&str> = l.loaded.packs.iter().map(|p| p.id.as_str()).collect();
-    let rule_ids: HashSet<String> = l
-        .loaded
-        .packs
-        .iter()
-        .flat_map(|p| p.rules.iter().map(move |r| format!("{}:{}", p.id, r.id)))
-        .collect();
-    let mut unknown: Vec<&String> = l
-        .enable
-        .iter()
-        .filter(|n| !ids.contains(n.as_str()))
-        .chain(
-            l.disable
-                .iter()
-                .filter(|n| !ids.contains(n.as_str()) && !rule_ids.contains(n.as_str())),
-        )
-        .collect();
-    if !unknown.is_empty() {
-        unknown.sort();
-        let mut known: Vec<&str> = ids.into_iter().collect();
-        known.sort();
-        return Err(format!(
-            "[packs] names no such pack or pack:rule: {} (packs: {}; `redact packs` lists their rules)",
-            unknown
-                .iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<_>>()
-                .join(", "),
-            known.join(", ")
-        ));
-    }
-    let (enable, disable) = (&l.enable, &l.disable);
-    for p in &mut l.loaded.packs {
-        p.rules
-            .retain(|r| !disable.contains(&format!("{}:{}", p.id, r.id)));
-    }
-    let off: Vec<String> = l
-        .loaded
-        .packs
-        .iter()
-        .filter(|p| disable.contains(&p.id) || (!p.on_by_default && !enable.contains(&p.id)))
-        .map(|p| p.id.clone())
-        .collect();
-    let (on, off_packs) = std::mem::take(&mut l.loaded.packs)
-        .into_iter()
-        .partition(|p| !off.contains(&p.id));
-    l.loaded.packs = on;
-    l.loaded.off = off_packs;
-    for s in &mut l.loaded.sources {
-        let id = if s.kind == "builtin" {
-            s.path.as_str()
-        } else {
-            s.detail.split(' ').next().unwrap_or("")
-        };
-        if matches!(s.kind, "builtin" | "pack") && off.iter().any(|o| o == id) {
-            s.detail = format!("{}, off", s.detail);
-        }
     }
     Ok(())
 }
@@ -826,6 +725,197 @@ pub fn tilde(p: &Path) -> String {
     }
 }
 
+/// `[packs]` and `[labels]` from every config and matching override, layered in
+/// load order, then applied to the packs and word lists once all have loaded.
+#[derive(Default)]
+struct Layered {
+    /// A later layer's style and renames win.
+    label_style: Option<String>,
+    labels: BTreeMap<String, (String, String)>,
+    enable: HashSet<String>,
+    disable: HashSet<String>,
+}
+
+impl Layered {
+    /// Adds one layer's `[packs]` and `[labels]`. Returns how many renames
+    /// it gave, for `redact config ls`.
+    fn add(&mut self, packs: &PackSelect, labels: &LabelSelect) -> Result<usize, String> {
+        let mut renames = Vec::new();
+        for (k, v) in &labels.renames {
+            match v {
+                Rename::Label(_) if k.contains(':') => {
+                    let (pack, rule) = k.split_once(':').unwrap_or_default();
+                    return Err(format!(
+                        "[labels] \"{k}\": rename one rule in its pack's table, as [labels.{pack}] {rule} = \"...\""
+                    ));
+                }
+                Rename::Label(to) => renames.push((label::of(k), k.clone(), to.clone())),
+                // Keys as they match: `pack:rule` lower-cased, a word list as
+                // `label::of` writes it, so `acme_org` finds `ACME_ORG`.
+                Rename::Pack(rules) => {
+                    for (r, to) in rules {
+                        let pack = k.trim().to_lowercase();
+                        let key = if pack == "words" {
+                            format!("words:{}", label::of(r))
+                        } else {
+                            format!("{pack}:{}", r.trim().to_lowercase())
+                        };
+                        renames.push((key, format!("{k}.{r}"), to.clone()));
+                    }
+                }
+            }
+        }
+        let n = renames.len();
+        if let Some(st) = &labels.style {
+            self.label_style = Some(st.clone());
+        }
+        for (key, written, to) in renames {
+            self.labels.insert(key, (written, to));
+        }
+        self.enable.extend(packs.enable.iter().cloned());
+        self.disable.extend(packs.disable.iter().cloned());
+        Ok(n)
+    }
+
+    fn apply(&self, loaded: &mut Loaded) -> Result<(), String> {
+        self.select_packs(loaded)?;
+        self.relabel(loaded)
+    }
+
+    /// Applies `[packs]`: a pack runs when it is on by default and not disabled, or
+    /// when enabled. `disable` also takes one rule as `pack:rule`, as `--explain`
+    /// prints it. A name that matches nothing is an error, so a typo is caught.
+    fn select_packs(&self, loaded: &mut Loaded) -> Result<(), String> {
+        let ids: HashSet<&str> = loaded.packs.iter().map(|p| p.id.as_str()).collect();
+        let rule_ids: HashSet<String> = loaded
+            .packs
+            .iter()
+            .flat_map(|p| p.rules.iter().map(move |r| format!("{}:{}", p.id, r.id)))
+            .collect();
+        let mut unknown: Vec<&String> = self
+            .enable
+            .iter()
+            .filter(|n| !ids.contains(n.as_str()))
+            .chain(
+                self.disable
+                    .iter()
+                    .filter(|n| !ids.contains(n.as_str()) && !rule_ids.contains(n.as_str())),
+            )
+            .collect();
+        if !unknown.is_empty() {
+            unknown.sort();
+            let mut known: Vec<&str> = ids.into_iter().collect();
+            known.sort();
+            return Err(format!(
+                "[packs] names no such pack or pack:rule: {} (packs: {}; `redact packs` lists their rules)",
+                unknown
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                known.join(", ")
+            ));
+        }
+        let (enable, disable) = (&self.enable, &self.disable);
+        for p in &mut loaded.packs {
+            p.rules
+                .retain(|r| !disable.contains(&format!("{}:{}", p.id, r.id)));
+        }
+        let off: Vec<String> = loaded
+            .packs
+            .iter()
+            .filter(|p| disable.contains(&p.id) || (!p.on_by_default && !enable.contains(&p.id)))
+            .map(|p| p.id.clone())
+            .collect();
+        let (on, off_packs) = std::mem::take(&mut loaded.packs)
+            .into_iter()
+            .partition(|p| !off.contains(&p.id));
+        loaded.packs = on;
+        loaded.off = off_packs;
+        for s in &mut loaded.sources {
+            if s.pack.as_ref().is_some_and(|id| off.contains(id)) {
+                s.detail = format!("{}, off", s.detail);
+            }
+        }
+        Ok(())
+    }
+
+    /// Applies `[labels]`: the style's base label for each rule and word list,
+    /// then a rename of that label, then a rename of that one rule or list.
+    fn relabel(&self, loaded: &mut Loaded) -> Result<(), String> {
+        let style = self.label_style.as_deref().unwrap_or("kind");
+        if !matches!(style, "kind" | "rule" | "generic") {
+            return Err(format!(
+                "[labels] style \"{style}\": use \"kind\", \"rule\" or \"generic\""
+            ));
+        }
+        let mut renames = BTreeMap::new();
+        for (key, (written, value)) in &self.labels {
+            let label = label::check(value)
+                .map_err(|e| format!("[labels] {written} = \"{value}\": {e}"))?;
+            renames.insert(key.as_str(), label);
+        }
+        let base = |kind: &str, rule: &str| match style {
+            "rule" => label::fold(rule),
+            "generic" => label::HIDDEN.to_string(),
+            _ => kind.to_string(),
+        };
+        let mut used = HashSet::new();
+        let mut produced = HashSet::new();
+        let mut kinds = HashMap::new();
+        let mut relabel_one = |key: String, label: &mut String, rule: &str| {
+            let b = base(label, rule);
+            produced.insert(b.clone());
+            let new = match renames.get(key.as_str()) {
+                Some(l) => {
+                    used.insert(key.clone());
+                    l.clone()
+                }
+                None => match renames.get(b.as_str()) {
+                    Some(l) => {
+                        used.insert(b.clone());
+                        l.clone()
+                    }
+                    None => b,
+                },
+            };
+            if new != *label {
+                kinds.insert(key, std::mem::replace(label, new));
+            }
+        };
+        for p in loaded.packs.iter_mut().chain(loaded.off.iter_mut()) {
+            for r in &mut p.rules {
+                relabel_one(format!("{}:{}", p.id, r.id), &mut r.label, &r.id);
+            }
+        }
+        for w in &mut loaded.words {
+            relabel_one(format!("words:{}", w.name), &mut w.label, &w.name);
+        }
+        loaded.kinds = kinds;
+        // A word list or variable may be loaded on one machine and not another,
+        // as `env` may be set or not: only a rule or label that matches nothing is a typo.
+        let mut unknown: Vec<&str> = self
+            .labels
+            .iter()
+            .filter(|(k, _)| {
+                !k.starts_with("words:") && !used.contains(*k) && !produced.contains(*k)
+            })
+            .map(|(_, (written, _))| written.as_str())
+            .collect();
+        if !unknown.is_empty() {
+            unknown.sort();
+            let mut here: Vec<String> = produced.into_iter().collect();
+            here.sort();
+            return Err(format!(
+                "[labels] names no such label or rule: {} (labels here: {}; `redact packs` lists the rules)",
+                unknown.join(", "),
+                here.join(", ")
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Default)]
 struct Loader {
     loaded: Loaded,
@@ -837,12 +927,7 @@ struct Loader {
     host: String,
     cwd: PathBuf,
     command: Option<String>,
-    /// `[labels]` from every config and matching override; a later one wins.
-    label_style: Option<String>,
-    labels: BTreeMap<String, (String, String)>,
-    /// `[packs]` from every config and matching override.
-    enable: HashSet<String>,
-    disable: HashSet<String>,
+    layered: Layered,
 }
 
 impl Loader {
@@ -888,54 +973,23 @@ impl Loader {
 
     /// The settings a config and its matching overrides share: env, env_files,
     /// allow, [packs] and [labels].
-    fn apply(
-        &mut self,
-        env: &[String],
-        env_files: &[String],
-        allow: &[String],
-        packs: &PackSelect,
-        labels: &LabelSelect,
-        via: &Path,
-    ) -> Result<(), String> {
-        let mut renames = Vec::new();
-        for (k, v) in &labels.renames {
-            match v {
-                Rename::Label(_) if k.contains(':') => {
-                    let (pack, rule) = k.split_once(':').unwrap_or_default();
-                    return Err(format!(
-                        "[labels] \"{k}\": rename one rule in its pack's table, as [labels.{pack}] {rule} = \"...\""
-                    ));
-                }
-                Rename::Label(to) => renames.push((label::of(k), k.clone(), to.clone())),
-                // Keys as they match: `pack:rule` lower-cased, a word list as
-                // `label::of` writes it, so `acme_org` finds `ACME_ORG`.
-                Rename::Pack(rules) => {
-                    for (r, to) in rules {
-                        let pack = k.trim().to_lowercase();
-                        let key = if pack == "words" {
-                            format!("words:{}", label::of(r))
-                        } else {
-                            format!("{pack}:{}", r.trim().to_lowercase())
-                        };
-                        renames.push((key, format!("{k}.{r}"), to.clone()));
-                    }
-                }
-            }
-        }
-        if labels.style.is_some() || !renames.is_empty() {
+    fn apply(&mut self, settings: Settings, via: &Path) -> Result<(), String> {
+        let Settings {
+            env,
+            env_files,
+            allow,
+            packs,
+            labels,
+        } = settings;
+        let renames = self.layered.add(packs, labels)?;
+        if labels.style.is_some() || renames > 0 {
             let style = labels.style.as_deref().map(|s| format!("style {s}, "));
             self.record(
                 "labels",
                 "[labels]".into(),
-                format!("{}{} renames", style.unwrap_or_default(), renames.len()),
+                format!("{}{renames} renames", style.unwrap_or_default()),
                 Some(via),
             );
-        }
-        if let Some(st) = &labels.style {
-            self.label_style = Some(st.clone());
-        }
-        for (key, written, to) in renames {
-            self.labels.insert(key, (written, to));
         }
         if !env.is_empty() {
             let (lists, missing) = env_words(env, std::env::vars());
@@ -991,8 +1045,6 @@ impl Loader {
                 Some(via),
             );
         }
-        self.enable.extend(packs.enable.iter().cloned());
-        self.disable.extend(packs.disable.iter().cloned());
         Ok(())
     }
 
@@ -1066,9 +1118,24 @@ impl Loader {
             kind,
             path,
             detail,
+            pack: None,
             via: via.map(tilde),
             found: true,
         });
+    }
+
+    fn record_pack(
+        &mut self,
+        kind: &'static str,
+        path: String,
+        detail: String,
+        pack: &str,
+        via: Option<&Path>,
+    ) {
+        self.record(kind, path, detail, via);
+        if let Some(s) = self.loaded.sources.last_mut() {
+            s.pack = Some(pack.into());
+        }
     }
 
     fn missing(&mut self, kind: &'static str, path: String, detail: &str, via: Option<&Path>) {
@@ -1142,10 +1209,11 @@ impl Loader {
             // A pack has an `id`; a TOML file without one is a config file of imports.
             "toml" if text.lines().any(|l| l.trim_start().starts_with("id")) => {
                 let pack = compile(&text, &shown)?;
-                self.record(
+                self.record_pack(
                     "pack",
                     shown,
                     format!("{} ({} rules)", pack.id, pack.rules.len()),
+                    &pack.id,
                     via,
                 );
                 self.loaded.packs.push(pack);
@@ -1163,21 +1231,14 @@ impl Loader {
                     self.file(&resolve(raw, &canon), Some(&canon))?;
                 }
                 self.stack.pop();
-                self.apply(
-                    &cfg.env,
-                    &cfg.env_files,
-                    &cfg.allow,
-                    &cfg.packs,
-                    &cfg.labels,
-                    &canon,
-                )?;
+                self.apply(cfg.settings(), &canon)?;
                 if cfg.me {
                     self.me(&canon);
                 }
                 for o in &cfg.overrides {
                     if let Some(why) = self.matches(o) {
                         self.record("override", why, "applies".into(), Some(&canon));
-                        self.apply(&o.env, &o.env_files, &o.allow, &o.packs, &o.labels, &canon)?;
+                        self.apply(o.settings(), &canon)?;
                     }
                 }
             }
@@ -1576,6 +1637,117 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
             host: None,
         };
         assert!(load(&opts).unwrap().sources.is_empty());
+    }
+
+    /// Packs compiled from text, as loaded, each with its source record.
+    fn packs(texts: &[&str]) -> Loaded {
+        let mut loaded = Loaded::default();
+        for t in texts {
+            let pack = compile(t, "test").unwrap();
+            loaded.sources.push(Source {
+                kind: "pack",
+                path: "p.toml".into(),
+                detail: "loaded".into(),
+                pack: Some(pack.id.clone()),
+                via: None,
+                found: true,
+            });
+            loaded.packs.push(pack);
+        }
+        loaded
+    }
+
+    const PACK_A: &str = "schema_version = 1\nid = \"a\"\n[[rules]]\nid = \"one\"\nlabel = \"KEY\"\nregex = '(x)'\n[[rules]]\nid = \"two\"\nregex = '(y)'\n";
+    const PACK_B: &str =
+        "schema_version = 1\nid = \"b\"\ndefault = false\n[[rules]]\nid = \"one\"\nregex = '(z)'\n";
+
+    /// Each config text as one layer, in order.
+    fn layered(configs: &[&str]) -> Result<Layered, String> {
+        let mut layers = Layered::default();
+        for c in configs {
+            let cfg: ConfigFile = toml::from_str(c).unwrap();
+            layers.add(&cfg.packs, &cfg.labels)?;
+        }
+        Ok(layers)
+    }
+
+    fn on(loaded: &Loaded) -> Vec<String> {
+        loaded
+            .packs
+            .iter()
+            .flat_map(|p| p.rules.iter().map(move |r| format!("{}:{}", p.id, r.id)))
+            .collect()
+    }
+
+    #[test]
+    fn packs_settings_switch_packs_and_rules_with_no_files() {
+        let mut loaded = packs(&[PACK_A, PACK_B]);
+        let layers = layered(&[
+            "[packs]\ndisable = [\"a:two\"]\n",
+            "[packs]\nenable = [\"b\"]\n",
+        ])
+        .unwrap();
+        layers.apply(&mut loaded).unwrap();
+        assert_eq!(on(&loaded), ["a:one", "b:one"]);
+
+        let mut loaded = packs(&[PACK_A, PACK_B]);
+        layered(&["[packs]\ndisable = [\"a\"]\n"])
+            .unwrap()
+            .apply(&mut loaded)
+            .unwrap();
+        assert!(on(&loaded).is_empty());
+        let off: Vec<_> = loaded.off.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(off, ["a", "b"]);
+        // The source record says off by its pack id, whatever its text says.
+        let details: Vec<_> = loaded.sources.iter().map(|s| s.detail.as_str()).collect();
+        assert_eq!(details, ["loaded, off", "loaded, off"]);
+
+        let err = layered(&["[packs]\nenable = [\"c\"]\ndisable = [\"a:three\"]\n"])
+            .unwrap()
+            .apply(&mut packs(&[PACK_A]))
+            .unwrap_err();
+        assert!(
+            err.contains("a:three, c") && err.contains("packs: a"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn labels_settings_rename_with_a_later_layer_winning_and_no_files() {
+        let mut loaded = packs(&[PACK_A]);
+        let layers = layered(&[
+            "[labels]\nKEY = \"TOKEN\"\nSECRET = \"OLD\"\n",
+            "[labels]\nSECRET = \"CREDENTIAL\"\n[labels.a]\none = \"API-KEY\"\n",
+        ])
+        .unwrap();
+        layers.apply(&mut loaded).unwrap();
+        let labels: Vec<_> = loaded.packs[0]
+            .rules
+            .iter()
+            .map(|r| r.label.as_str())
+            .collect();
+        assert_eq!(labels, ["API-KEY", "CREDENTIAL"]);
+        assert_eq!(loaded.kinds.get("a:one").map(String::as_str), Some("KEY"));
+
+        let mut loaded = packs(&[PACK_A]);
+        layered(&["[labels]\nstyle = \"rule\"\n"])
+            .unwrap()
+            .apply(&mut loaded)
+            .unwrap();
+        let labels: Vec<_> = loaded.packs[0]
+            .rules
+            .iter()
+            .map(|r| r.label.as_str())
+            .collect();
+        assert_eq!(labels, ["ONE", "TWO"]);
+
+        let err = layered(&["[labels]\nNOPE = \"X\"\n"])
+            .unwrap()
+            .apply(&mut packs(&[PACK_A]))
+            .unwrap_err();
+        assert!(err.contains("NOPE"), "{err}");
+        let err = layered(&["[labels]\n\"a:one\" = \"X\"\n"]).err().unwrap();
+        assert!(err.contains("[labels.a] one"), "{err}");
     }
 
     #[test]
