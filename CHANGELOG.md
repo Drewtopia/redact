@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.3.0](https://github.com/Drewtopia/redact/compare/v0.2.1...v0.3.0) (2026-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* one module owns the placeholder shape, and a pack label must fit it ([#98](https://github.com/Drewtopia/redact/issues/98))
+* **claude:** send real values only to listed hosts, and close override and slice leaks ([#84](https://github.com/Drewtopia/redact/issues/84))
+* placeholder labels change, e.g. [TOKEN-…] and [API-KEY-…] are now [SECRET-…], [TENANT-ID-…] is [ID-…].
+
+### Features
+
+* an opt-in [labels] table for what placeholders say ([#69](https://github.com/Drewtopia/redact/issues/69)) ([9e83657](https://github.com/Drewtopia/redact/commit/9e836571e191a05e2797f7e23253d63c853e52d7))
+* **claude:** send real values only to listed hosts, and close override and slice leaks ([#84](https://github.com/Drewtopia/redact/issues/84)) ([49f7582](https://github.com/Drewtopia/redact/commit/49f75821d3071bd196e57a641c05a4cf121c2cc7))
+* keep names out of placeholder labels, and merge pack labels into kinds ([#67](https://github.com/Drewtopia/redact/issues/67)) ([912aae6](https://github.com/Drewtopia/redact/commit/912aae6ce178efae562453ac73efbd32d23ea4ca))
+
+
+### Bug Fixes
+
+* **claude:** send a failed tool's masked error as a refusal ([#86](https://github.com/Drewtopia/redact/issues/86)) ([d7abefd](https://github.com/Drewtopia/redact/commit/d7abefdc438ae9c8f5eb5a7812661864c8219a26))
+
+
+### Code Refactoring
+
+* one module owns the placeholder shape, and a pack label must fit it ([#98](https://github.com/Drewtopia/redact/issues/98)) ([f590abc](https://github.com/Drewtopia/redact/commit/f590abcac61bc601c2c7a6c4f5a42762a7800c87))
+
 ## [0.2.1](https://github.com/Drewtopia/redact/compare/v0.2.0...v0.2.1) (2026-11-15)
 
 
