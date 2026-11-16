@@ -629,6 +629,7 @@ mod docs {
             kind: "config",
             path: "~/x/config.toml".into(),
             detail: "missing".into(),
+            pack: None,
             via: None,
             found: false,
         });
