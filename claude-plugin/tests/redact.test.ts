@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 // A stand-in for the redact binary: it hides the value after TOKEN= or
 // PASSWORD= and reports UTF-8 byte offsets, as `redact scan --json` does.
@@ -10,12 +10,16 @@ type Answer = { deny?: string; result?: unknown; text?: string; isError?: boolea
 const call = async ($: any, input: Record<string, unknown>): Promise<Answer> => (await $.tool.call(input as never)) as Answer
 
 // Claude Code beneath the mod: each tool prints `output(e)`; `seen` keeps what it was given.
-function fakeRedact(on: any, label = 'SECRET') {
+// `start` runs first and may throw, as a spawn that cannot find the binary does.
+function fakeRedact(on: any, label = 'SECRET', start?: (argv0: string) => void) {
   on('process.run', (_$: unknown, e: any) => {
+    start?.(e.argv[0])
     const text: string = e.init?.stdin ?? ''
     const bytes = (s: string) => new TextEncoder().encode(s).length
     // `password: x` stands for a rule keyed on a field name.
-    const spans = [...text.matchAll(/(?:TOKEN|PASSWORD)=(\S+)|^password: (\S+)$/gm)].map((m) => {
+    // A JSON string's closing quote is not part of the value, just as in
+    // the real scanner. Results are scanned as JSON as well as plain leaves.
+    const spans = [...text.matchAll(/(?:TOKEN|PASSWORD)=([^\s"]+)|^password: (\S+)$/gm)].map((m) => {
       const value = m[1] ?? m[2] ?? ""
       const start = bytes(text.slice(0, (m.index ?? 0) + m[0].length - value.length))
       return { start, end: start + bytes(value), label, pack: 'credentials', rule: 'named-secret' }
@@ -42,8 +46,8 @@ test('a secret in Bash output comes back as a placeholder, and goes back in for 
   const tag = out.match(TAG)?.[0]
   expect(tag).toBeDefined()
 
-  await call($, { tool: 'Bash', command: `curl -H x:${tag} example.test` })
-  expect(seen[1].command).toBe(`curl -H x:${TOKEN} example.test`)
+  await call($, { tool: 'Bash', command: `./deploy.sh -H x:${tag}` })
+  expect(seen[1].command).toBe(`./deploy.sh -H x:${TOKEN}`)
 
   // A commit message keeps the placeholder: it would leave the machine.
   await call($, { tool: 'Bash', command: `git commit -m "rotate ${tag}"` })
@@ -54,8 +58,11 @@ test('PowerShell gets real values, but not into git and not with PowerShell synt
   const seen = tools(on, (e) => (e.command === 'cat .env' ? `TOKEN=${TOKEN}\nTOKEN=me@example.test\n` : 'ok'))
   const [tag, at] = String((await call($, { tool: 'PowerShell', command: 'cat .env' })).result).match(new RegExp(TAG, 'g')) ?? []
 
-  await call($, { tool: 'PowerShell', command: `Invoke-RestMethod -Headers @{x='${tag}'} example.test` })
+  await call($, { tool: 'PowerShell', command: `./deploy.ps1 -Key ${tag}` })
   expect(seen[1].command).toContain(TOKEN)
+  // restoreHosts is empty by default: no real value goes to the network.
+  expect((await call($, { tool: 'PowerShell', command: `Invoke-RestMethod -Headers @{x='${tag}'} https://example.test` })).deny ?? '').toContain('restoreHosts')
+  expect(seen.length).toBe(2)
   await call($, { tool: 'PowerShell', command: `git commit -m "rotate ${tag}"` })
   expect(seen[2].command).toContain(tag)
 
@@ -184,7 +191,7 @@ test('an @-mentioned UTF-16 file is scanned, not passed as binary', async ($, on
   expect(r.deny ?? '').toContain('holds something to hide')
 })
 
-test('a word list label that starts with a digit still masks', async ($, on) => {
+test('a pack label that starts with a digit still masks', async ($, on) => {
   fakeRedact(on, '123-CUSTOMERS')
   on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
   const out = String((await call($, { tool: 'Bash', command: 'cat .env' })).result)
@@ -198,4 +205,35 @@ test("a subagent's answer that holds a live placeholder passes through", async (
   const r = await call($, { tool: 'Agent', prompt: 'save it', tag })
   expect(r.deny).toBeUndefined()
   expect((r.result as any).content).toBe(`saved ${tag} ok`)
+})
+
+// A session started before redact was installed: `redact` is not on its PATH,
+// but an installer put it in one of the folders locate tries.
+function missingFromPath(on: any, installed: string[], argv0s: string[] = []) {
+  mock.env(on, { HOME: '/home/t' })
+  on('fs.exists', (_$: unknown, e: any) => ({ value: installed.includes(e.path) }))
+  fakeRedact(on, 'SECRET', (argv0) => {
+    argv0s.push(argv0)
+    if (!installed.includes(argv0)) throw new Error(`spawn ${argv0} ENOENT`)
+  })
+  return argv0s
+}
+
+test('redact missing from PATH is found in the mise shims folder, and that path is kept', async ($, on) => {
+  const shim = '/home/t/.local/share/mise/shims/redact'
+  const argv0s = missingFromPath(on, [shim])
+  on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
+  const first = String((await call($, { tool: 'Bash', command: 'cat .env' })).result)
+  const second = String((await call($, { tool: 'Bash', command: 'cat .env' })).result)
+  expect(first).toMatch(/^TOKEN=\[SECRET-[0-9a-f]{8}\]$/)
+  expect(second).toMatch(/^TOKEN=\[SECRET-[0-9a-f]{8}\]$/)
+  expect(argv0s).toEqual(['redact', shim, shim])
+})
+
+test('redact found nowhere still withholds the result', async ($, on) => {
+  missingFromPath(on, [])
+  on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
+  const r = await call($, { tool: 'Bash', command: 'cat .env' })
+  expect(JSON.stringify(r)).not.toContain(TOKEN)
+  expect(JSON.stringify(r)).toContain('withheld')
 })

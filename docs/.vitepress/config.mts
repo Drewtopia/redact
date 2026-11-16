@@ -20,9 +20,10 @@ export default defineConfig({
         text: 'Guide',
         items: [
           { text: 'Getting started', link: '/guide/getting-started' },
+          { text: 'See it work', link: '/guide/see-it-work' },
           { text: 'Hide environment variables', link: '/guide/env' },
           { text: 'Hide .env files', link: '/guide/dotenv' },
-          { text: 'Hiding yourself', link: '/guide/me' },
+          { text: 'Hide yourself', link: '/guide/me' },
           { text: 'Use with any tool', link: '/guide/any-tool' },
         ],
       },

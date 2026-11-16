@@ -66,6 +66,7 @@ struct RuleFile {
     secret_group: usize,
     label: Option<String>,
     within: Option<String>,
+    within_key: Option<String>,
     except: Option<String>,
     except_match: Option<String>,
     /// A checksum the value must pass: `"luhn"` (card numbers) or `"iban"`.
@@ -79,9 +80,28 @@ struct RuleFile {
     /// Clue words: a found value is hidden only when one is near it.
     #[serde(default)]
     context: Vec<String>,
+    /// Sample inputs and what the rule hides in each, run by `cargo test`.
+    #[serde(default)]
+    tests: Vec<RuleTest>,
+    /// `false`: no test's input is the bare value, so none is tried in each layout.
+    #[serde(default = "on")]
+    matrix: bool,
+}
+
+/// `[[rules.tests]]`: an input, and every value the rule alone hides in it.
+/// `expect = []` says the rule hides nothing there.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct RuleTest {
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub input: String,
+    /// Required: `[]` says the rule hides nothing in `input`. An `Option`, so a
+    /// missing one is an error that names the rule, not just a line number.
+    pub expect: Option<Vec<String>>,
 }
 
 // The compiled forms the scanner uses.
+#[derive(Clone)]
 pub struct Rule {
     pub id: String,
     pub description: String,
@@ -89,6 +109,9 @@ pub struct Rule {
     pub group: usize,
     pub label: String,
     pub within: Option<Regex>,
+    /// Run only inside a JSON object that is the value of a key matching this,
+    /// such as a Kubernetes Secret's `"data": {…}`.
+    pub within_key: Option<Regex>,
     /// A found value that matches this is left alone: a reference such as
     /// `$AZURE_TOKEN`, not a secret. Rust's regex has no lookahead, so this is
     /// how a rule says "but not these".
@@ -105,8 +128,15 @@ pub struct Rule {
     /// Clue words, lower-cased: a found value is hidden only when one of them
     /// is a whole word on its line or the line before (Presidio's context words).
     pub context: Vec<String>,
+    /// The rule's own tests, run by `cargo test`; a scan never reads them.
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub tests: Vec<RuleTest>,
+    /// Whether a test's bare value is tried in each layout (`matrix = false` opts out).
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub matrix: bool,
 }
 
+#[derive(Clone)]
 pub struct Pack {
     pub id: String,
     pub description: String,
@@ -122,7 +152,10 @@ pub struct Pack {
 }
 
 pub struct WordList {
+    /// The placeholder's label: fixed, as the name below may say what is hidden.
     pub label: String,
+    /// The variable, key or file it came from, for `--explain` and `--json`.
+    pub name: String,
     pub source: String,
     pub words: Vec<String>,
 }
@@ -360,7 +393,7 @@ fn unescape(s: &str) -> String {
 /// The values of a dotenv file: `KEY=value`, `export KEY=value`, single or double
 /// quotes (a double-quoted value may span lines), `#` comments. Skips empty
 /// values, settings (see `is_setting`), `encrypted:` values (ciphertext hides
-/// nothing) and `DOTENV_PUBLIC_KEY*`, as dotenvx does. The key is the label.
+/// nothing) and `DOTENV_PUBLIC_KEY*`, as dotenvx does. Each hides as [ENV-VALUE-…].
 fn dotenv_words(text: &str, source: &str) -> Vec<WordList> {
     let mut out = Vec::new();
     let mut lines = text.lines();
@@ -439,7 +472,8 @@ fn dotenv_words(text: &str, source: &str) -> Vec<WordList> {
             .collect();
         if !words.is_empty() {
             out.push(WordList {
-                label: label_of(key),
+                label: "ENV-VALUE".into(),
+                name: label_of(key),
                 source: source.to_string(),
                 words,
             });
@@ -449,7 +483,7 @@ fn dotenv_words(text: &str, source: &str) -> Vec<WordList> {
 }
 
 /// The variables an `env` list names: an exact name, or a prefix ending in `*`.
-/// Each value is a word, or a list with one per line; the variable name is the label.
+/// Each value is a word, or a list with one per line, hidden as [ENV-VALUE-…].
 fn env_words(
     patterns: &[String],
     vars: impl Iterator<Item = (String, String)>,
@@ -457,7 +491,8 @@ fn env_words(
     let mut lists: Vec<WordList> = vars
         .filter(|(name, _)| patterns.iter().any(|p| glob(p, name)))
         .map(|(name, value)| WordList {
-            label: label_of(&name),
+            label: "ENV-VALUE".into(),
+            name: label_of(&name),
             source: format!("${name}"),
             words: value
                 .lines()
@@ -468,7 +503,7 @@ fn env_words(
                 .collect(),
         })
         .collect();
-    lists.sort_by(|a, b| a.label.cmp(&b.label));
+    lists.sort_by(|a, b| a.name.cmp(&b.name));
     // An exact name that is not set: shown in `config ls`, so a missing hook is visible.
     let missing = patterns
         .iter()
@@ -730,6 +765,7 @@ impl Loader {
                 ));
                 self.loaded.words.push(WordList {
                     label: label.into(),
+                    name: label.into(),
                     source: "me".into(),
                     words,
                 });
@@ -1000,12 +1036,13 @@ impl Loader {
     }
 }
 
-/// A .txt list: one word or phrase per line, `#` starts a note. The file name is
-/// the label, so `customers.txt` hides each line as `[CUSTOMERS-…]`.
+/// A .txt list: one word or phrase per line, `#` starts a note. Each line hides
+/// as [WORDLIST-…]: the file name (`acme-customers.txt`) could say what is hidden.
 fn word_list(path: &Path, text: &str) -> WordList {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("word");
     WordList {
-        label: label_of(stem),
+        label: "WORDLIST".into(),
+        name: label_of(stem),
         source: path.display().to_string(),
         words: text
             .lines()
@@ -1062,6 +1099,12 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             }
             None => None,
         };
+        let within_key = match &r.within_key {
+            Some(w) => {
+                Some(Regex::new(w).map_err(|e| format!("{source}: rule {} withinKey: {e}", r.id))?)
+            }
+            None => None,
+        };
         let except = match &r.except {
             Some(x) => {
                 Some(Regex::new(x).map_err(|e| format!("{source}: rule {} except: {e}", r.id))?)
@@ -1100,13 +1143,21 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
                 r.id
             ));
         }
+        if r.tests.iter().any(|t| t.expect.is_none()) {
+            return Err(format!(
+                "{source}: rule {} has a test with no expect; use expect = [] when it hides nothing",
+                r.id
+            ));
+        }
         rules.push(Rule {
-            label: label_of(r.label.as_deref().unwrap_or(&r.id)),
+            // Not the id: `acme-api-key` would say whose key it is.
+            label: label_of(r.label.as_deref().unwrap_or("SECRET")),
             id: r.id,
             description: r.description,
             re,
             group: r.secret_group,
             within,
+            within_key,
             except,
             except_match,
             check,
@@ -1114,6 +1165,8 @@ fn compile(text: &str, source: &str) -> Result<Pack, String> {
             remember: r.remember,
             keywords: lower(r.keywords),
             context: lower(r.context),
+            tests: r.tests,
+            matrix: r.matrix,
         });
     }
     Ok(Pack {
@@ -1146,7 +1199,7 @@ mod tests {
             "A=`alpha-tick-1`\nB='bravo\nline-two'\nC=charlie-val-3\t# note\nD=delta-val-4\n";
         let got: Vec<(String, Vec<String>)> = dotenv_words(text, ".env")
             .into_iter()
-            .map(|w| (w.label, w.words))
+            .map(|w| (w.name, w.words))
             .collect();
         assert_eq!(
             got,
@@ -1176,7 +1229,7 @@ mod tests {
         let text = "ALPHA=\"alpha-value-1\" # a note\nBETA=bravo-value-2\nGAMMA='gamma-value-3' # another\nDELTA=\"multi\nline-value\" # end\nECHO=\"has \\\"quote\\\" inside\"\n";
         let got: Vec<(String, Vec<String>)> = dotenv_words(text, ".env")
             .into_iter()
-            .map(|w| (w.label, w.words))
+            .map(|w| (w.name, w.words))
             .collect();
         assert_eq!(
             got,
@@ -1213,7 +1266,7 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
             .iter()
             .map(|w| {
                 (
-                    w.label.as_str(),
+                    w.name.as_str(),
                     w.words.iter().map(String::as_str).collect(),
                 )
             })
@@ -1228,6 +1281,8 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
                 ("INLINE", vec!["bluefin-api"]),
             ]
         );
+        // The key names the value, so it stays out of the placeholder.
+        assert!(lists.iter().all(|w| w.label == "ENV-VALUE"));
     }
 
     #[test]
@@ -1275,7 +1330,7 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
             .iter()
             .map(|w| {
                 (
-                    w.label.as_str(),
+                    w.name.as_str(),
                     w.words.iter().map(String::as_str).collect(),
                 )
             })
@@ -1287,6 +1342,7 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
                 ("WORK-CUSTOMERS", vec!["Northwind Traders", "Contoso"])
             ]
         );
+        assert!(lists.iter().all(|w| w.label == "ENV-VALUE"));
         assert_eq!(
             missing,
             ["EMPLOYER"],

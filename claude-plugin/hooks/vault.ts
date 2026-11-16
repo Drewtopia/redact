@@ -62,11 +62,12 @@ export function restore(text: string, onValue?: (v: string) => void): string {
 export const isLiteral = (tag: string): boolean => /^\[LITERAL-[0-9a-f]{8}\]$/.test(tag)
 
 // The real value behind each live placeholder in `text`, with its placeholder.
-export function valuesIn(text: string): Map<string, string> {
+// With `literals`, also each LITERAL tag with the placeholder text it escapes.
+export function valuesIn(text: string, { literals = false } = {}): Map<string, string> {
   const out = new Map<string, string>()
   for (const t of text.match(TAG) ?? []) {
     const v = byTag.get(t)
-    if (v !== undefined && !isLiteral(t)) out.set(v, t)
+    if (v !== undefined && (literals || !isLiteral(t))) out.set(v, t)
   }
   return out
 }
@@ -91,9 +92,55 @@ function hideKnown(text: string, all: string[], tags: Set<string>): string {
   return out
 }
 
-// A word list's label is its file name, so it can be anything (`123-customers`,
-// `v1.2`): fold it into the placeholder's shape. One named literal.txt must not
-// mint the hook's own LITERAL tags.
+// A command handed a value can print part of it (`cut -c1-12`, `${v:0:8}`),
+// which no rule and no whole-value match finds. So any run of SLICE_MIN or
+// more characters taken from a handed value is hidden too. An encoded form
+// (base64, hex) still gets through.
+const SLICE_MIN = 6
+// Every value handed to a tool this session: a slice can come back later
+// (`printf %s [SECRET-…] > f`, then `cut -c1-12 f`).
+const handedEver = new Set<string>()
+const KINDS = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/]
+const WORD_MAX = 10
+
+function hideSlices(text: string, v: string, tags: Set<string>): string {
+  if (v.length < SLICE_MIN) return text
+  const windows = new Map<string, number>()
+  for (let i = 0; i + SLICE_MIN <= v.length; i++) {
+    const w = v.slice(i, i + SLICE_MIN)
+    if (!windows.has(w)) windows.set(w, i)
+  }
+  // Cheap check first: most output holds no part of the value.
+  if (![...windows.keys()].some((w) => text.includes(w))) return text
+  const label = labelOf(byValue.get(v)) ?? 'SECRET'
+  let out = ''
+  let p = 0
+  while (p < text.length) {
+    const i = p + SLICE_MIN <= text.length ? windows.get(text.slice(p, p + SLICE_MIN)) : undefined
+    if (i === undefined) {
+      out += text[p++]
+      continue
+    }
+    let k = SLICE_MIN
+    while (p + k < text.length && i + k < v.length && text[p + k] === v[i + k]) k++
+    const run = text.slice(p, p + k)
+    // One kind of character (`passwo`, `123456`) reads as a word or a
+    // number, not a piece of a token: a human password must not hide every
+    // later `password`.
+    // A run of WORD_MAX or more is hidden whatever it holds: a passphrase
+    // such as `correcthorsebattery` is one kind all through.
+    if (run.length < WORD_MAX && KINDS.filter((re) => re.test(run)).length < 2) {
+      out += text[p++]
+      continue
+    }
+    out += mint(label, run, tags)
+    p += k
+  }
+  return out
+}
+
+// A pack's label can be anything (`123-customers`, `v1.2`): fold it into the
+// placeholder's shape. A label of LITERAL must not mint the hook's own tags.
 function tagLabel(label: string): string {
   const t = label.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^[-0-9]+|-+$/g, '') || 'HIDDEN'
   return t === LITERAL ? `${LITERAL}-LIST` : t
@@ -140,6 +187,38 @@ export type ScanOptions = {
   // Called once with the reason when the binary cannot run, so the person
   // learns why everything is being withheld.
   onBroken?: (why: string) => void
+  // Called with the full path when the bare name failed and locate found it.
+  onLocated?: (path: string) => void
+}
+
+// Where installers put redact. A session started by an app or service that
+// was running before redact was installed has a PATH without it, so when the
+// bare name fails to start, these folders are tried before withholding.
+// A configured path (one holding a slash) is used as given.
+export async function locate($: any, name: string): Promise<string | undefined> {
+  if (/[\\/]/.test(name)) return undefined
+  const home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE'))
+  const miseData = await $.env.get('MISE_DATA_DIR')
+  const xdgData = await $.env.get('XDG_DATA_HOME')
+  const localAppData = await $.env.get('LOCALAPPDATA')
+  const cargoHome = await $.env.get('CARGO_HOME')
+  const dirs = [
+    miseData && `${miseData}/shims`,
+    xdgData && `${xdgData}/mise/shims`,
+    home && `${home}/.local/share/mise/shims`,
+    localAppData && `${localAppData}/mise/shims`,
+    cargoHome && `${cargoHome}/bin`,
+    home && `${home}/.cargo/bin`,
+    home && `${home}/.local/bin`,
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+  ].filter((d): d is string => Boolean(d))
+  for (const dir of dirs) {
+    for (const file of [name, `${name}.exe`]) {
+      if (await $.fs.exists(`${dir}/${file}`)) return `${dir}/${file}`
+    }
+  }
+  return undefined
 }
 
 // Masks each text. Throws when the binary fails, so the hook withholds.
@@ -148,15 +227,23 @@ export async function scrub($: any, texts: string[], o: ScanOptions): Promise<{ 
   if (texts.length === 0) return { masked: [], tags }
   const pieces = o.escape ? texts.map((t) => escapeLiteralTags(t, tags)) : texts
   const joined = pieces.join(SEP)
-  const argv = [o.binary, 'scan', '--json']
   // An env var, not --command: a build too old to know it still runs.
+  const exec = (binary: string) =>
+    $.process.run([binary, 'scan', '--json'], { stdin: joined, timeoutMs: o.timeoutMs, ...(o.command ? { env: { REDACT_COMMAND: o.command } } : {}) })
   let r: { exitCode: number; stdout: string; stderr: string; isStdoutTruncated: boolean }
   try {
-    r = await $.process.run(argv, { stdin: joined, timeoutMs: o.timeoutMs, ...(o.command ? { env: { REDACT_COMMAND: o.command } } : {}) })
+    r = await exec(o.binary)
   } catch (err) {
-    const why = `could not run \`${o.binary}\` (${err instanceof Error ? err.message : String(err)})`
-    o.onBroken?.(why)
-    throw new Error(why)
+    const found = await locate($, o.binary).catch(() => undefined)
+    try {
+      if (!found) throw err
+      r = await exec(found)
+      o.onLocated?.(found)
+    } catch {
+      const why = `could not run \`${o.binary}\` (${err instanceof Error ? err.message : String(err)})`
+      o.onBroken?.(why)
+      throw new Error(why)
+    }
   }
   if (r.exitCode !== 0 || r.isStdoutTruncated) {
     const why = `\`${o.binary} scan\` exit ${r.exitCode}: ${r.stderr.trim().split('\n')[0] ?? ''}`
@@ -212,6 +299,9 @@ export async function scrub($: any, texts: string[], o: ScanOptions): Promise<{ 
     return out
   })
   // Built once all pieces minted, so a value found in one is hidden in the rest.
-  const all = knownValues(o.handed ?? new Set())
-  return { masked: minted.map((t) => hideKnown(t, all, tags)), tags }
+  const handed = o.handed ?? new Set<string>()
+  const all = knownValues(handed)
+  for (const v of handed) if (v.length >= SLICE_MIN) handedEver.add(v)
+  const hide = (t: string) => [...handedEver].reduce((s, v) => hideSlices(s, v, tags), hideKnown(t, all, tags))
+  return { masked: minted.map(hide), tags }
 }

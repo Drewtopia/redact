@@ -3,6 +3,8 @@
 //! Exit codes: 0 done, 2 bad usage, 3 a pack would not load or the scan failed.
 
 mod pack;
+#[cfg(test)]
+mod rule_tests;
 mod scan;
 
 use clap::{CommandFactory, Parser, Subcommand};
@@ -340,7 +342,7 @@ fn print_packs(w: &mut impl Write, loaded: &pack::Loaded, json: bool) -> std::io
         let words: Vec<_> = loaded
             .words
             .iter()
-            .map(|l| serde_json::json!({"label": l.label, "entries": l.words.len(), "source": l.source}))
+            .map(|l| serde_json::json!({"label": l.label, "name": l.name, "entries": l.words.len(), "source": l.source}))
             .collect();
         let v = serde_json::json!({"packs": packs, "words": words});
         return writeln!(

@@ -9,8 +9,8 @@ Email addresses anywhere, git commit authors and git config user lines, and the 
 | `email` | `[EMAIL-…]` | An email address, anywhere, except at the documentation domains example.com, example.org and example.net |  |
 | `git-person` | `[PERSON-…]` | The name in Author:, Commit:, Tagger:, Signed-off-by: and Co-authored-by: lines | when it reads as a name |
 | `git-config-user` | `[PERSON-…]` | user.name in git config -l | when it reads as a name |
-| `github-login` | `[GITHUB-USER-…]` | The login of a GitHub user record, then the same login everywhere else | yes |
-| `github-profile` | `[USER-DETAIL-…]` | The name, company, blog, location, bio and handle in a GitHub user record | when it reads as a name |
+| `github-login` | `[USER-…]` | The login of a GitHub user record, then the same login everywhere else | yes |
+| `github-profile` | `[PROFILE-…]` | The name, company, blog, location, bio and handle in a GitHub user record | when it reads as a name |
 
 ## Allowed values
 

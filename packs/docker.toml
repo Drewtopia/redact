@@ -11,6 +11,14 @@ secretGroup = 1
 label = "SECRET"
 keywords = ["\"auth\"", "identitytoken", "registrytoken"]
 
+matrix = false
+[[rules.tests]]
+input = "{\"auths\": {\"registry.example.test\": {\"auth\": \"ZmFrZXVzZXI6ZmFrZXBhc3M=\"}}}"
+expect = ["ZmFrZXVzZXI6ZmFrZXBhc3M="]
+[[rules.tests]]
+input = "{\"auth\": \"short\"}"
+expect = []
+
 [[rules]]
 id = "env-entry"
 description = "A \"NAME=value\" string whose name says secret (docker inspect Env, container specs)"
@@ -19,3 +27,8 @@ secretGroup = 1
 label = "SECRET"
 remember = "distinctive"
 keywords = ["pass", "secret", "token", "key", "pwd", "credential"]
+
+matrix = false
+[[rules.tests]]
+input = "\"Env\": [\"DB_PASSWORD=Zq8vFakePw42\", \"PATH=/usr/bin\"]"
+expect = ["Zq8vFakePw42"]

@@ -20,11 +20,12 @@ Each hidden part becomes a labelled placeholder. The same value gets the same pl
 
 ## Install
 
-```sh
-mise use -g github:Drewtopia/redact
-```
+Download a binary for macOS, Linux or Windows from [Releases](https://github.com/Drewtopia/redact/releases), or install it with a tool:
 
-Or download a binary for macOS, Linux or Windows from [Releases](https://github.com/Drewtopia/redact/releases), or build it: `cargo install --git https://github.com/Drewtopia/redact`.
+```sh
+cargo install --git https://github.com/Drewtopia/redact   # cargo
+mise use -g github:Drewtopia/redact                        # mise
+```
 
 ## Use
 
@@ -42,15 +43,15 @@ Or download a binary for macOS, Linux or Windows from [Releases](https://github.
 
 Exit codes: 0 done, 2 bad usage, 3 a pack would not load or the scan failed. A file that will not load stops redact rather than being skipped: a redactor that quietly skips a rule hides less than you think.
 
-## With AI agents
+## With other tools
 
-**Claude Code:** the `redact` mod runs every prompt, tool result, CLAUDE.md and subagent task through redact before Claude reads it, and puts the real value back when Claude uses a placeholder in a local command. With the binary installed, type this in Claude Code:
+redact reads stdin and writes stdout, so anything that can run a command can use it. [Integrations](https://drewtopia.github.io/redact/integrations/) has examples for Claude Code, Codex CLI, chat windows, git hooks and CI, fnox and mise. None of them are required.
+
+For Claude Code, this repo ships a mod. It runs prompts, tool results, CLAUDE.md and subagent tasks through redact before Claude reads them, and puts the real value back when Claude uses a placeholder in a local command. With the binary installed, type this in Claude Code:
 
 ```
 /plugin install redact --marketplace Drewtopia/redact
 ```
-
-**Anything else:** redact works with any tool that prints text. [Integrations](https://drewtopia.github.io/redact/integrations/) has examples for Claude Code, Codex CLI, chat windows, git hooks and CI, fnox and mise.
 
 ## What it hides
 
@@ -116,7 +117,7 @@ env_files = ["~/work/.env"]
 
 `env_files` hides each value in a dotenv file, including the private keys dotenvx keeps in `.env.keys`. It skips empty values, `encrypted:` values, `DOTENV_PUBLIC_KEY*`, and settings that would wreck ordinary text if hidden everywhere: numbers, `true`/`false`, `localhost`, `development` and the like. A file that is not there is listed by `redact config ls`; `--env-file <path>` makes a missing file an error.
 
-A word list is one word or phrase per line; `#` starts a note. The file name is the label, so `customers.txt` hides each line as `[CUSTOMERS-…]`. Every `.toml` and `.txt` in `~/.config/redact/packs/` loads too.
+A word list is one word or phrase per line; `#` starts a note. Each line hides as `[WORDLIST-…]`: not the file name, which could say what the list hides. `redact scan --explain` still names the file. Every `.toml` and `.txt` in `~/.config/redact/packs/` loads too.
 
 ## Packs
 

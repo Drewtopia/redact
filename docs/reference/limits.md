@@ -20,12 +20,12 @@ redact will miss things. Check its output before you share anything that matters
 - **YAML blocks.** A `password: |` block hides every indented line after it. That can take in the next key when that key is indented too.
 - **Numbers, with `pii` on.** Any four dotted numbers read as an IP address, so a version such as `1.2.3.4` is hidden. A phone-shaped number, a `123-45-6789`, and a `QQ 12 34 56 C` are hidden only beside a clue word, on the same line or the line before. Clue words include `phone`, `tel`, `mobile`, `ssn`, and `nino`; the full lists are the `context` fields in `packs/pii.toml`. So an order number on the line after `phone: …` is hidden too, and so is any phone-shaped number within 100 bytes of `"phone"` in one-line JSON.
 - **camelCase names, with `random-token`.** The rule can hide a camelCase name made mostly of one- and two-letter parts and digits, where words of 3 or more letters cover under 70% of it.
+- **Kubernetes Secrets in YAML.** `kubectl get secret -o yaml` hides every indented value that looks like base64, so a `name:` or label under `metadata:` made of 8 or more letters and digits, such as `sample12`, is hidden as well as `data:`. The JSON form (`-o json`) hides `data` alone.
 - **Command lines.** `PGPASSWORD=secret psql -h db -U admin` on one line hides everything after the `=`, command included, because a dump line and a command line look the same.
 
-## What the Claude Code mod misses
+## In integrations
 
-- **PDFs named with `@`.** The mod cannot read a PDF's text, so an `@`-mentioned PDF goes to Claude unscanned. Images also go unscanned, because they reach Claude as pictures.
-- **An `allow` added mid-session.** The mod keeps hiding a value it hid earlier in the session, wherever it turns up. Start a new session for the `allow` to take effect.
+Each integration has limits of its own. See [Claude Code](../integrations/claude-code#what-it-misses) and [Codex CLI](../integrations/codex).
 
 ## What it is not
 

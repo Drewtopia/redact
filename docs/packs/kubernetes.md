@@ -8,4 +8,4 @@ The values of a Kubernetes Secret's data (YAML and JSON), and client keys in a k
 | :- | :- | :- | :- |
 | `secret-data-yaml` | `[SECRET-…]` | A base64 value on an indented line of a Secret (kubectl get secret -o yaml) |  |
 | `secret-data-json` | `[SECRET-…]` | A base64 value in a Secret (kubectl get secret -o json) |  |
-| `client-key-data` | `[PRIVATE-KEY-…]` | A client key in a kubeconfig (client-key-data) |  |
+| `client-key-data` | `[SECRET-…]` | A client key in a kubeconfig (client-key-data) |  |

@@ -7,13 +7,15 @@ Secrets often reach a command as environment variables, set by your shell profil
 env = ["ACME_*", "*_TOKEN", "DATABASE_URL"]
 ```
 
+redact skips entries that would hide ordinary text everywhere: entries under 3 characters, lines that start with `#`, and settings such as numbers, `true` and `development`. The settings are the same ones listed in [What is skipped](./dotenv#what-is-skipped).
+
 `*` matches any run of characters, anywhere in the name. `redact config ls` lists an exact name that is not set, so you can spot a missing value.
 
 redact reads the variables from its own environment. If a tool sets them only for the commands it runs, run redact under that tool too. For examples, see [fnox](../integrations/fnox) and [mise](../integrations/mise).
 
-## Each variable is a label
+## Names stay out of placeholders
 
-A variable's name becomes the label of its placeholder. For example, redact hides the value of `ACME_ORG` as `[ACME-ORG-…]`. A variable can hold a list, one entry per line.
+Each value hides as `[ENV-VALUE-…]`. The variable's name stays out of the placeholder, as a name such as `ACME_ORG` can say whose value it is. `redact scan --explain` still names the variable. A variable can hold a list, one entry per line.
 
 ## Leave a value visible
 

@@ -6,20 +6,20 @@ Tokens, keys and passwords: JWTs, bearer tokens, common vendor key shapes, priva
 
 | Rule | Hides as | What it finds | Hidden everywhere after |
 | :- | :- | :- | :- |
-| `jwt` | `[JWT-…]` | A JSON Web Token (header.payload.signature), e.g. an Azure access token |  |
-| `bearer` | `[TOKEN-…]` | The token after Bearer in an Authorization header |  |
-| `github-token` | `[TOKEN-…]` | GitHub personal, OAuth, app and fine-grained tokens |  |
-| `ai-key` | `[API-KEY-…]` | Anthropic, OpenAI, Groq and xAI API keys |  |
-| `aws-key` | `[API-KEY-…]` | AWS access key IDs |  |
-| `vendor-key` | `[API-KEY-…]` | Slack and Google API keys, and Stripe secret, restricted and webhook keys (not the public pk_ key) |  |
-| `gitlab-token` | `[TOKEN-…]` | GitLab personal access tokens, classic and routable |  |
-| `google-oauth-secret` | `[CLIENT-SECRET-…]` | A Google OAuth client secret (GOCSPX-) |  |
-| `google-refresh-token` | `[TOKEN-…]` | A Google OAuth refresh token (1//0) |  |
-| `azure-storage-key` | `[STORAGE-KEY-…]` | AccountKey= and SharedAccessKey= in Azure connection strings |  |
-| `azure-sas` | `[SAS-SIG-…]` | The signature of an Azure SAS URL |  |
-| `entra-client-secret` | `[CLIENT-SECRET-…]` | An Entra ID (Azure AD) app client secret |  |
-| `private-key` | `[PRIVATE-KEY-…]` | A PEM private key block |  |
-| `url-password` | `[PASSWORD-…]` | The password in scheme://user:password@host |  |
+| `jwt` | `[SECRET-…]` | A JSON Web Token (header.payload.signature), e.g. an Azure access token |  |
+| `bearer` | `[SECRET-…]` | The token after Bearer in an Authorization header |  |
+| `github-token` | `[SECRET-…]` | GitHub personal, OAuth, app and fine-grained tokens |  |
+| `ai-key` | `[SECRET-…]` | Anthropic, OpenAI, Groq and xAI API keys |  |
+| `aws-key` | `[SECRET-…]` | AWS access key IDs |  |
+| `vendor-key` | `[SECRET-…]` | Slack and Google API keys, and Stripe secret, restricted and webhook keys (not the public pk_ key) |  |
+| `gitlab-token` | `[SECRET-…]` | GitLab personal access tokens, classic and routable |  |
+| `google-oauth-secret` | `[SECRET-…]` | A Google OAuth client secret (GOCSPX-) |  |
+| `google-refresh-token` | `[SECRET-…]` | A Google OAuth refresh token (1//0) |  |
+| `azure-storage-key` | `[SECRET-…]` | AccountKey= and SharedAccessKey= in Azure connection strings |  |
+| `azure-sas` | `[SECRET-…]` | The signature of an Azure SAS URL |  |
+| `entra-client-secret` | `[SECRET-…]` | An Entra ID (Azure AD) app client secret |  |
+| `private-key` | `[SECRET-…]` | A PEM private key block |  |
+| `url-password` | `[SECRET-…]` | The password in scheme://user:password@host |  |
 | `named-secret-quoted` | `[SECRET-…]` | A double-quoted value of TOKEN, "password", client_secret and other names that say secret | when it reads as a name |
 | `named-secret-single-quoted` | `[SECRET-…]` | A single-quoted value of a name that says secret | when it reads as a name |
 | `named-secret` | `[SECRET-…]` | An unquoted value of TOKEN=, password:, client_secret: and other names that say secret, to the end of the line (YAML values may hold spaces) | when it reads as a name |
@@ -28,6 +28,8 @@ Tokens, keys and passwords: JWTs, bearer tokens, common vendor key shapes, priva
 | `named-secret-yaml-block` | `[SECRET-…]` | A YAML block scalar under a name that says secret: `password: \|` and the indented lines after it |  |
 | `named-value` | `[SECRET-…]` | The value of a {"name": …, "value": …} pair whose name says secret: ACR passwords, Kubernetes env lists |  |
 | `named-value-yaml` | `[SECRET-…]` | The value: line under a `- name:` line whose name says secret (kubectl ... -o yaml, app settings) | when it reads as a name |
+| `secret-flag-quoted` | `[SECRET-…]` | A double-quoted command-line secret, including spaces and escaped quotes | when it reads as a name |
+| `secret-flag-single-quoted` | `[SECRET-…]` | A single-quoted command-line secret, including spaces | when it reads as a name |
 | `secret-flag` | `[SECRET-…]` | The value of --password, --client-secret, --token and similar command-line flags | when it reads as a name |
 | `docker-login-password` | `[SECRET-…]` | The password after -p in docker login (and podman login) | when it reads as a name |
 | `mysql-password` | `[SECRET-…]` | The password joined to -p in mysql, mysqldump and mysqladmin (-pSECRET) | when it reads as a name |

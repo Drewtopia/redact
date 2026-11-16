@@ -7,10 +7,14 @@ keywords = ["ya29.", "project_id", "projectid", "projects/", "--project", "priva
 [[rules]]
 id = "access-token"
 description = "A Google OAuth access token (ya29.)"
-regex = '''\b(ya29\.[0-9A-Za-z_-]{20,})'''
+regex = '''(?:^|[^A-Za-z0-9_]|\\[nrt])(ya29\.[0-9A-Za-z_-]{20,})'''
 secretGroup = 1
-label = "TOKEN"
+label = "SECRET"
 keywords = ["ya29."]
+
+[[rules.tests]]
+input = "ya29.a0FakeFakeFakeFakeFake12345"
+expect = ["ya29.a0FakeFakeFakeFakeFake12345"]
 
 [[rules]]
 id = "project-id-field"
@@ -21,14 +25,24 @@ label = "PROJECT"
 remember = "any"
 keywords = ["project_id", "projectid"]
 
+matrix = false
+[[rules.tests]]
+input = "{\"project_id\": \"fabrikam-dev-123\"}"
+expect = ["fabrikam-dev-123"]
+
 [[rules]]
 id = "project-path"
 description = "The project in a resource path: projects/<id>/..."
-regex = '''\bprojects/([a-z][a-z0-9-]{4,28}[a-z0-9])\b'''
+regex = '''(?:^|[^A-Za-z0-9_]|\\[nrt])projects/([a-z][a-z0-9-]{4,28}[a-z0-9])\b'''
 secretGroup = 1
 label = "PROJECT"
 remember = "any"
 keywords = ["projects/"]
+
+matrix = false
+[[rules.tests]]
+input = "projects/fabrikam-dev-123/locations/us"
+expect = ["fabrikam-dev-123"]
 
 [[rules]]
 id = "project-flag"
@@ -39,10 +53,20 @@ label = "PROJECT"
 remember = "any"
 keywords = ["--project"]
 
+matrix = false
+[[rules.tests]]
+input = "gcloud run deploy --project fabrikam-dev-123"
+expect = ["fabrikam-dev-123"]
+
 [[rules]]
 id = "private-key-id"
 description = "private_key_id in a service account key file"
 regex = '''(?i)"private_key_id"\s*:\s*"([0-9a-f]{16,})"'''
 secretGroup = 1
-label = "KEY-ID"
+label = "ID"
 keywords = ["private_key_id"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"private_key_id\": \"0123456789abcdef0123456789abcdef01234567\"}"
+expect = ["0123456789abcdef0123456789abcdef01234567"]

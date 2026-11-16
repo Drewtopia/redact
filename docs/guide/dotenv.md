@@ -7,11 +7,11 @@ To hide every value in your dotenv files, list them in your config:
 env_files = [".env", ".env.local", ".env.keys"]
 ```
 
-redact hides each value in those files, whatever reads them. That includes the private keys that dotenvx keeps in `.env.keys`.
+redact reads those files itself and hides each value, whatever tool uses them. That includes the private keys that dotenvx keeps in `.env.keys`.
 
 A relative path is relative to where redact runs, so `.env` means the current project's `.env`. If a file is not there, `redact config ls` lists it, and redact carries on.
 
-Each key becomes the label of its placeholder. For example, redact hides the value of `API_TOKEN` as `[API-TOKEN-…]`.
+Each value hides as `[ENV-VALUE-…]`. The key stays out of the placeholder, as a key such as `ACME_API_TOKEN` can say whose value it is. `redact scan --explain` still names the key.
 
 To hide one file from the command line, use `--env-file`. A missing file is then an error:
 

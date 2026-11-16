@@ -3,7 +3,9 @@
   "name": "redact",
   "version": "0.2.1",
   "description": "Runs everything that enters the conversation through the redact binary: each hidden part becomes a placeholder, and the real value goes back into a tool that runs on this machine",
-  "author": { "name": "Drew" },
+  "author": {
+    "name": "Drew"
+  },
   "repository": "https://github.com/Drewtopia/redact",
   "license": "MIT OR Apache-2.0",
   "userConfig": {
@@ -18,6 +20,12 @@
       "title": "Tools that get real values",
       "description": "Tools that run on this machine and may receive the real value behind a placeholder, separated by commas. Never list a tool that sends its input to another model or the network (Agent, WebFetch, WebSearch)",
       "default": "Bash,PowerShell,Write,Edit,MultiEdit,NotebookEdit,Read,Glob,Grep"
+    },
+    "restoreHosts": {
+      "type": "string",
+      "title": "Hosts that get real values",
+      "description": "Hosts a shell command may send a real value to, separated by commas; each covers its subdomains (api.example.com). Empty: no real value goes into a command that names a URL or host",
+      "default": ""
     },
     "notify": {
       "type": "boolean",

@@ -57,7 +57,12 @@ fn common_word(v: &str) -> bool {
 struct Record<'a> {
     pieces: Vec<(usize, &'a str)>,
     joined: String,
+    /// The key this object is the value of: `data` in `"data": {…}`.
+    key: Option<&'a str>,
 }
+
+/// An object's own fields so far, as byte ranges, and the key it is the value of.
+type Open<'a> = (Vec<(usize, usize)>, Option<&'a str>);
 
 /// Every object in the text, each with only its own fields, so a nested object
 /// (`"user": {…}`) between two fields does not split them apart and field order
@@ -65,9 +70,9 @@ struct Record<'a> {
 /// every object counts as one more record; an unclosed object runs to the end.
 fn records(text: &str) -> Vec<Record<'_>> {
     let b = text.as_bytes();
-    // Each open object: its finished pieces, and where its current piece began.
-    let mut stack: Vec<(Vec<(usize, usize)>, usize)> = vec![(Vec::new(), 0)];
-    let mut done: Vec<Vec<(usize, usize)>> = Vec::new();
+    // Each open object, with where its current piece began.
+    let mut stack: Vec<(Open, usize)> = vec![((Vec::new(), None), 0)];
+    let mut done: Vec<Open> = Vec::new();
     let (mut in_string, mut escaped) = (false, false);
     for (i, &c) in b.iter().enumerate() {
         if in_string {
@@ -86,47 +91,84 @@ fn records(text: &str) -> Vec<Record<'_>> {
                     .last_mut()
                     .expect("the outermost record is never popped here");
                 if i > top.1 {
-                    top.0.push((top.1, i));
+                    top.0.0.push((top.1, i));
                 }
-                stack.push((Vec::new(), i + 1));
+                stack.push(((Vec::new(), key_before(text, i)), i + 1));
             }
             b'}' if stack.len() > 1 => {
-                let (mut pieces, start) = stack.pop().expect("checked above");
+                let ((mut pieces, key), start) = stack.pop().expect("checked above");
                 if i > start {
                     pieces.push((start, i));
                 }
-                done.push(pieces);
+                done.push((pieces, key));
                 stack.last_mut().expect("the outermost record remains").1 = i + 1;
             }
             _ => {}
         }
     }
-    while let Some((mut pieces, start)) = stack.pop() {
+    while let Some(((mut pieces, key), start)) = stack.pop() {
         if b.len() > start {
             pieces.push((start, b.len()));
         }
-        done.push(pieces);
+        done.push((pieces, key));
     }
     // Braces and quotes are ASCII, so every cut is on a character boundary.
     done.into_iter()
-        .filter(|p| !p.is_empty())
-        .map(|p| {
+        .filter(|(p, _)| !p.is_empty())
+        .map(|(p, key)| {
             let pieces: Vec<(usize, &str)> = p.into_iter().map(|(s, e)| (s, &text[s..e])).collect();
             let joined = pieces
                 .iter()
                 .map(|(_, t)| *t)
                 .collect::<Vec<_>>()
                 .join("\n");
-            Record { pieces, joined }
+            Record {
+                pieces,
+                joined,
+                key,
+            }
         })
         .collect()
+}
+
+/// The JSON key before the `{` at `open`: `data` in `"data" : {`. None when
+/// the object is not a key's value. A key with an escape in it (`da\u0074a`)
+/// comes back as a lone `\`, which every `withinKey` accepts: unread, it
+/// could be any key, so the rule runs.
+fn key_before(text: &str, open: usize) -> Option<&str> {
+    let before = text[..open].trim_end().strip_suffix(':')?.trim_end();
+    let inner = before.strip_suffix('"')?;
+    let start = inner.rfind('"')?;
+    let key = &inner[start + 1..];
+    if key.contains('\\') || inner[..start].ends_with('\\') {
+        return Some("\\");
+    }
+    Some(key)
 }
 
 pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
     // Keywords are a cheap test that a pack or rule could match at all.
     let low = text.to_lowercase();
-    let has = |keys: &[String]| keys.is_empty() || keys.iter().any(|k| low.contains(k.as_str()));
-    // Built on first use, and only if a `within` rule runs.
+    // Formatting around a keyword must not exclude a regex that accepts it.
+    // Build the whitespace-free text only when a spaced keyword needs it.
+    let compact: OnceLock<String> = OnceLock::new();
+    let has = |keys: &[String]| {
+        keys.is_empty()
+            || keys.iter().any(|k| {
+                low.contains(k.as_str())
+                    || k.chars().any(|c| c.is_ascii_whitespace())
+                        && compact
+                            .get_or_init(|| {
+                                low.chars().filter(|c| !c.is_ascii_whitespace()).collect()
+                            })
+                            .contains(
+                                &k.chars()
+                                    .filter(|c| !c.is_ascii_whitespace())
+                                    .collect::<String>(),
+                            )
+            })
+    };
+    // Built on first use, and only if a `within` or `withinKey` rule runs.
     let recs: OnceLock<Vec<Record>> = OnceLock::new();
 
     let mut spans = Vec::new();
@@ -141,26 +183,32 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
             if !has(&rule.keywords) || !has(&rule.context) {
                 continue;
             }
-            let segments: Vec<(usize, &str)> = match &rule.within {
-                None => vec![(0, text)],
-                Some(w) => recs
-                    .get_or_init(|| records(text))
+            let segments: Vec<(usize, &str)> = if rule.within.is_none() && rule.within_key.is_none()
+            {
+                vec![(0, text)]
+            } else {
+                recs.get_or_init(|| records(text))
                     .iter()
                     // `exceptMatch` also skips a whole record: the name that decides
                     // sits in a field beside the match, not in it.
                     .filter(|r| {
-                        w.is_match(&r.joined)
-                            && !rule
-                                .except_match
-                                .as_ref()
-                                .is_some_and(|x| x.is_match(&r.joined))
+                        rule.within.as_ref().is_none_or(|w| w.is_match(&r.joined))
+                            && rule.within_key.as_ref().is_none_or(|k| {
+                                r.key.is_some_and(|key| key == "\\" || k.is_match(key))
+                            })
+                            && (rule.within.is_none()
+                                || !rule
+                                    .except_match
+                                    .as_ref()
+                                    .is_some_and(|x| x.is_match(&r.joined)))
                     })
                     .flat_map(|r| r.pieces.iter().copied())
-                    .collect(),
+                    .collect()
             };
             for (offset, seg) in segments {
                 let mut pos = 0;
                 while let Some(caps) = rule.re.captures_at(seg, pos) {
+                    let search_start = pos;
                     let whole = caps.get(0).unwrap();
                     let end = caps.get(rule.group).map_or(whole.end(), |m| m.end());
                     // Look again from the end of the hidden part, not of the whole
@@ -185,7 +233,11 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                         .as_ref()
                         .is_some_and(|x| x.is_match(whole.as_str()))
                     {
-                        pos = m.start();
+                        // Group zero, or a capture at the match's start, must
+                        // not send the next search back to the same position.
+                        if m.start() > search_start {
+                            pos = m.start();
+                        }
                         continue;
                     }
                     // Trailing whitespace is not part of a value: on a CRLF line
@@ -236,20 +288,20 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
                 text: w.clone(),
                 label: list.label.clone(),
                 pack: "words".into(),
-                rule: list.label.clone(),
+                rule: list.name.clone(),
             });
         }
     }
     let mut hidden: HashSet<String> = words.iter().map(|w| label_key(&w.text)).collect();
     spans.extend(find_words(text, words, &loaded.allow)?);
-    // A label or rule name can be a key or file name (`CONTOSO_TOKEN`,
-    // `contoso.txt`), so it can hold something being hidden: a listed word, a
+    // A user pack's label, a pack id, or a word list's rule name can be a key or
+    // file name (`CONTOSO_TOKEN`, `contoso.txt`), so it can hold something being hidden: a listed word, a
     // remembered value, or any value a rule found. Such a name becomes VALUE,
     // in the placeholder and in --json and --explain alike. Only values short
     // enough to fit inside a name are worth checking.
     let longest = spans
         .iter()
-        .map(|s| s.label.len().max(s.rule.len()))
+        .map(|s| s.label.len().max(s.rule.len()).max(s.pack.len()))
         .max()
         .unwrap_or(0);
     hidden.extend(
@@ -275,6 +327,7 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
     for s in &mut spans {
         s.label = clean(&s.label);
         s.rule = clean(&s.rule);
+        s.pack = clean(&s.pack);
     }
     Ok(merge(spans))
 }
@@ -540,7 +593,7 @@ mod tests {
     }
 
     /// The built-in packs' output, with each tag's random hex shown as `…`: a
-    /// random tag such as `[OBJECT-ID-a17946f0]` must not read as a leaked `7946`.
+    /// random tag such as `[ID-a17946f0]` must not read as a leaked `7946`.
     fn azure(text: &str) -> String {
         let loaded = pack::load(&pack::Options {
             files: vec![],
@@ -593,18 +646,10 @@ mod tests {
 
     #[test]
     fn ids_beside_their_names() {
-        hides(&format!(r#"{{"tenantId": "{G}"}}"#), G, "TENANT-ID");
-        hides(
-            &format!("/subscriptions/{G}/resourceGroups/rg"),
-            G,
-            "SUBSCRIPTION-ID",
-        );
-        hides(
-            &format!(r#"{{"id": "{G}", "isDefault": true}}"#),
-            G,
-            "SUBSCRIPTION-ID",
-        );
-        hides(&format!("export AZURE_CLIENT_ID={G}"), G, "APP-ID");
+        hides(&format!(r#"{{"tenantId": "{G}"}}"#), G, "ID");
+        hides(&format!("/subscriptions/{G}/resourceGroups/rg"), G, "ID");
+        hides(&format!(r#"{{"id": "{G}", "isDefault": true}}"#), G, "ID");
+        hides(&format!("export AZURE_CLIENT_ID={G}"), G, "ID");
     }
 
     /// A fake key body, built at run time so no key-shaped string sits in the repo.
@@ -768,16 +813,16 @@ mod tests {
     fn vendor_keys_by_shape() {
         // Real lengths, split so no key-shaped string sits in the repo.
         for (key, label) in [
-            (format!("{}_test_{}", "sk", body(24)), "API-KEY"),
-            (format!("{}_live_{}", "rk", body(24)), "API-KEY"),
-            (format!("{}_test_{}", "rk", body(24)), "API-KEY"),
-            (format!("wh{}_{}", "sec", body(32)), "API-KEY"),
-            (format!("gs{}_{}", "k", body(52)), "API-KEY"),
-            (format!("xa{}-{}", "i", body(80)), "API-KEY"),
-            (format!("gl{}-{}", "pat", body(20)), "TOKEN"),
-            (format!("gl{}-{}.01a2b3c4d", "pat", body(27)), "TOKEN"),
-            (format!("GOC{}-{}", "SPX", body(28)), "CLIENT-SECRET"),
-            (format!("1//0{}", body(100)), "TOKEN"),
+            (format!("{}_test_{}", "sk", body(24)), "SECRET"),
+            (format!("{}_live_{}", "rk", body(24)), "SECRET"),
+            (format!("{}_test_{}", "rk", body(24)), "SECRET"),
+            (format!("wh{}_{}", "sec", body(32)), "SECRET"),
+            (format!("gs{}_{}", "k", body(52)), "SECRET"),
+            (format!("xa{}-{}", "i", body(80)), "SECRET"),
+            (format!("gl{}-{}", "pat", body(20)), "SECRET"),
+            (format!("gl{}-{}.01a2b3c4d", "pat", body(27)), "SECRET"),
+            (format!("GOC{}-{}", "SPX", body(28)), "SECRET"),
+            (format!("1//0{}", body(100)), "SECRET"),
         ] {
             let text = format!("here it is: {key} ok");
             hides(&text, &key[key.len() - 12..], label);
@@ -796,20 +841,199 @@ mod tests {
         // Three characters, a digit, `Q~`, then 31 to 34: 40 characters at most.
         let key = format!("abc8{}{}", "Q~", body(34));
         let tail = &key[key.len() - 12..];
-        hides(&key, tail, "CLIENT-SECRET");
+        hides(&key, tail, "SECRET");
         let text = format!("here it is: {key} ok");
-        hides(&text, tail, "CLIENT-SECRET");
+        hides(&text, tail, "SECRET");
         let out = azure(&text);
         assert!(
             out.starts_with("here it is: ") && out.ends_with(" ok"),
             "{out}"
         );
-        hides(&format!("\"{key}\""), tail, "CLIENT-SECRET");
+        hides(&format!("\"{key}\""), tail, "SECRET");
         // The generic assignment rule may win here; either placeholder hides it, start to end.
         let out = azure(&format!("SECRET={key}"));
         assert!(!out.contains("Q~") && !out.contains(tail), "{out}");
         let short = format!("abc8{}{}", "Q~", body(31));
-        hides(&short, &short[short.len() - 12..], "CLIENT-SECRET");
+        hides(&short, &short[short.len() - 12..], "SECRET");
+    }
+
+    /// What one built-in rule, `pack:rule`, hides in `text` when it runs alone.
+    fn found_by(id: &str, text: &str) -> Vec<String> {
+        let (pack_id, rule_id) = id.split_once(':').unwrap();
+        let mut loaded = pack::load(&pack::Options {
+            files: vec![],
+            builtin: true,
+            user: false,
+            config: None,
+            env_files: vec![],
+            command: None,
+            cwd: None,
+            host: None,
+        })
+        .unwrap();
+        // `pii` is off by default; its rules are tested here too.
+        loaded.packs.append(&mut loaded.off);
+        loaded.packs.retain(|p| p.id == pack_id);
+        for p in &mut loaded.packs {
+            p.rules.retain(|r| r.id == rule_id);
+        }
+        let n: usize = loaded.packs.iter().map(|p| p.rules.len()).sum();
+        assert_eq!(n, 1, "no rule {id}");
+        scan(text, &loaded)
+            .unwrap()
+            .iter()
+            .map(|s| text[s.start..s.end].to_string())
+            .collect()
+    }
+
+    #[test]
+    fn entra_client_secret_after_a_delimiter() {
+        let rest = format!("8{}{}", "Q~", body(34));
+        for first in [".bc", "~bc", "-bc", "abc"] {
+            let key = format!("{first}{rest}");
+            for text in [
+                key.clone(),
+                format!("x={key}"),
+                format!("\"{key}\""),
+                format!("line\\n{key}"),
+            ] {
+                assert_eq!(
+                    found_by("credentials:entra-client-secret", &text),
+                    [key.as_str()],
+                    "{text}"
+                );
+            }
+        }
+        // End to end: each under its own placeholder, the `\n` still shown.
+        assert_eq!(azure(&format!("x=.bc{rest}")), "x=[SECRET-…]");
+        assert_eq!(azure(&format!("line\\nabc{rest}")), "line\\n[SECRET-…]");
+        let gh = format!("gh{}_{}", "p", body(36));
+        assert_eq!(azure(&format!("log\\n{gh}")), "log\\n[SECRET-…]");
+    }
+
+    #[test]
+    fn shape_rules_start_after_an_escaped_newline_not_inside_a_word() {
+        // (rule, value, the part it hides: empty for all of it). Keys are split
+        // so no key-shaped string sits in the repo; the IBAN is the textbook example.
+        let jwt = format!(
+            "ey{}.ey{}.{}",
+            "J".to_owned() + &body(12),
+            "J".to_owned() + &body(12),
+            body(20)
+        );
+        let cases: Vec<(&str, String, String)> = vec![
+            ("credentials:jwt", jwt.clone(), jwt),
+            (
+                "credentials:github-token",
+                format!("gh{}_{}", "p", body(36)),
+                String::new(),
+            ),
+            (
+                "credentials:ai-key",
+                format!("sk-{}-{}", "ant", body(30)),
+                String::new(),
+            ),
+            (
+                "credentials:aws-key",
+                format!("AK{}", "IA2345ABCDEFGHJKLM"),
+                String::new(),
+            ),
+            (
+                "credentials:vendor-key",
+                format!("xo{}-{}", "xb", body(24)),
+                String::new(),
+            ),
+            (
+                "credentials:gitlab-token",
+                format!("gl{}-{}", "pat", body(20)),
+                String::new(),
+            ),
+            (
+                "credentials:google-oauth-secret",
+                format!("GOC{}-{}", "SPX", body(28)),
+                String::new(),
+            ),
+            (
+                "credentials:google-refresh-token",
+                format!("1//0{}", body(40)),
+                String::new(),
+            ),
+            (
+                "credentials:entra-client-secret",
+                format!("abc8{}{}", "Q~", body(34)),
+                String::new(),
+            ),
+            (
+                "credentials:url-password",
+                "https://app:hunter2pass@db.example.com".into(),
+                "hunter2pass".into(),
+            ),
+            (
+                "gcp:access-token",
+                format!("ya29.{}", body(30)),
+                String::new(),
+            ),
+            (
+                "gcp:project-path",
+                "projects/bluefinq-prod-45/x".into(),
+                "bluefinq-prod-45".into(),
+            ),
+            ("pii:iban", "GB82WEST12345698765432".into(), String::new()),
+            ("pii:uk-nino", "AB123456C".into(), String::new()),
+        ];
+        for (rule, value, hidden) in cases {
+            let hidden = if hidden.is_empty() {
+                value.clone()
+            } else {
+                hidden
+            };
+            // `uk-nino` runs only beside a clue word.
+            let clue = if rule == "pii:uk-nino" {
+                "NI number "
+            } else {
+                ""
+            };
+            let text = format!("{clue}log\\n{value}");
+            assert_eq!(found_by(rule, &text), [hidden.as_str()], "{text}");
+            let out = text.replace(&hidden, "");
+            assert!(out.starts_with(&format!("{clue}log\\n")), "{rule}: {out}");
+            // A letter or `_` before it makes it part of a longer word, except
+            // that `xhttps://` is a scheme too, so its password is still one.
+            let befores: &[&str] = if rule == "credentials:url-password" {
+                &["_"]
+            } else {
+                &["x", "_"]
+            };
+            for before in befores {
+                let text = format!("{clue}{before}{value}");
+                assert!(found_by(rule, &text).is_empty(), "{text}");
+            }
+        }
+    }
+
+    #[test]
+    fn entra_client_secret_hides_a_longer_token_whole() {
+        let key = format!("abc8{}{}", "Q~", body(34));
+        let rule = "credentials:entra-client-secret";
+        // Never `[SECRET-…]XYZW`: the token is hidden to its end.
+        for tail in ["XYZW", ".XYZW", "_x", "...", "--"] {
+            let text = format!("{key}{tail}");
+            assert_eq!(found_by(rule, &text), [text.as_str()], "{text}");
+        }
+        for text in [
+            format!("\"{key}\""),
+            format!("{key}\\n"),
+            format!("{key} ok"),
+        ] {
+            assert_eq!(found_by(rule, &text), [key.as_str()], "{text}");
+        }
+        // Hidden before this rule had delimiters, so still hidden.
+        let text = format!("foo{}", &key[..]).replacen("abc", ".bc", 1);
+        assert_eq!(found_by(rule, &text), [&text[3..]], "{text}");
+        for before in ["x", "_"] {
+            let text = format!("{before}{key}");
+            assert!(found_by(rule, &text).is_empty(), "{text}");
+        }
     }
 
     #[test]
@@ -837,6 +1061,22 @@ mod tests {
         assert_eq!(pack::entropy("aaaa"), 0.0);
         assert_eq!(pack::entropy("abcd"), 2.0);
         assert_eq!(pack::entropy("aabb"), 1.0);
+    }
+
+    #[test]
+    fn a_rule_without_a_label_hides_as_secret_not_its_id() {
+        let d = tmp("nolabel");
+        let path = d.join("p.toml");
+        std::fs::write(&path, "schema_version = 1\nid = \"p\"\n[[rules]]\nid = \"acme-api-key\"\nregex = '(zqxkey[0-9]+)'\nsecretGroup = 1\n").unwrap();
+        let loaded = only(std::slice::from_ref(&path)).unwrap();
+        let text = "key zqxkey123";
+        let out = mask(
+            text,
+            &scan(text, &loaded).unwrap(),
+            &mut Tagger::new(None).unwrap(),
+        );
+        std::fs::remove_dir_all(&d).unwrap();
+        assert!(out.starts_with("key [SECRET-"), "{out}");
     }
 
     #[test]
@@ -944,6 +1184,71 @@ mod tests {
         // The line after keeps its own content.
         let out = azure("password: correct horse battery\nhost: db-host\n");
         assert!(out.contains("host: db-host"), "{out}");
+    }
+
+    #[test]
+    fn quoted_secret_flags_hide_the_whole_argument() {
+        for flag in ["--password", "--token", "--secret-key"] {
+            for value in [
+                r#""firstword secondword""#,
+                "'firstword secondword'",
+                r#""a secondword""#,
+            ] {
+                for separator in [" ", "="] {
+                    let out = azure(&format!(
+                        "tool {flag}{separator}{value} --host example.test"
+                    ));
+                    assert!(
+                        !out.contains("firstword") && !out.contains("secondword"),
+                        "{out}"
+                    );
+                    assert!(out.contains("--host example.test"), "{out}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn kubernetes_secrets_allow_json_whitespace_and_quoted_yaml_kind() {
+        for text in [
+            r#"{"kind" : "Secret", "data":{"key":"c2VjcmV0"}}"#,
+            "{\"kind\"\n:\t\"Secret\", \"data\":{\"key\":\"c2VjcmV0\"}}",
+            "kind: \"Secret\"\ndata:\n  key: c2VjcmV0\n",
+            "kind: 'Secret'\ndata:\n  key: c2VjcmV0\n",
+        ] {
+            let out = azure(text);
+            assert!(!out.contains("c2VjcmV0"), "{out}");
+        }
+        let ordinary =
+            "kind: ConfigMap\nmetadata:\n  name: secret-settings\ndata:\n  setting: value123\n";
+        assert_eq!(azure(ordinary), ordinary);
+    }
+
+    #[test]
+    fn a_json_secret_hides_its_data_and_leaves_metadata_visible() {
+        let compact = azure(
+            r#"{"kind":"Secret","data":{"key":"c2VjcmV0","other":"b3RoZXJ2YWx1ZQ=="},"metadata":{"name":"sample12","labels":{"app":"frontend"}}}"#,
+        );
+        assert!(
+            !compact.contains("c2VjcmV0") && !compact.contains("b3RoZXJ2YWx1ZQ=="),
+            "{compact}"
+        );
+        assert!(
+            compact.contains("sample12") && compact.contains("frontend"),
+            "{compact}"
+        );
+
+        let pretty = azure(
+            "{\n  \"kind\": \"Secret\",\n  \"metadata\": {\"name\": \"sample12\"},\n  \"data\" : {\n    \"key\": \"c2VjcmV0\"\n  }\n}",
+        );
+        assert!(
+            !pretty.contains("c2VjcmV0") && pretty.contains("sample12"),
+            "{pretty}"
+        );
+
+        // A key spelled with an escape could be `data`, so its values are hidden.
+        let escaped = azure(r#"{"kind":"Secret","da\u0074a":{"key":"c2VjcmV0"}}"#);
+        assert!(!escaped.contains("c2VjcmV0"), "{escaped}");
     }
 
     #[test]
@@ -1094,7 +1399,7 @@ mod tests {
             !out.contains(person) && !out.contains(tenant) && !out.contains(member),
             "{out}"
         );
-        assert_eq!(out.matches("[IDENTITY-ID-").count(), 5, "{out}");
+        assert_eq!(out.matches("[ID-").count(), 5, "{out}");
         assert!(out.contains("\"Basic\""), "{out}");
     }
 
@@ -1128,12 +1433,12 @@ mod tests {
         hides(
             "https://bluefin-uat.crm11.dynamics.com/api",
             "bluefin-uat",
-            "DATAVERSE-ENV",
+            "RESOURCE",
         );
         hides(
             "https://kv-bluefin.vault.azure.net/secrets/x",
             "kv-bluefin",
-            "AZURE-RESOURCE",
+            "RESOURCE",
         );
         keeps("see https://portal.azure.com and https://make.powerapps.com");
     }
@@ -1184,7 +1489,9 @@ mod tests {
         );
         let kinds: Vec<&str> = loaded.sources.iter().map(|s| s.kind).collect();
         std::fs::remove_dir_all(&d).unwrap();
-        assert!(out.contains("[CUSTOMERS-"), "{out}");
+        // The file name stays out of the placeholder: it can name what is hidden.
+        assert!(out.contains("[WORDLIST-"), "{out}");
+        assert!(!out.contains("CUSTOMERS"), "{out}");
         assert_eq!(kinds, ["config", "config", "folder", "words"]);
         assert!(loaded.sources[3].via.as_deref().unwrap().ends_with("lists"));
     }
@@ -1894,7 +2201,7 @@ mod tests {
     fn a_url_password_is_a_password_not_an_email() {
         let text = "postgres://billing:Tr0ub4dor-horse@db.example.com/prod";
         let out = azure(text);
-        assert!(out.contains("billing:[PASSWORD-…]@db.example.com"), "{out}");
+        assert!(out.contains("billing:[SECRET-…]@db.example.com"), "{out}");
         for (text, gone) in [
             ("email:ada@fabrikamq.example", "ada@"),
             ("<a href=\"mailto:ada@fabrikamq.example\">", "ada@"),
@@ -2193,9 +2500,14 @@ mod tests {
                     &phone_clues,
                     "[PHONE-",
                 ),
-                ("ssn", ssn(&mut rng), &ssn_clues, "[SSN-"),
-                ("nino", nino(&mut rng, false), &nino_clues, "[NINO-"),
-                ("spaced nino", nino(&mut rng, true), &nino_clues, "[NINO-"),
+                ("ssn", ssn(&mut rng), &ssn_clues, "[NATIONAL-ID-"),
+                ("nino", nino(&mut rng, false), &nino_clues, "[NATIONAL-ID-"),
+                (
+                    "spaced nino",
+                    nino(&mut rng, true),
+                    &nino_clues,
+                    "[NATIONAL-ID-",
+                ),
             ];
             for (kind, v, clues, tag) in clued {
                 // An extension after the number ("x123") is not part of it.
