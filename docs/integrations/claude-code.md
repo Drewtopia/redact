@@ -32,9 +32,9 @@ Your [config](../reference/config) applies as it does in a pipe: the same packs,
 | Where text enters | What the mod does |
 | :- | :- |
 | Your prompt, and context a hook adds to it | Hides each part before Claude Code sends it |
-| Every tool result: Bash, Read, Grep, MCP tools, and subagent answers | Hides each part before Claude reads it. See [Tool results](#tool-results) |
+| Every tool result: Bash, Read, Grep, MCP tools, and subagent answers | Hides each part before Claude reads it, except PDFs and images. See [Tool results](#tool-results) and [What it misses](#what-it-misses) |
 | CLAUDE.md and the context on the first message | Hides each part |
-| `@`-mentioned files | Refuses a file that holds something to hide, and points Claude to the Read tool, whose result is hidden |
+| `@`-mentioned files | Refuses a file that holds something to hide, and points Claude to the Read tool, whose result is hidden. PDFs and images go through unscanned |
 | A subagent's task | Hides each part. A workflow agent whose prompt holds something to hide is not started |
 
 ### Tool results
@@ -96,7 +96,7 @@ When a tool prints a value the mod handed it, that value comes back hidden, even
 
 ## What it misses
 
-- **PDFs named with `@`.** The mod cannot read a PDF's text, so an `@`-mentioned PDF goes to Claude unscanned. Images also go unscanned, because they reach Claude as pictures.
+- **PDFs and images.** The mod cannot read a PDF's text, so a PDF goes to Claude unscanned, whether it is `@`-mentioned or opened with Read. Images also go unscanned, because they reach Claude as pictures.
 - **An `allow` added mid-session.** The mod keeps hiding a value it hid earlier in the session, wherever it turns up. Start a new session for the `allow` to take effect.
 
 ## When redact cannot run
