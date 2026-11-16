@@ -18,6 +18,8 @@ cargo build                      # build the real scanner for the integration te
 node --experimental-strip-types --test claude-plugin/tests/integration.test.mjs # Node 24
 ```
 
+Every worktree of the repo shares one set of hooks, read from the `lefthook.yml` of the checkout you commit in, so run `lefthook install` from a checkout that has the file. To try one hook without installing them, run `lefthook run <hook> --no-auto-install`; plain `lefthook run` installs them.
+
 CI also runs `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`, and builds the docs (`cd docs && npm ci && npx vitepress build`), which fails on a dead link.
 
 ## Add a rule

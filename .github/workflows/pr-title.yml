@@ -1,6 +1,7 @@
 # PRs are squash-merged with the title as the commit subject and the body as the
 # rest of the message. release-please reads the title for the version bump and
-# changelog, so it must parse, and the body's trailers land on main as written.
+# changelog, so it must parse, and the body lands on main as written. The message
+# is checked against commit-check.toml, the policy the commit-msg hook uses.
 name: pr-title
 
 on:
@@ -8,25 +9,21 @@ on:
     types: [opened, edited, synchronize, reopened]
 
 permissions:
-  pull-requests: read
+  contents: read
 
 jobs:
-  # The redact mod can turn an agent's Co-Authored-By line into placeholder
-  # text (#81), and the squash merge would carry it onto main.
-  trailers:
-    runs-on: ubuntu-latest
-    steps:
-      - env:
-          BODY: ${{ github.event.pull_request.body }}
-        run: |
-          if printf '%s\n' "$BODY" | grep -qiE '^(co-authored-by|signed-off-by):.*\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\]'; then
-            echo "::error::A trailer in the PR body holds placeholder text, and the body becomes the commit message on main."
-            exit 1
-          fi
-
+  # Named for the required check on main. Also catches the redact mod's placeholder
+  # text anywhere in the title or body (#81).
   conventional-title:
     runs-on: ubuntu-latest
     steps:
-      - uses: amannn/action-semantic-pull-request@2252a14e810aa9b85c2d560bd7070c802206ecf6 # v6.1.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: pipx install commit-check==2.19.5
+      - env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s\n\n%s\n' "$TITLE" "$BODY" > "$RUNNER_TEMP/squash-message"
+          commit-check -m --no-banner "$RUNNER_TEMP/squash-message"
