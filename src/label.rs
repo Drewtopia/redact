@@ -5,8 +5,14 @@
 //! or file name is folded to fit. The Claude Code mod reads the same shape
 //! (`TAG` in claude-plugin/hooks/vault.ts), and integration.test.mjs checks
 //! that the two agree.
+//!
+//! A name a span shows (label, rule id, pack id) can itself hold a hidden
+//! value, so `clean_names` turns such a name into `VALUE` before it shows in a
+//! placeholder, `--json` or `--explain`.
 
+use crate::scan::Span;
 use regex::Regex;
+use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
 /// A rule's label when its pack gives none.
@@ -66,9 +72,115 @@ pub fn is_tag(v: &str) -> bool {
         .is_match(v)
 }
 
+/// Lower case with `-`, `_` and spaces folded together, to compare names and values.
+fn key(s: &str) -> String {
+    s.to_lowercase().replace(['_', ' '], "-")
+}
+
+/// Makes each span's names safe to show, and records its kind in `Span.was`.
+///
+/// A user pack's label, a pack id, or a word list's rule name can be a key or
+/// file name (`CONTOSO_TOKEN`, `contoso.txt`), so it can hold something being
+/// hidden: one of `words` (listed or remembered), or any value a span hides in
+/// `text`. Such a name becomes VALUE, in the placeholder and in --json and
+/// --explain alike. Only values short enough to fit inside a name are worth
+/// checking. `kinds` maps `pack:rule` to the label before `[labels]` changed it.
+pub fn clean_names<'a>(
+    spans: &mut [Span],
+    text: &str,
+    words: impl IntoIterator<Item = &'a str>,
+    kinds: &HashMap<String, String>,
+) {
+    let mut hidden: HashSet<String> = words.into_iter().map(key).collect();
+    let longest = spans
+        .iter()
+        .map(|s| s.label.len().max(s.rule.len()).max(s.pack.len()))
+        .max()
+        .unwrap_or(0);
+    hidden.extend(
+        spans
+            .iter()
+            .filter(|s| s.end - s.start <= longest)
+            .map(|s| key(&text[s.start..s.end])),
+    );
+    hidden.retain(|w| w.chars().count() >= 3);
+    let mut safe: HashMap<String, String> = HashMap::new();
+    let mut clean = |name: &str| -> String {
+        safe.entry(name.to_string())
+            .or_insert_with(|| {
+                let folded = key(name);
+                if hidden.iter().any(|w| folded.contains(w.as_str())) {
+                    VALUE.to_string()
+                } else {
+                    name.to_string()
+                }
+            })
+            .clone()
+    };
+    for s in spans {
+        s.was = kinds
+            .get(&format!("{}:{}", s.pack, s.rule))
+            .map(|k| clean(k));
+        s.label = clean(&s.label);
+        s.rule = clean(&s.rule);
+        s.pack = clean(&s.pack);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn span(start: usize, end: usize, label: &str, pack: &str, rule: &str) -> Span {
+        Span {
+            start,
+            end,
+            label: label.into(),
+            pack: pack.into(),
+            rule: rule.into(),
+            was: None,
+        }
+    }
+
+    #[test]
+    fn a_name_holding_a_hidden_value_reads_value() {
+        let text = "key zuvio1 id ab from acme, cd";
+        let mut spans = vec![
+            // The rule id holds the value this span hides.
+            span(4, 10, "ID", "p", "zuvio1-key"),
+            // `ab` is too short to check, so a name holding it stays.
+            span(14, 16, "LABS", "p", "tag"),
+            // The pack id holds a listed word, in another case and spelling.
+            span(22, 26, "WORDLIST", "words", "Acme_List"),
+            // The rule id holds a listed word that is not in the text.
+            span(28, 30, "ID", "p", "kepler-ids"),
+        ];
+        let kinds = HashMap::from([
+            ("p:zuvio1-key".to_string(), "KEY".to_string()),
+            ("p:tag".to_string(), "ACME".to_string()),
+        ]);
+        clean_names(&mut spans, text, ["acme", "kepler"], &kinds);
+        let seen: Vec<_> = spans
+            .iter()
+            .map(|s| {
+                (
+                    s.label.as_str(),
+                    s.pack.as_str(),
+                    s.rule.as_str(),
+                    s.was.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("ID", "p", "VALUE", Some("KEY")),
+                ("LABS", "p", "tag", Some("VALUE")),
+                ("WORDLIST", "words", "VALUE", None),
+                ("ID", "p", "VALUE", None),
+            ]
+        );
+    }
 
     #[test]
     fn a_written_label_is_checked_and_upper_cased() {

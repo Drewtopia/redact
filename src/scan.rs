@@ -298,47 +298,13 @@ pub fn scan(text: &str, loaded: &Loaded) -> Result<Vec<Span>, String> {
             });
         }
     }
-    let mut hidden: HashSet<String> = words.iter().map(|w| label_key(&w.text)).collect();
-    spans.extend(find_words(text, words, &loaded.allow)?);
-    // A user pack's label, a pack id, or a word list's rule name can be a key or
-    // file name (`CONTOSO_TOKEN`, `contoso.txt`), so it can hold something being hidden: a listed word, a
-    // remembered value, or any value a rule found. Such a name becomes VALUE,
-    // in the placeholder and in --json and --explain alike. Only values short
-    // enough to fit inside a name are worth checking.
-    let longest = spans
-        .iter()
-        .map(|s| s.label.len().max(s.rule.len()).max(s.pack.len()))
-        .max()
-        .unwrap_or(0);
-    hidden.extend(
-        spans
-            .iter()
-            .filter(|s| s.end - s.start <= longest)
-            .map(|s| label_key(&text[s.start..s.end])),
+    spans.extend(find_words(text, &words, &loaded.allow)?);
+    label::clean_names(
+        &mut spans,
+        text,
+        words.iter().map(|w| w.text.as_str()),
+        &loaded.kinds,
     );
-    hidden.retain(|w| w.chars().count() >= 3);
-    let mut safe: HashMap<String, String> = HashMap::new();
-    let mut clean = |name: &str| -> String {
-        safe.entry(name.to_string())
-            .or_insert_with(|| {
-                let key = label_key(name);
-                if hidden.iter().any(|w| key.contains(w.as_str())) {
-                    label::VALUE.to_string()
-                } else {
-                    name.to_string()
-                }
-            })
-            .clone()
-    };
-    for s in &mut spans {
-        s.was = loaded
-            .kinds
-            .get(&format!("{}:{}", s.pack, s.rule))
-            .map(|k| clean(k));
-        s.label = clean(&s.label);
-        s.rule = clean(&s.rule);
-        s.pack = clean(&s.pack);
-    }
     Ok(merge(spans))
 }
 
@@ -376,11 +342,6 @@ fn word_edge(s: &str, i: usize) -> bool {
     }
 }
 
-/// Lower case with `-`, `_` and spaces folded together, to compare labels and words.
-fn label_key(s: &str) -> String {
-    s.to_lowercase().replace(['_', ' '], "-")
-}
-
 /// Every remembered value and listed word, as a whole word, in any case.
 ///
 /// One Aho-Corasick pass finds every word at once, however many there are (a
@@ -388,13 +349,13 @@ fn label_key(s: &str) -> String {
 /// 1 MB). Overlapping matches are all kept; `merge` then keeps the earliest and
 /// longest, so `Fabrikam Holdings` wins over `Fabrikam`. Case is ignored for
 /// ASCII letters only: `ÄBC` does not match `äbc`.
-fn find_words(text: &str, words: Vec<Word>, allow: &HashSet<String>) -> Result<Vec<Span>, String> {
+fn find_words(text: &str, words: &[Word], allow: &HashSet<String>) -> Result<Vec<Span>, String> {
     if words.is_empty() {
         return Ok(Vec::new());
     }
     let mut seen = HashSet::new();
-    let words: Vec<Word> = words
-        .into_iter()
+    let words: Vec<&Word> = words
+        .iter()
         .filter(|w| {
             !allow.contains(&w.text.to_lowercase()) && seen.insert(w.text.to_ascii_lowercase())
         })
