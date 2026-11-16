@@ -279,7 +279,7 @@ fn main() -> ExitCode {
             if explain {
                 for s in &spans {
                     let key = format!("{}:{}", s.pack, s.rule);
-                    match loaded.kinds.get(&key) {
+                    match &s.was {
                         Some(kind) => eprintln!("{key} -> [{}-…] (was {kind})", s.label),
                         None => eprintln!("{key} -> [{}-…]", s.label),
                     }
