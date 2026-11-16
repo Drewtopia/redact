@@ -1,0 +1,9 @@
+# The secret scan in lefthook.yml. Tests here are full of fake secrets, so the hooks
+# scan only added lines, and a new fake value carries one of these markers.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake test values carry a marker"
+regexTarget = "secret"
+regexes = ['''(?i)(example|fake|fabrikam|contoso|northwind|dummy|notreal)''']

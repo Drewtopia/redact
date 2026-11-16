@@ -8,7 +8,10 @@ Issues, PRs and tests are public. Build every example from made-up values with t
 
 ## Set up
 
+The git hooks in `lefthook.yml` run the format check and a secret scan on each commit, check each commit message against `commit-check.toml`, and run clippy and the tests before a push. `mise install` fetches the tools they use:
+
 ```sh
+mise install && lefthook install # the git hooks
 cargo test                       # the scanner, the packs and the generated docs
 claude plugin test claude-plugin # the Claude Code mod (needs Claude Code, no account)
 cargo build                      # build the real scanner for the integration tests

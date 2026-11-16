@@ -1,0 +1,21 @@
+# Commit and branch policy, checked by the commit-msg and pre-push hooks in lefthook.yml
+# and, for the squash message (PR title and body), by .github/workflows/pr-title.yml.
+
+[commit]
+# release-please reads squash subjects; the longest on main is under 100.
+subject_max_length = 100
+allow_merge_commits = true
+allow_revert_commits = true
+# message_pattern replaces commit-check's Conventional Commits check, so the types are
+# spelled out here. The lookahead rejects the Claude Code mod's placeholder text
+# ([LABEL-xxxxxxxx], eight hex digits) anywhere in the message: it has replaced real
+# trailers before (#81).
+message_pattern = '''^(?![\s\S]*\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\])(?:(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(?:\([^)\n]+\))?!?: [^\n]+|Merge |Revert "|fixup! |squash! |amend! )'''
+
+[branch]
+conventional_branch = true
+allow_branch_types = [
+  "feature", "feat", "bugfix", "fix", "hotfix", "release", "chore",
+  "refactor", "docs", "test", "perf", "ci", "style", "build", "revert", "wip",
+  "agent",
+]
