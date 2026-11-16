@@ -1,5 +1,5 @@
 import type { Register, PromptContextBlock } from 'claude-code'
-import { scrub, restore, isLiteral, mint, valuesIn, type ScanOptions } from './vault.ts'
+import { binaryScan, scrub, restore, isLiteral, mint, valuesIn, type MaskOptions } from './vault.ts'
 
 // redact for Claude Code: every text that enters the conversation goes
 // through the redact binary first, and the real value behind a placeholder
@@ -183,14 +183,14 @@ let warned = false
 let located: string | undefined
 
 // Masks `texts` in one run of the binary, inside the hook's time budget.
-async function run($: any, next: Budget, binary: string, texts: string[], extra: Partial<ScanOptions> = {}) {
+async function run($: any, next: Budget, binary: string, texts: string[], mask: MaskOptions = {}, command?: string) {
   if (texts.some((t) => t.length > SCAN_CAP)) throw new Error('redact: text too large to scan')
   const timeoutMs = next.budget.remainingMs - 300
   if (timeoutMs < 200) throw new Error('redact: out of time')
-  return scrub($, texts, {
+  const scan = binaryScan($, {
     binary: located ?? binary,
+    command,
     timeoutMs,
-    ...extra,
     onLocated: (path) => {
       located = path
     },
@@ -200,6 +200,7 @@ async function run($: any, next: Budget, binary: string, texts: string[], extra:
       try { $.ui.toast(`redact: ${why}. Withholding text until it runs. ${HINT}`) } catch {}
     },
   })
+  return scrub(scan, texts, mask)
 }
 
 export const register: Register = (on, options) => {
@@ -255,10 +256,10 @@ export const register: Register = (on, options) => {
       }
     }
     const r = await next(input)
-    const scan = { command: overrideCommand(command), handed }
+    const scanCommand = overrideCommand(command)
     if (r.deny !== undefined) {
       // A refusal from beneath may quote the input it refused, real values and all.
-      const d = await run($, next, binary, [r.deny], { ...scan, escape: true })
+      const d = await run($, next, binary, [r.deny], { handed, escape: true }, scanCommand)
       return d.tags.size === 0 ? r : { deny: d.masked[0] ?? WITHHELD }
     }
 
@@ -278,7 +279,7 @@ export const register: Register = (on, options) => {
       ? JSON.stringify(r.result, (_key, value) => typeof value === 'bigint' ? String(value) : value)
       : ''
     const texts = [named, structured, ...unique]
-    const { masked, tags } = await run($, next, binary, texts, { ...scan, escape: !LIVE_TAG_TOOLS.has(e.tool) })
+    const { masked, tags } = await run($, next, binary, texts, { handed, escape: !LIVE_TAG_TOOLS.has(e.tool) }, scanCommand)
     if (tags.size === 0) return r
 
     const leaves = masked.slice(2)
