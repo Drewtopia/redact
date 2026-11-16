@@ -93,7 +93,15 @@ test('overlapping spans merge under the first one\'s label', async () => {
     { start: 6, end: 10, label: 'A' },
     { start: 9, end: 18, label: 'C' },
   ])
-  expect(await binaryScan($, { binary: 'redact', timeoutMs: 1000 })([text])).toEqual([[{ start: 6, end: 18, label: 'B' }]])
+  const { masked } = await scrub(binaryScan($, { binary: 'redact', timeoutMs: 1000 }), [text])
+  expect(masked[0]).toMatch(new RegExp(`^TOKEN=\\[B-[0-9a-f]{8}\\]${TOKEN.slice(12)}$`))
+})
+
+test('output that is not JSON throws and says why', async () => {
+  const why: string[] = []
+  const $ = { process: { run: async () => ({ exitCode: 0, stdout: 'warning: old config', stderr: '', isStdoutTruncated: false }) } }
+  await expect(binaryScan($, { binary: 'redact', timeoutMs: 1000, onBroken: (w) => why.push(w) })(['short'])).rejects.toThrow('unknown shape')
+  expect(why).toHaveLength(1)
 })
 
 test('spans of an unknown shape throw and say why', async () => {
@@ -103,4 +111,21 @@ test('spans of an unknown shape throw and say why', async () => {
     await expect(binaryScan($, { binary: 'redact', timeoutMs: 1000, onBroken: (w) => why.push(w) })(['short'])).rejects.toThrow('unknown shape')
   }
   expect(why).toHaveLength(3)
+})
+
+test('spans out of order or overlapping are merged before masking, so nothing leaks', async () => {
+  const value = `${TOKEN}e`
+  const text = `aaaaa TOKEN=${value} bbbbb`
+  const at = text.indexOf(value)
+  const scan: Scan = async () => [[
+    { start: at + 4, end: at + value.length, label: 'B' },
+    { start: at, end: at + 6, label: 'A' },
+  ]]
+  const { masked } = await scrub(scan, [text])
+  expect(masked[0]).toMatch(/^aaaaa TOKEN=\[A-[0-9a-f]{8}\] bbbbb$/)
+})
+
+test('a scan that answers for fewer texts than it was given throws, so the hook withholds', async () => {
+  const scan: Scan = async () => [[]]
+  await expect(scrub(scan, ['one', `TOKEN=${TOKEN}`])).rejects.toThrow('2 texts')
 })

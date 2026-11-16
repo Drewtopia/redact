@@ -151,8 +151,22 @@ const labelOf = (tag: string | undefined): string | undefined => tag?.slice(1, -
 // A part to hide, in UTF-16 indexes of the text it was found in.
 export type Span = { start: number; end: number; label: string }
 
-// The scan port: for each text, its spans, sorted and not overlapping.
+// The scan port: for each text, its spans, in any order. scrub sorts and
+// merges them, so no adapter has to.
 export type Scan = (texts: string[]) => Promise<Span[][]>
+
+// Overlapping spans merge into one, under the first one's label. Masking a
+// span that starts before the last one ended would put raw text back.
+function merge(list: Span[]): Span[] {
+  const sorted = [...list].sort((x, y) => x.start - y.start || y.end - x.end)
+  const merged: Span[] = []
+  for (const s of sorted) {
+    const last = merged[merged.length - 1]
+    if (last && s.start < last.end) last.end = Math.max(last.end, s.end)
+    else merged.push({ ...s })
+  }
+  return merged
+}
 
 // UTF-8 byte offsets (what the binary reports) to UTF-16 indexes (what a JS
 // string slices by). A lone surrogate travels as U+FFFD, three bytes.
@@ -249,7 +263,12 @@ export function binaryScan($: any, o: ScanOptions): Scan {
       o.onBroken?.(why)
       throw new Error(why)
     }
-    const spans: unknown = JSON.parse(r.stdout)
+    let spans: unknown
+    try {
+      spans = JSON.parse(r.stdout)
+    } catch {
+      spans = undefined
+    }
     // Spans of another shape would hide nothing and pass the text raw.
     const size = byteLength(joined)
     const ok = (s: any): s is Span =>
@@ -278,18 +297,7 @@ export function binaryScan($: any, o: ScanOptions): Scan {
       }
     }
 
-    // Overlapping spans merge into one, under the first one's label: an older
-    // binary may not merge them itself.
-    return parts.map(({ spans: list }) => {
-      list.sort((x, y) => x.start - y.start || y.end - x.end)
-      const merged: Span[] = []
-      for (const s of list) {
-        const last = merged[merged.length - 1]
-        if (last && s.start < last.end) last.end = Math.max(last.end, s.end)
-        else merged.push({ ...s })
-      }
-      return merged
-    })
+    return parts.map((p) => p.spans)
   }
 }
 
@@ -306,10 +314,12 @@ export async function scrub(scan: Scan, texts: string[], o: MaskOptions = {}): P
   if (texts.length === 0) return { masked: [], tags }
   const pieces = o.escape ? texts.map((t) => escapeLiteralTags(t, tags)) : texts
   const found = await scan(pieces)
+  // A text with no answer would pass raw: withhold instead.
+  if (found.length !== pieces.length) throw new Error(`redact: scan answered for ${found.length} of ${pieces.length} texts`)
   const minted = pieces.map((text, i) => {
     let out = ''
     let cur = 0
-    for (const s of found[i] ?? []) {
+    for (const s of merge(found[i]!)) {
       const label = tagLabel(s.label)
       out += text.slice(cur, s.start) + mint(label, text.slice(s.start, s.end), tags)
       cur = s.end
