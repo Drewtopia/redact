@@ -278,7 +278,11 @@ fn main() -> ExitCode {
             };
             if explain {
                 for s in &spans {
-                    eprintln!("{}:{} -> [{}-…]", s.pack, s.rule, s.label);
+                    let key = format!("{}:{}", s.pack, s.rule);
+                    match loaded.kinds.get(&key) {
+                        Some(kind) => eprintln!("{key} -> [{}-…] (was {kind})", s.label),
+                        None => eprintln!("{key} -> [{}-…]", s.label),
+                    }
                 }
             }
             let out = if json {

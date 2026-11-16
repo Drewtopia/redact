@@ -32,12 +32,24 @@
 # enable = ["pii"]        # packs that start switched off
 # disable = ["gcp"]       # packs you do not want, or one rule as pack:rule ("pii:ipv4")
 
+# --- Placeholder labels ----------------------------------------------------------
+
+# What placeholders say. Leave this out for [SECRET-…], [PERSON-…] and the like.
+# style: "kind" (the default), "rule" (the rule id: [GITHUB-TOKEN-…]) or "generic"
+# ([HIDDEN-…] everywhere). Any other key renames a label. [labels.<pack>] renames
+# one rule; [labels.words] one word list or variable, whose name can say what it hides.
+# [labels]
+# style = "kind"
+# SECRET = "CREDENTIAL"
+# [labels.credentials]
+# github-token = "GITHUB-TOKEN"
+
 # --- Overrides -------------------------------------------------------------------
 
 # Settings that apply only on a machine (`host`), in a folder and below (`dir`), or
 # for a command (`command`, from --command or REDACT_COMMAND). Each is a glob: `*`
 # matches anything. Every condition given must match. An override may set env,
-# env_files, allow and [override.packs].
+# env_files, allow, [override.packs] and [override.labels].
 
 # [[override]]
 # host = "work-laptop"
