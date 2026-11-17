@@ -25,6 +25,8 @@ Work on issues in this order:
 
 Pick the highest-priority open issue that is not blocked by another open issue.
 
+Skip these issues, because a branch for each already waits for review: {{CLAIMED_ISSUES}}. If every issue in the list is skipped or blocked, there is nothing to do.
+
 ## Workflow
 
 1. **Explore** — read the issue carefully. Pull in the parent PRD if referenced. Read the repo's agent guide, `CONTRIBUTING.md`, and the relevant source files and tests before writing any code.

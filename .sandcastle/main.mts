@@ -24,6 +24,7 @@
 
 import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
+import { execFileSync } from "node:child_process";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -35,6 +36,19 @@ const MAX_ITERATIONS = 10;
 
 // Named here, not derived from the folder name, so every worktree of the repo uses one image.
 const IMAGE_NAME = "sandcastle:redact";
+
+// Agents never close an issue, so an issue stays open while its branch waits for
+// review. Read the "Closes #N" lines on the agent branches not yet merged here, so
+// the implementer skips those issues, in this run and in later ones.
+const claimedIssues = () => {
+  const log = execFileSync(
+    "git",
+    ["log", "--branches=agent/sandcastle-*", "--not", "HEAD", "--format=%B"],
+    { encoding: "utf8" },
+  );
+  const numbers = [...log.matchAll(/^Closes #(\d+)/gm)].map((m) => Number(m[1]));
+  return [...new Set(numbers)].sort((a, b) => a - b);
+};
 
 // ---------------------------------------------------------------------------
 // Main loop
@@ -72,6 +86,9 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
       maxIterations: 1,
       agent: sandcastle.claudeCode("claude-opus-5-5"),
       promptFile: "./.sandcastle/implement-prompt.md",
+      promptArgs: {
+        CLAIMED_ISSUES: claimedIssues().map((n) => `#${n}`).join(", ") || "none",
+      },
     });
 
     if (!implement.commits.length) {
