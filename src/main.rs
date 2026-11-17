@@ -576,6 +576,12 @@ mod docs {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(d.join("packs")).unwrap();
         std::fs::write(d.join("customers.txt"), "Contoso Pharma\n").unwrap();
+        // A pack you write, with the dotted id the starter config recommends.
+        std::fs::write(
+            d.join("packs/acme-billing.toml"),
+            "schema_version = 1\nid = \"acme.billing\"\n[[rules]]\nid = \"customer-id\"\nregex = '(C-[0-9]{6})'\n",
+        )
+        .unwrap();
         std::fs::write(d.join("config.toml"), &live).unwrap();
         let loaded = pack::load(&pack::Options {
             files: vec![],
@@ -589,6 +595,7 @@ mod docs {
         });
         std::fs::remove_dir_all(&d).unwrap();
         let loaded = loaded.expect("the uncommented starter config loads");
+        assert!(loaded.packs.iter().any(|p| p.id == "acme.billing"));
         assert!(
             loaded.sources.iter().any(|s| s.kind == "override"),
             "no override applied"

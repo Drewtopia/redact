@@ -38,7 +38,7 @@ redact: pack id "identity" is used by built-in identity and ~/.config/redact/pac
 
 To replace a built-in pack, `disable` it and give yours another id. A pack file named twice, say in the packs folder and again in `import`, is an error too: name it in one place.
 
-A dotted id works anywhere a pack is named. `disable = ["acme.billing:customer-id"]` switches off one rule, and `--explain` prints `acme.billing:customer-id`.
+A dotted id works anywhere a pack is named. `disable = ["acme.billing:customer-id"]` switches off one rule, and `--explain` prints `acme.billing:customer-id`. In a `[labels]` table, quote it: `[labels."acme.billing"]`, since a bare dot makes a nested TOML table.
 
 ## Fields
 
