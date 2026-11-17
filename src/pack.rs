@@ -1818,7 +1818,8 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
 
     #[test]
     fn two_user_packs_cannot_share_an_id() {
-        let d = tmp("dup-user");
+        // Canonical, as the loader shows an imported file: on Windows that adds a \\?\ prefix.
+        let d = tmp("dup-user").canonicalize().unwrap();
         std::fs::create_dir_all(d.join("packs")).unwrap();
         let (a, b) = (d.join("packs").join("a.toml"), d.join("b.toml"));
         std::fs::write(&a, pack_named("drew.customers")).unwrap();
@@ -1835,7 +1836,8 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
 
     #[test]
     fn one_pack_file_loaded_twice_says_so() {
-        let d = tmp("dup-file");
+        // Canonical, as the loader shows an imported file: on Windows that adds a \\?\ prefix.
+        let d = tmp("dup-file").canonicalize().unwrap();
         std::fs::create_dir_all(d.join("packs")).unwrap();
         let a = d.join("packs").join("a.toml");
         std::fs::write(&a, pack_named("drew.customers")).unwrap();
