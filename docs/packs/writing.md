@@ -5,7 +5,7 @@ Save a pack as a `.toml` file in `~/.config/redact/packs/`, or `import` it from 
 ```toml
 # ~/.config/redact/packs/acme.toml
 schema_version = 1
-id = "acme"
+id = "acme.billing"
 description = "Customer IDs and account owners in the Acme billing API"
 keywords = ["customerid", "accountid"]   # the pack only runs when one of these appears
 
@@ -26,6 +26,20 @@ within = '''"accountId"\s*:'''
 remember = "distinctive"
 ```
 
+## Pick a pack id
+
+Give your pack a dotted id, `<you>.<topic>`: `acme.billing`, `drew.customers`. Built-in pack ids never hold a dot, so a later built-in pack can't take your pack's name.
+
+Two packs can't share an id. `[packs] enable`, `disable` and `pack:rule` name a pack by its id alone, so redact stops with an error naming both files:
+
+```text
+redact: pack id "identity" is used by built-in identity and ~/.config/redact/packs/identity.toml: give yours another id, such as "<you>.identity"
+```
+
+To replace a built-in pack, `disable` it and give yours another id. A pack file named twice, say in the packs folder and again in `import`, is an error too: name it in one place.
+
+A dotted id works anywhere a pack is named. `disable = ["acme.billing:customer-id"]` switches off one rule, and `--explain` prints `acme.billing:customer-id`. In a `[labels]` table, quote it: `[labels."acme.billing"]`, since a bare dot makes a nested TOML table.
+
 ## Fields
 
 ### Pack
@@ -33,7 +47,7 @@ remember = "distinctive"
 | Field | What it does |
 | :- | :- |
 | `schema_version` | Always `1` |
-| `id` | The pack's name, shown by `redact packs` and `--explain` |
+| `id` | The pack's name, shown by `redact packs` and `--explain`. Use a dotted `<you>.<topic>` name, such as `acme.billing`. See [Pick a pack id](#pick-a-pack-id) |
 | `description` | One line on what the pack hides |
 | `keywords` | The pack runs only when one of these appears, in any case. ASCII whitespace in a keyword is ignored when comparing, so formatting cannot skip a matching regex. A cheap test before any regex runs |
 | `allow` | Values never to hide, such as public IDs |

@@ -125,7 +125,7 @@ A pack is a TOML file of rules. Each rule's `regex` finds a spot and `secretGrou
 
 ```toml
 schema_version = 1
-id = "acme"
+id = "acme.billing"   # dotted, so no built-in pack can take it
 keywords = ["customerid"]   # the pack only runs when one of these appears
 
 [[rules]]

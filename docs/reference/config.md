@@ -163,7 +163,7 @@ gh pr view 42 | redact scan --command "gh pr view 42"
 3. The config file and everything it imports, in order, then each override that applies.
 4. `--file` and `--env-file` from the command line.
 
-`[packs]` choices apply last, to the packs from all four steps. Two flags change the order:
+`[packs]` choices apply last, to the packs from all four steps. Each pack id loads once: a second pack with an id already loaded, or a pack file named twice, stops the load with an error naming both (see [Pick a pack id](../packs/writing#pick-a-pack-id)). Two flags change the order:
 
 - `--only-files` skips steps 1 to 3.
 - `-c` replaces steps 2 and 3.

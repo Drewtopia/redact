@@ -2259,6 +2259,46 @@ mod tests {
     }
 
     #[test]
+    fn a_dotted_pack_id_takes_pack_colon_rule() {
+        let d = tmp("dotted");
+        std::fs::write(
+            d.join("mine.toml"),
+            "schema_version = 1\nid = \"drew.customers\"\n\n[[rules]]\nid = \"account-id\"\nregex = 'ACCT-[0-9]+'\nlabel = \"ID\"\n\n[[rules]]\nid = \"order-id\"\nregex = 'ORD-[0-9]+'\nlabel = \"ID\"\n",
+        )
+        .unwrap();
+        let load = |config: &str| {
+            std::fs::write(d.join("config.toml"), config).unwrap();
+            pack::load(&pack::Options {
+                files: vec![],
+                builtin: true,
+                user: true,
+                config: Some(d.join("config.toml")),
+                env_files: vec![],
+                command: None,
+                cwd: None,
+                host: Some("test-host".into()),
+            })
+        };
+        let text = "ACCT-1234 ORD-5678";
+        let on = load("import = [\"mine.toml\"]\n");
+        let off =
+            load("import = [\"mine.toml\"]\n[packs]\ndisable = [\"drew.customers:account-id\"]\n");
+        std::fs::remove_dir_all(&d).unwrap();
+        let rules = |l: &pack::Loaded| -> Vec<String> {
+            scan(text, l)
+                .unwrap()
+                .iter()
+                .map(|s| format!("{}:{}", s.pack, s.rule))
+                .collect()
+        };
+        assert_eq!(
+            rules(&on.unwrap()),
+            ["drew.customers:account-id", "drew.customers:order-id"]
+        );
+        assert_eq!(rules(&off.unwrap()), ["drew.customers:order-id"]);
+    }
+
+    #[test]
     fn dir_overrides_match_windows_paths() {
         let url = "https://dev.azure.com/fabrikamq/Bluefinq/_git/app";
         let cfg = "[[override]]\ndir = \"C:/Users/x/dev\"\nallow = [\"bluefinq\"]\n";
