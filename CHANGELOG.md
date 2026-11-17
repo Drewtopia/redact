@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0](https://github.com/Drewtopia/redact/compare/v0.3.0...v0.4.0) (2026-11-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **packs:** refuse a pack whose id is already loaded ([#107](https://github.com/Drewtopia/redact/issues/107))
+
+### Bug Fixes
+
+* **packs:** refuse a pack whose id is already loaded ([#107](https://github.com/Drewtopia/redact/issues/107)) ([a99ab49](https://github.com/Drewtopia/redact/commit/a99ab49ba8ac3fbee2ad9a1c30e066a9a56d9e1c))
+
 ## [0.3.0](https://github.com/Drewtopia/redact/compare/v0.2.1...v0.3.0) (2026-11-16)
 
 
