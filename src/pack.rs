@@ -624,7 +624,7 @@ pub fn load(opts: &Options) -> Result<Loaded, String> {
                 &pack.id,
                 None,
             );
-            l.loaded.packs.push(pack);
+            l.add_pack(pack)?;
         }
     }
     if opts.user {
@@ -921,6 +921,9 @@ struct Loader {
     loaded: Loaded,
     /// Files already loaded: a file reached twice loads once.
     seen: HashSet<PathBuf>,
+    /// The files in `seen` that are packs: one reached twice is an error, not
+    /// skipped, as it is most likely named in two places by mistake.
+    pack_files: HashSet<PathBuf>,
     /// The config files being imported right now, to catch a loop.
     stack: Vec<PathBuf>,
     /// What `[[override]]` sections match against.
@@ -1145,6 +1148,19 @@ impl Loader {
         }
     }
 
+    /// Adds a pack, unless its id is taken: `[packs]` and `pack:rule` name a pack
+    /// by id alone, so two packs with one id would be switched on and off together.
+    fn add_pack(&mut self, pack: Pack) -> Result<(), String> {
+        if let Some(had) = self.loaded.packs.iter().find(|p| p.id == pack.id) {
+            return Err(format!(
+                "pack id \"{}\" is used by {} and {}: give yours another id, such as \"<you>.{}\"",
+                pack.id, had.source, pack.source, pack.id
+            ));
+        }
+        self.loaded.packs.push(pack);
+        Ok(())
+    }
+
     fn file(&mut self, path: &Path, via: Option<&Path>) -> Result<(), String> {
         let shown = tilde(path);
         let named_by = via
@@ -1158,6 +1174,11 @@ impl Loader {
             return Err(format!("import loop: {}", chain.join(" -> ")));
         }
         if !self.seen.insert(canon.clone()) {
+            if self.pack_files.contains(&canon) {
+                return Err(format!(
+                    "pack {shown}{named_by} is loaded twice: name it in one place only"
+                ));
+            }
             return Ok(());
         }
         if canon.is_dir() {
@@ -1216,7 +1237,8 @@ impl Loader {
                     &pack.id,
                     via,
                 );
-                self.loaded.packs.push(pack);
+                self.pack_files.insert(canon.clone());
+                self.add_pack(pack)?;
             }
             "toml" => {
                 let cfg: ConfigFile = toml::from_str(&text).map_err(|e| format!("{shown}: {e}"))?;
@@ -1748,6 +1770,129 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
         assert!(err.contains("NOPE"), "{err}");
         let err = layered(&["[labels]\n\"a:one\" = \"X\"\n"]).err().unwrap();
         assert!(err.contains("[labels.a] one"), "{err}");
+    }
+
+    const MINE: &str = "schema_version = 1\nid = \"{id}\"\n\n[[rules]]\nid = \"account-id\"\nregex = 'ACCT-[0-9]+'\nlabel = \"ID\"\n";
+
+    fn pack_named(id: &str) -> String {
+        MINE.replace("{id}", id)
+    }
+
+    /// A fresh folder for one test's files.
+    fn tmp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("redact-test-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn opts(files: Vec<PathBuf>, config: Option<PathBuf>) -> Options {
+        Options {
+            files,
+            builtin: true,
+            user: config.is_some(),
+            config,
+            env_files: vec![],
+            command: None,
+            cwd: None,
+            host: Some("test-host".into()),
+        }
+    }
+
+    #[test]
+    fn a_pack_cannot_take_a_built_in_id() {
+        let d = tmp("dup-builtin");
+        let x = d.join("x.toml");
+        std::fs::write(&x, pack_named("identity")).unwrap();
+        let err = load(&opts(vec![x.clone()], None)).err();
+        std::fs::remove_dir_all(&d).unwrap();
+        let err = err.expect("a repeated pack id must not load");
+        assert!(
+            err.contains("\"identity\"")
+                && err.contains("built-in identity")
+                && err.contains(&tilde(&x)),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn two_user_packs_cannot_share_an_id() {
+        let d = tmp("dup-user");
+        std::fs::create_dir_all(d.join("packs")).unwrap();
+        let (a, b) = (d.join("packs").join("a.toml"), d.join("b.toml"));
+        std::fs::write(&a, pack_named("drew.customers")).unwrap();
+        std::fs::write(&b, pack_named("drew.customers")).unwrap();
+        std::fs::write(d.join("config.toml"), "import = [\"packs\", \"b.toml\"]\n").unwrap();
+        let err = load(&opts(vec![], Some(d.join("config.toml")))).err();
+        std::fs::remove_dir_all(&d).unwrap();
+        let err = err.expect("a repeated pack id must not load");
+        assert!(
+            err.contains("drew.customers") && err.contains(&tilde(&a)) && err.contains(&tilde(&b)),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn one_pack_file_loaded_twice_says_so() {
+        let d = tmp("dup-file");
+        std::fs::create_dir_all(d.join("packs")).unwrap();
+        let a = d.join("packs").join("a.toml");
+        std::fs::write(&a, pack_named("drew.customers")).unwrap();
+        std::fs::write(
+            d.join("config.toml"),
+            "import = [\"packs\", \"packs/a.toml\"]\n",
+        )
+        .unwrap();
+        let err = load(&opts(vec![], Some(d.join("config.toml")))).err();
+        std::fs::remove_dir_all(&d).unwrap();
+        let err = err.expect("a pack file loaded twice must not load");
+        assert!(
+            err.contains("loaded twice") && err.contains(&tilde(&a)),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_config_reached_twice_still_loads_once() {
+        let d = tmp("dup-config");
+        std::fs::write(d.join("shared.toml"), "allow = [\"x\"]\n").unwrap();
+        std::fs::write(d.join("a.toml"), "import = [\"shared.toml\"]\n").unwrap();
+        std::fs::write(
+            d.join("config.toml"),
+            "import = [\"a.toml\", \"shared.toml\"]\n",
+        )
+        .unwrap();
+        let loaded = load(&opts(vec![], Some(d.join("config.toml"))));
+        std::fs::remove_dir_all(&d).unwrap();
+        assert!(loaded.is_ok());
+    }
+
+    #[test]
+    fn built_in_pack_ids_have_no_dot() {
+        // A dotted id is left for packs you write, so a later built-in cannot take it.
+        for (name, text) in BUILTIN {
+            let pack = compile(text, name).unwrap();
+            assert!(
+                !pack.id.contains('.'),
+                "built-in pack id {} has a dot",
+                pack.id
+            );
+        }
+    }
+
+    #[test]
+    fn packs_lists_each_id_once() {
+        let loaded = load(&opts(vec![], None)).unwrap();
+        let mut ids: Vec<&str> = loaded
+            .packs
+            .iter()
+            .chain(&loaded.off)
+            .map(|p| p.id.as_str())
+            .collect();
+        let n = ids.len();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), n);
     }
 
     #[test]
