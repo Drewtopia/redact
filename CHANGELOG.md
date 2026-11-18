@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.1](https://github.com/Drewtopia/redact/compare/v0.4.0...v0.4.1) (2026-11-18)
+
+
+### Features
+
+* **claude-plugin:** warn when the mod and binary come from different releases ([#111](https://github.com/Drewtopia/redact/issues/111)) ([9955461](https://github.com/Drewtopia/redact/commit/9955461c65f72a195c22c9af6dc450bfe99d6b27))
+
+
+### Bug Fixes
+
+* **claude-plugin:** stop withholding Azure DevOps URLs in tool results ([#110](https://github.com/Drewtopia/redact/issues/110)) ([b0e781b](https://github.com/Drewtopia/redact/commit/b0e781ba22d93a585d6f1a3fccabb4908fe0578d))
+
 ## [0.4.0](https://github.com/Drewtopia/redact/compare/v0.3.0...v0.4.0) (2026-11-17)
 
 
