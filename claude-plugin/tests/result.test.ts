@@ -57,9 +57,11 @@ test('a multiline value found as JSON is hidden whole, past a token inside it', 
   expect((m.result as { password: string }).password).toMatch(new RegExp(`^${TAG.source}$`))
 })
 
-test('a match crossing JSON fields throws, so the hook withholds', async () => {
+test('a match crossing JSON fields withholds the result', async () => {
   const scan = memoryScan((text) => finds(/("a":"x","b":"y)/g)(text))
-  await expect(maskResult(scan, { result: { a: 'x', b: 'y' } })).rejects.toThrow()
+  const m = await maskResult(scan, { result: { a: 'x', b: 'y' } })
+  if (!('withhold' in m)) throw new Error('expected a withhold')
+  expect(m.withhold).toContain('withheld')
 })
 
 test('a short value inside one found by its field name cannot be placed, so it throws and the hook withholds', async () => {
@@ -99,4 +101,22 @@ test('masking options pass through: a value the tool was handed is hidden bare',
   const m = await maskResult(memoryScan(() => []), { result: `echo ${handed}` }, { handed: new Set([handed]) })
   if (!('tags' in m)) throw new Error(m.withhold)
   expect(m.result).toMatch(/^echo \[SECRET-[0-9a-f]{8}\]$/)
+})
+
+test('a match that ends inside a JSON escape withholds with a reason, and does not throw', async () => {
+  // The JSON copy reads `…/_git/gadget-api\"`: a rule that takes the `\` ends mid-escape.
+  const m = await maskResult(memoryScan(finds(/_git\/([^/\s"'?#]+)/g)), { result: { stdout: 'x/_git/gadget-api"' } })
+  if (!('withhold' in m)) throw new Error('expected a withhold')
+  expect(m.withhold).toContain('JSON')
+})
+
+test('a short value found in a URL is placed where its own string already hid it', async () => {
+  const url = 'https://dev.azure.com/fabrikamqa/Ops/_git/widget-api'
+  const project = finds(/dev\.azure\.com\/[^/\s"'\\]+\/([^/\s"'?#\\]+)/g)
+  const m = await maskResult(memoryScan(project), { result: { stdout: `${url}\n`, other: 'Opsware' } })
+  if (!('tags' in m)) throw new Error(m.withhold)
+  const out = m.result as { stdout: string; other: string }
+  expect(out.stdout).toMatch(/^https:\/\/dev\.azure\.com\/fabrikamqa\/\[SECRET-[0-9a-f]{8}\]\/_git\/widget-api\n$/)
+  // A short value is never replaced by blind substring.
+  expect(out.other).toBe('Opsware')
 })

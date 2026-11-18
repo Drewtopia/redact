@@ -220,6 +220,7 @@ export async function locate($: any, name: string): Promise<string | undefined> 
     miseData && `${miseData}/shims`,
     xdgData && `${xdgData}/mise/shims`,
     home && `${home}/.local/share/mise/shims`,
+    home && `${home}/.mise/shims`,
     localAppData && `${localAppData}/mise/shims`,
     cargoHome && `${cargoHome}/bin`,
     home && `${home}/.cargo/bin`,
@@ -235,7 +236,10 @@ export async function locate($: any, name: string): Promise<string | undefined> 
   return undefined
 }
 
-// The redact binary behind the scan port. Throws when it fails, so the hook withholds.
+// The binary would not start, exited non-zero or printed something unreadable.
+export class ScanFailed extends Error {}
+
+// The redact binary behind the scan port. Throws ScanFailed when it fails, so the hook withholds.
 export function binaryScan($: any, o: ScanOptions): Scan {
   return async (pieces) => {
     if (pieces.length === 0) return []
@@ -255,13 +259,13 @@ export function binaryScan($: any, o: ScanOptions): Scan {
       } catch {
         const why = `could not run \`${o.binary}\` (${err instanceof Error ? err.message : String(err)})`
         o.onBroken?.(why)
-        throw new Error(why)
+        throw new ScanFailed(why)
       }
     }
     if (r.exitCode !== 0 || r.isStdoutTruncated) {
       const why = `\`${o.binary} scan\` exit ${r.exitCode}: ${r.stderr.trim().split('\n')[0] ?? ''}`
       o.onBroken?.(why)
-      throw new Error(why)
+      throw new ScanFailed(why)
     }
     let spans: unknown
     try {
@@ -276,7 +280,7 @@ export function binaryScan($: any, o: ScanOptions): Scan {
     if (!Array.isArray(spans) || !spans.every(ok)) {
       const why = `\`${o.binary} scan --json\` printed spans of an unknown shape`
       o.onBroken?.(why)
-      throw new Error(why)
+      throw new ScanFailed(why)
     }
     const at = byteIndexes(joined, spans.flatMap((s) => [s.start, s.end]))
 
