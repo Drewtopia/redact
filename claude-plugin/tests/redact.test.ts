@@ -238,6 +238,15 @@ test('redact found nowhere still withholds the result', async ($, on) => {
   expect(JSON.stringify(r)).toContain('withheld')
 })
 
+test('redact missing from PATH is found in ~/.mise/shims', async ($, on) => {
+  const shim = '/home/t/.mise/shims/redact'
+  const argv0s = missingFromPath(on, [shim])
+  on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
+  const r = String((await call($, { tool: 'Bash', command: 'cat .env' })).result)
+  expect(r).not.toContain(TOKEN)
+  expect(argv0s).toEqual(['redact', shim])
+})
+
 test('only a binary that will not run gets the PATH hint', async ($, on) => {
   on('ui.notice', () => ({ value: undefined }))
   on('ui.toast', () => ({ value: undefined }))

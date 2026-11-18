@@ -220,6 +220,7 @@ export async function locate($: any, name: string): Promise<string | undefined> 
     miseData && `${miseData}/shims`,
     xdgData && `${xdgData}/mise/shims`,
     home && `${home}/.local/share/mise/shims`,
+    home && `${home}/.mise/shims`,
     localAppData && `${localAppData}/mise/shims`,
     cargoHome && `${cargoHome}/bin`,
     home && `${home}/.cargo/bin`,
