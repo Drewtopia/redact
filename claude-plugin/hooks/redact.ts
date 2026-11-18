@@ -1,5 +1,5 @@
 import type { Register, PromptContextBlock } from 'claude-code'
-import { binaryScan, scrub, restore, isLiteral, type MaskOptions, type Scan } from './vault.ts'
+import { binaryScan, scrub, restore, isLiteral, ScanFailed, type MaskOptions, type Scan } from './vault.ts'
 import { maskResult, walk } from './result.ts'
 
 // redact for Claude Code: every text that enters the conversation goes
@@ -16,6 +16,7 @@ import { maskResult, walk } from './result.ts'
 const SCAN_CAP = 16_000_000
 const HINT = "Is `redact` on this session's PATH? Install it with `mise use -g github:Drewtopia/redact`, or set the mod's `binary` option to its full path."
 const WITHHELD = `redact could not scan this result, so it was withheld. Narrow the output (head, grep, offset) and retry. ${HINT}`
+const UNMAPPED = 'redact could not scan this result in full or map a hidden value back into it, so it was withheld. Narrow the output (head, grep, offset) and retry.'
 const BLOCK_WITHHELD = '[redact withheld this text: the scan failed]'
 
 // Subagent answers hold placeholders the subagent used: they stay live.
@@ -228,6 +229,8 @@ export const register: Register = (on, options) => {
     }
 
     const m = await maskResult(scanner($, next, binary, scanCommand), r, { handed, escape: !LIVE_TAG_TOOLS.has(e.tool) })
+      // The PATH hint only helps when the binary itself failed.
+      .catch((err) => ({ withhold: err instanceof ScanFailed ? WITHHELD : UNMAPPED }))
     if ('withhold' in m) return { deny: m.withhold }
     if (m.tags.size === 0) return r
     const n = countHidden(m.tags)
