@@ -136,6 +136,20 @@ type Budget = { budget: { remainingMs: number } }
 
 const countHidden = (tags: Set<string>): number => [...tags].filter((t) => !isLiteral(t)).length
 
+// release-please bumps this with plugin.json. The rules live in the binary and
+// the hook logic here, so a fix can need both, and a mismatch is worth saying.
+export const MOD_VERSION = '0.4.0' // x-release-please-version
+let versionChecked = false
+
+async function checkVersion($: any, binary: string): Promise<void> {
+  versionChecked = true
+  try {
+    const r = await $.process.run([binary, '--version'], { timeoutMs: 1000 })
+    const v = /\d+\.\d+\.\d+/.exec(r.stdout)?.[0]
+    if (v && v !== MOD_VERSION) $.ui.toast(`redact: the mod is ${MOD_VERSION} but the binary is ${v}. A fix can need both, so update the older one (binary: \`mise up github:Drewtopia/redact\`).`)
+  } catch {}
+}
+
 let warned = false
 // The full path locate found after the bare name failed, used from then on.
 let located: string | undefined
@@ -146,7 +160,7 @@ function scanner($: any, next: Budget, binary: string, command?: string): Scan {
     if (texts.some((t) => t.length > SCAN_CAP)) throw new Error('redact: text too large to scan')
     const timeoutMs = next.budget.remainingMs - 300
     if (timeoutMs < 200) throw new Error('redact: out of time')
-    return binaryScan($, {
+    const spans = await binaryScan($, {
       binary: located ?? binary,
       command,
       timeoutMs,
@@ -159,6 +173,9 @@ function scanner($: any, next: Budget, binary: string, command?: string): Scan {
         try { $.ui.toast(`redact: ${why}. Withholding text until it runs. ${HINT}`) } catch {}
       },
     })(texts)
+    // Once a session, after a scan worked, so a slow or old binary never blocks one.
+    if (!versionChecked) await checkVersion($, located ?? binary)
+    return spans
   }
 }
 

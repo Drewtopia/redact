@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import { MOD_VERSION } from '../hooks/redact.ts'
 
 // A stand-in for the redact binary: it hides the value after TOKEN= or
 // PASSWORD= and reports UTF-8 byte offsets, as `redact scan --json` does.
@@ -227,7 +228,8 @@ test('redact missing from PATH is found in the mise shims folder, and that path 
   const second = String((await call($, { tool: 'Bash', command: 'cat .env' })).result)
   expect(first).toMatch(/^TOKEN=\[SECRET-[0-9a-f]{8}\]$/)
   expect(second).toMatch(/^TOKEN=\[SECRET-[0-9a-f]{8}\]$/)
-  expect(argv0s).toEqual(['redact', shim, shim])
+  // The scan, the once-a-session version check, then the next scan: all through the kept path.
+  expect(argv0s).toEqual(['redact', shim, shim, shim])
 })
 
 test('redact found nowhere still withholds the result', async ($, on) => {
@@ -236,4 +238,31 @@ test('redact found nowhere still withholds the result', async ($, on) => {
   const r = await call($, { tool: 'Bash', command: 'cat .env' })
   expect(JSON.stringify(r)).not.toContain(TOKEN)
   expect(JSON.stringify(r)).toContain('withheld')
+})
+
+test('a binary from another release than the mod gets one toast that says so', async ($, on) => {
+  const toasts: string[] = []
+  on('ui.notice', () => ({ value: undefined }))
+  on('ui.toast', (_$: unknown, e: unknown) => (toasts.push(JSON.stringify(e)), { value: undefined }))
+  on('process.run', (_$: unknown, e: any) => ({
+    value: { exitCode: 0, stdout: e.argv[1] === '--version' ? 'redact 0.0.1\n' : '[]', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+  }))
+  on('tool.call', () => ({ result: 'ok' }))
+  await call($, { tool: 'Bash', command: 'ls' })
+  await call($, { tool: 'Bash', command: 'ls' })
+  expect(toasts.length).toBe(1)
+  expect(toasts[0]).toContain('0.0.1')
+  expect(toasts[0]).toContain(MOD_VERSION)
+})
+
+test('a binary from the same release gets no toast', async ($, on) => {
+  const toasts: string[] = []
+  on('ui.notice', () => ({ value: undefined }))
+  on('ui.toast', (_$: unknown, e: unknown) => (toasts.push(JSON.stringify(e)), { value: undefined }))
+  on('process.run', (_$: unknown, e: any) => ({
+    value: { exitCode: 0, stdout: e.argv[1] === '--version' ? `redact ${MOD_VERSION}\n` : '[]', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+  }))
+  on('tool.call', () => ({ result: 'ok' }))
+  await call($, { tool: 'Bash', command: 'ls' })
+  expect(toasts).toEqual([])
 })

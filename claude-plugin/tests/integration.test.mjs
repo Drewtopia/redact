@@ -425,3 +425,11 @@ secretGroup = 1
     }
   }
 })
+
+test('the mod, its manifest and the binary carry one version', async () => {
+  const { MOD_VERSION } = await import('../hooks/redact.ts')
+  const { readFileSync } = await import('node:fs')
+  const manifest = JSON.parse(readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8'))
+  assert.equal(MOD_VERSION, manifest.version)
+  assert.equal(spawnSync(binary, ['--version'], { encoding: 'utf8' }).stdout.trim(), `redact ${MOD_VERSION}`)
+})

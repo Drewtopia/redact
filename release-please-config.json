@@ -14,6 +14,10 @@
           "type": "json",
           "path": "claude-plugin/.claude-plugin/plugin.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "generic",
+          "path": "claude-plugin/hooks/redact.ts"
         }
       ]
     }
