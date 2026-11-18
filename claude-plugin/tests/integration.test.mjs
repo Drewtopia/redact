@@ -438,7 +438,7 @@ test('an Azure DevOps URL in Bash stdout keeps its host, hides project and repo,
       webUrl: web,
     },
   }, null, 2)
-  for (const stdout of [`${pr}\n`, `${web}/pullrequest/42\n`]) {
+  for (const stdout of [`${pr}\n`, `${web}/pullrequest/42\n`, `${web}\n`]) {
     const h = hook((e) => e.tool === 'Bash' ? { stdout, stderr: '', interrupted: false } : 'written')
     const r = await h.call({ tool: 'Bash', command: 'az repos pr show --id 42' })
     assert.equal(r.deny, undefined, r.deny)
@@ -449,4 +449,16 @@ test('an Azure DevOps URL in Bash stdout keeps its host, hides project and repo,
     await h.call({ tool: 'Write', file_path: 'pr.txt', content: shown })
     assert.equal(h.seen.at(-1).content, stdout)
   }
+})
+
+test('Bash stdout that already holds placeholders, as field lines and JSON, passes without a PATH hint', async () => {
+  const web = 'https://dev.azure.com/fabrikamqa/Ops/_git/widget-api'
+  const h = hook(() => ({ stdout: `${web}\n`, stderr: '', interrupted: false, isImage: false }))
+  const masked = (await h.call({ tool: 'Bash', command: 'az repos pr show --id 42' })).result.stdout
+  const shown = { stdout: masked, stderr: '', interrupted: false, isImage: false }
+  const stdout = `stdout: ${masked}stderr: \ninterrupted: false\nisImage: false\n${JSON.stringify(shown)}\n`
+  const again = hook(() => ({ stdout, stderr: '', interrupted: false, isImage: false }))
+  const r = await again.call({ tool: 'Bash', command: 'cat scan.txt' })
+  assert.equal(r.deny, undefined, r.deny)
+  assert.ok(!r.result.stdout.includes('widget-api'), r.result.stdout)
 })
