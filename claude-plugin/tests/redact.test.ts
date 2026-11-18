@@ -266,3 +266,31 @@ test('a binary from the same release gets no toast', async ($, on) => {
   await call($, { tool: 'Bash', command: 'ls' })
   expect(toasts).toEqual([])
 })
+
+test('redact missing from PATH is found in ~/.mise/shims', async ($, on) => {
+  const shim = '/home/t/.mise/shims/redact'
+  const argv0s = missingFromPath(on, [shim])
+  on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
+  const r = String((await call($, { tool: 'Bash', command: 'cat .env' })).result)
+  expect(r).not.toContain(TOKEN)
+  // The scan, then the once-a-session version check, through the found path.
+  expect(argv0s).toEqual(['redact', shim, shim])
+})
+
+test('only a binary that will not run gets the PATH hint', async ($, on) => {
+  on('ui.notice', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('process.run', () => ({ value: { exitCode: 3, stdout: '', stderr: 'pack would not load', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
+  expect((await call($, { tool: 'Bash', command: 'cat .env' })).deny).toContain('PATH')
+})
+
+test('a hidden value that cannot be mapped back withholds without the PATH hint', async ($, on) => {
+  // The password is hidden by its field name and holds a short token its
+  // own scan hid, which cannot be placed inside it.
+  tools(on, () => ({ password: 'abcd' + 'TOKEN=ab' }) as never)
+  const r = await call($, { tool: 'Read', file_path: 'x.json' })
+  expect(r.deny).toContain('withheld')
+  expect(r.deny).not.toContain('PATH')
+  expect(JSON.stringify(r)).not.toContain('abcdTOKEN')
+})

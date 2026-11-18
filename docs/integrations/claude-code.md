@@ -113,7 +113,7 @@ The rules live in the binary and the hook logic in the mod, so a fix can need bo
 
 If `redact` is not on Claude Code's `PATH`, the mod looks for it where installers put it before it gives up:
 
-- mise's shims folder (`$MISE_DATA_DIR`, `$XDG_DATA_HOME/mise`, `~/.local/share/mise` or `%LOCALAPPDATA%\mise`)
+- mise's shims folder (`$MISE_DATA_DIR`, `$XDG_DATA_HOME/mise`, `~/.local/share/mise`, `~/.mise` or `%LOCALAPPDATA%\mise`)
 - `$CARGO_HOME/bin` and `~/.cargo/bin`
 - `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin`
 
