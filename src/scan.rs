@@ -876,6 +876,50 @@ mod tests {
     }
 
     #[test]
+    fn ado_url_segments_stop_at_a_json_escape() {
+        // The hook also scans a result as JSON, where a URL is followed by
+        // `\n` or `\"`: a segment that took the `\` could not be decoded.
+        for end in ["\\n", "\\\"", "\\\\"] {
+            for (id, url, value) in [
+                (
+                    "azure:ado-repo-url",
+                    "https://dev.azure.com/fabrikamqa/Ops/_git/widget-api",
+                    "widget-api",
+                ),
+                (
+                    "azure:ado-project-url",
+                    "https://dev.azure.com/fabrikamqa/Ops",
+                    "Ops",
+                ),
+                (
+                    "azure:ado-project-visualstudio",
+                    "https://fabrikamqa.visualstudio.com/Ops",
+                    "Ops",
+                ),
+                (
+                    "azure:ado-org-ssh",
+                    "git@ssh.dev.azure.com:v3/fabrikamqa",
+                    "",
+                ),
+                (
+                    "azure:ado-project-ssh",
+                    "git@ssh.dev.azure.com:v3/fabrikamqa/Ops",
+                    "",
+                ),
+            ] {
+                // The ssh rules end at a `/`: one past the escape is not theirs.
+                let text = format!("{{\"stdout\":\"{url}{end}x/y\"}}");
+                let want: Vec<&str> = if value.is_empty() {
+                    vec![]
+                } else {
+                    vec![value]
+                };
+                assert_eq!(found_by(id, &text), want, "{id} {text}");
+            }
+        }
+    }
+
+    #[test]
     fn shape_rules_start_after_an_escaped_newline_not_inside_a_word() {
         // (rule, value, the part it hides: empty for all of it). Keys are split
         // so no key-shaped string sits in the repo; the IBAN is the textbook example.
