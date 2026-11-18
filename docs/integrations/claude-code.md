@@ -109,6 +109,8 @@ The mod fails closed. It withholds the text instead of passing it on raw when th
 
 A toast says why.
 
+The rules live in the binary and the hook logic in the mod, so a fix can need both. Once a session the mod runs `redact --version`, and a toast says so when the binary comes from another release than the mod. Update the older one: `mise up github:Drewtopia/redact` for the binary.
+
 If `redact` is not on Claude Code's `PATH`, the mod looks for it where installers put it before it gives up:
 
 - mise's shims folder (`$MISE_DATA_DIR`, `$XDG_DATA_HOME/mise`, `~/.local/share/mise`, `~/.mise` or `%LOCALAPPDATA%\mise`)

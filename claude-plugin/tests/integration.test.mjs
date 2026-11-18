@@ -426,6 +426,14 @@ secretGroup = 1
   }
 })
 
+test('the mod, its manifest and the binary carry one version', async () => {
+  const { MOD_VERSION } = await import('../hooks/redact.ts')
+  const { readFileSync } = await import('node:fs')
+  const manifest = JSON.parse(readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8'))
+  assert.equal(MOD_VERSION, manifest.version)
+  assert.equal(spawnSync(binary, ['--version'], { encoding: 'utf8' }).stdout.trim(), `redact ${MOD_VERSION}`)
+})
+
 test('an Azure DevOps URL in Bash stdout keeps its host, hides project and repo, and restores', async () => {
   const [org, project, repo] = ['fabrikamqa', 'Ops', 'widget-api']
   const web = `https://dev.azure.com/${org}/${project}/_git/${repo}`

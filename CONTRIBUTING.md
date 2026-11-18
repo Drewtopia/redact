@@ -51,7 +51,7 @@ CI also runs `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`
 
 ## Versions and releases
 
-One version covers the `redact` binary and the Claude Code mod. [release-please](https://github.com/googleapis/release-please) keeps a release PR open that bumps `Cargo.toml`, `Cargo.lock` and `claude-plugin/.claude-plugin/plugin.json` and adds to `CHANGELOG.md`. Merging that PR makes the release.
+One version covers the `redact` binary and the Claude Code mod. [release-please](https://github.com/googleapis/release-please) keeps a release PR open that bumps `Cargo.toml`, `Cargo.lock`, `claude-plugin/.claude-plugin/plugin.json` and the `MOD_VERSION` line in `claude-plugin/hooks/redact.ts` and adds to `CHANGELOG.md`. Merging that PR makes the release.
 
 The PR title's type sets the bump. While the version is 0.x:
 
