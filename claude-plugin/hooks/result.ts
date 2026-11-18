@@ -88,9 +88,13 @@ export async function maskResult(scan: Scan, r: ToolOutput, mask: MaskOptions = 
   const inContext = [...valuesIn(masked[0] ?? '')].filter(([, t]) => tags.has(t))
   for (const [raw, tag] of valuesIn(masked[1] ?? '')) {
     if (!tags.has(tag)) continue
-    // A match that cuts through JSON syntax cannot be mapped safely: this
-    // throws, and the caller withholds the result.
-    const value: string = JSON.parse(`"${raw}"`)
+    // A match that cuts through JSON syntax (ends mid-escape) cannot be mapped safely.
+    let value: string
+    try {
+      value = JSON.parse(`"${raw}"`)
+    } catch {
+      return { withhold: 'redact: a match in this result ran into its JSON syntax, so it could not be mapped back and the result was withheld. Narrow the call and retry.' }
+    }
     inContext.push([value, mint(tag.slice(1, -10), value, tags)])
   }
   inContext.sort(([a], [b]) => b.length - a.length)
