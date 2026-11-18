@@ -1241,7 +1241,8 @@ impl Loader {
                 self.add_pack(pack)?;
             }
             "toml" => {
-                let cfg: ConfigFile = toml::from_str(&text).map_err(|e| format!("{shown}: {e}"))?;
+                let cfg: ConfigFile =
+                    toml::from_str(&text).map_err(|e| toml_error(&shown, &text, &e))?;
                 self.record(
                     "config",
                     shown,
@@ -1307,12 +1308,43 @@ fn read_text(path: &Path) -> std::io::Result<String> {
     })
 }
 
+/// A TOML error that names the line and column but quotes none of the file:
+/// the toml crate prints the bad line and the bad string, and either can be a
+/// value the file is there to hide.
+fn toml_error(source: &str, text: &str, e: &toml::de::Error) -> String {
+    let mut msg = String::new();
+    let mut quoted = false;
+    let mut escaped = false;
+    for c in e.message().chars() {
+        if quoted && (escaped || c != '"') {
+            escaped = !escaped && c == '\\';
+            continue;
+        }
+        if c == '"' {
+            quoted = !quoted;
+            if !quoted {
+                msg.push('…');
+            }
+        }
+        msg.push(c);
+    }
+    match e.span() {
+        Some(span) => {
+            let before = &text[..span.start];
+            let line = before.matches('\n').count() + 1;
+            let col = before.rsplit('\n').next().unwrap_or("").chars().count() + 1;
+            format!("{source}: line {line}, column {col}: {msg}")
+        }
+        None => format!("{source}: {msg}"),
+    }
+}
+
 fn lower(v: Vec<String>) -> Vec<String> {
     v.into_iter().map(|k| k.to_lowercase()).collect()
 }
 
 fn compile(text: &str, source: &str) -> Result<Pack, String> {
-    let f: PackFile = toml::from_str(text).map_err(|e| format!("{source}: {e}"))?;
+    let f: PackFile = toml::from_str(text).map_err(|e| toml_error(source, text, &e))?;
     if f.schema_version != 1 {
         return Err(format!("{source}: schema_version must be 1"));
     }
@@ -1629,6 +1661,22 @@ SECRET=encrypted:BDqDBibm4wsYqMpCjTQ6BsDHmMadg9K3dhERmPh8
                 ("config", config, "0 imports", true),
             ]
         );
+    }
+
+    #[test]
+    fn a_toml_error_quotes_nothing_from_the_file() {
+        for text in [
+            "me = \"FAKEVAL_a1\"",
+            "env = [\"FAKEVAL_b2\"",
+            "allow = \"FAKE\\\"VAL_c3\"",
+        ] {
+            let Err(e) = toml::from_str::<ConfigFile>(text) else {
+                panic!("{text} parsed");
+            };
+            let shown = toml_error("t.toml", text, &e);
+            assert!(!shown.contains("VAL_"), "{shown}");
+            assert!(shown.starts_with("t.toml: line 1, column "), "{shown}");
+        }
     }
 
     #[test]

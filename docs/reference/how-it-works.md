@@ -30,7 +30,7 @@ export REDACT_KEY=$(openssl rand -hex 32)
 
 ## Fails closed
 
-When a pack, word list, or config file will not load, redact stops with an error that names the file, and exits with code 3. It does not skip the file. A redactor that quietly skips a rule hides less than you think.
+When a pack, word list, or config file will not load, redact stops with an error that names the file, and exits with code 3. For bad TOML the error also gives the line and column, but quotes nothing from the file: a value in the error shows as `"…"`, since the bad line may hold a word you set out to hide. It does not skip the file. A redactor that quietly skips a rule hides less than you think.
 
 | Exit code | Meaning |
 | :- | :- |
