@@ -109,3 +109,14 @@ test('a match that ends inside a JSON escape withholds with a reason, and does n
   if (!('withhold' in m)) throw new Error('expected a withhold')
   expect(m.withhold).toContain('JSON')
 })
+
+test('a short value found in a URL is placed where its own string already hid it', async () => {
+  const url = 'https://dev.azure.com/fabrikamqa/Ops/_git/widget-api'
+  const project = finds(/dev\.azure\.com\/[^/\s"'\\]+\/([^/\s"'?#\\]+)/g)
+  const m = await maskResult(memoryScan(project), { result: { stdout: `${url}\n`, other: 'Opsware' } })
+  if (!('tags' in m)) throw new Error(m.withhold)
+  const out = m.result as { stdout: string; other: string }
+  expect(out.stdout).toMatch(/^https:\/\/dev\.azure\.com\/fabrikamqa\/\[SECRET-[0-9a-f]{8}\]\/_git\/widget-api\n$/)
+  // A short value is never replaced by blind substring.
+  expect(out.other).toBe('Opsware')
+})

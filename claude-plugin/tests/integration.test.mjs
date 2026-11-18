@@ -425,3 +425,28 @@ secretGroup = 1
     }
   }
 })
+
+test('an Azure DevOps URL in Bash stdout keeps its host, hides project and repo, and restores', async () => {
+  const [org, project, repo] = ['fabrikamqa', 'Ops', 'widget-api']
+  const web = `https://dev.azure.com/${org}/${project}/_git/${repo}`
+  const pr = JSON.stringify({
+    pullRequestId: 42,
+    status: 'active',
+    repository: {
+      remoteUrl: `https://${org}@dev.azure.com/${org}/${project}/_git/${repo}`,
+      sshUrl: `git@ssh.dev.azure.com:v3/${org}/${project}/${repo}`,
+      webUrl: web,
+    },
+  }, null, 2)
+  for (const stdout of [`${pr}\n`, `${web}/pullrequest/42\n`]) {
+    const h = hook((e) => e.tool === 'Bash' ? { stdout, stderr: '', interrupted: false } : 'written')
+    const r = await h.call({ tool: 'Bash', command: 'az repos pr show --id 42' })
+    assert.equal(r.deny, undefined, r.deny)
+    const shown = r.result.stdout
+    assert.ok(shown.includes('dev.azure.com/'), shown)
+    assert.ok(!shown.includes(project) && !shown.includes(repo) && !shown.includes(org), shown)
+    assert.match(shown, /_git\/\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\]/)
+    await h.call({ tool: 'Write', file_path: 'pr.txt', content: shown })
+    assert.equal(h.seen.at(-1).content, stdout)
+  }
+})

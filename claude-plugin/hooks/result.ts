@@ -106,8 +106,9 @@ export async function maskResult(scan: Scan, r: ToolOutput, mask: MaskOptions = 
     for (const [v, tag] of found) out = out === v ? tag : v.length >= 4 ? out.split(v).join(tag) : out
     return out
   }
-  // One that sits in no single string (it ran from a name into its value) cannot be put back.
-  const placed = ([v]: [string, string]) => unique.some((s) => sitsIn(s, v))
+  // One that sits in no single string (it ran from a name into its value) cannot be put back,
+  // unless a string's own scan already hid it there (a short project name inside a URL).
+  const placed = ([v, tag]: [string, string]) => unique.some((s) => sitsIn(s, v) || (s.includes(v) && lookup.get(s)!.includes(tag)))
   if (!inContext.every(placed)) return { withhold: 'redact: a hidden value in this result could not be put back in place, so the result was withheld. Narrow the call and retry.' }
   const fix = (s: string): string => {
     const masked = lookup.get(s) ?? s
@@ -116,7 +117,8 @@ export async function maskResult(scan: Scan, r: ToolOutput, mask: MaskOptions = 
     // would leave the rest of the password showing, so the string is rebuilt
     // from its raw text, longest value first. Its own finds include the
     // LITERAL tags that stand for placeholder text, so that text stays escaped.
-    const byName = inContext.filter(([v]) => sitsIn(s, v))
+    // One this string's own scan already hid whole, with no raw copy left, needs no rebuild.
+    const byName = inContext.filter(([v, tag]) => sitsIn(s, v) && (masked.includes(v) || !masked.includes(tag)))
     if (byName.length === 0) return masked
     const ownFinds = [...valuesIn(masked, { literals: true })]
     // A short value can only be put back where it is the whole string.
