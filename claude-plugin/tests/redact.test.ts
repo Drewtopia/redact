@@ -50,9 +50,28 @@ test('a secret in Bash output comes back as a placeholder, and goes back in for 
   await call($, { tool: 'Bash', command: `./deploy.sh -H x:${tag}` })
   expect(seen[1].command).toBe(`./deploy.sh -H x:${TOKEN}`)
 
-  // A commit message keeps the placeholder: it would leave the machine.
-  await call($, { tool: 'Bash', command: `git commit -m "rotate ${tag}"` })
-  expect(seen[2].command).toContain(tag)
+  // A commit message would keep the placeholder as dead text: refused, never run.
+  expect((await call($, { tool: 'Bash', command: `git commit -m "rotate ${tag}"` })).deny ?? '').toContain('only this session')
+  expect(seen).toHaveLength(2)
+})
+
+test('placeholder text this session never made goes into a commit as it is', async ($, on) => {
+  const seen = tools(on, () => 'ok')
+  const command = 'git commit -m "docs: placeholders look like [SECRET-0123abcd]"'
+  expect((await call($, { tool: 'Bash', command })).deny).toBeUndefined()
+  expect(seen[0].command).toBe(command)
+})
+
+test('an MCP tool off restoreTools is refused a placeholder, and gets plain text', async ($, on) => {
+  const seen = tools(on, (e) => (e.command === 'cat .env' ? `TOKEN=${TOKEN}\n` : 'ok'))
+  const tag = String((await call($, { tool: 'Bash', command: 'cat .env' })).result).match(TAG)?.[0]
+  const r = await call($, { tool: 'mcp__app__link', url: `https://example.test/${tag}` })
+  expect(r.deny ?? '').toContain('only this session')
+  expect(r.deny ?? '').toContain('restoreTools')
+  expect(r.deny ?? '').not.toContain(tag)
+  expect(seen).toHaveLength(1)
+  await call($, { tool: 'mcp__app__link', url: 'https://example.test/1' })
+  expect(seen).toHaveLength(2)
 })
 
 test('PowerShell gets real values, but not into git and not with PowerShell syntax in them', async ($, on) => {
@@ -64,8 +83,8 @@ test('PowerShell gets real values, but not into git and not with PowerShell synt
   // restoreHosts is empty by default: no real value goes to the network.
   expect((await call($, { tool: 'PowerShell', command: `Invoke-RestMethod -Headers @{x='${tag}'} https://example.test` })).deny ?? '').toContain('restoreHosts')
   expect(seen.length).toBe(2)
-  await call($, { tool: 'PowerShell', command: `git commit -m "rotate ${tag}"` })
-  expect(seen[2].command).toContain(tag)
+  expect((await call($, { tool: 'PowerShell', command: `git commit -m "rotate ${tag}"` })).deny ?? '').toContain('only this session')
+  expect(seen.length).toBe(2)
 
   // @ splats in PowerShell, so a value holding one stays out; Bash takes it.
   expect((await call($, { tool: 'PowerShell', command: `echo ${at}` })).deny ?? '').toContain('shell characters')
@@ -180,13 +199,12 @@ test('a LITERAL label from the binary still gets the shell check', async ($, on)
   expect(seen).toHaveLength(1)
 })
 
-test('git with a quoted -C path, and Azure DevOps, keep their placeholders', async ($, on) => {
+test('git with a quoted -C path, and Azure DevOps, are refused a placeholder', async ($, on) => {
   const seen = tools(on, (e) => (e.command === 'cat .env' ? `TOKEN=${TOKEN}\n` : 'ok'))
   const tag = String((await call($, { tool: 'Bash', command: 'cat .env' })).result).match(TAG)?.[0]
-  await call($, { tool: 'Bash', command: `git -C "my repo" commit -m "rotate ${tag}"` })
-  await call($, { tool: 'Bash', command: `az repos pr create --description "${tag}"` })
-  expect(seen[1].command).toContain(tag)
-  expect(seen[2].command).toContain(tag)
+  expect((await call($, { tool: 'Bash', command: `git -C "my repo" commit -m "rotate ${tag}"` })).deny ?? '').toContain('only this session')
+  expect((await call($, { tool: 'Bash', command: `az repos pr create --description "${tag}"` })).deny ?? '').toContain('only this session')
+  expect(seen).toHaveLength(1)
 })
 
 test('an @-mentioned UTF-16 file is scanned, not passed as binary', async ($, on) => {

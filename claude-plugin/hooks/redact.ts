@@ -1,5 +1,5 @@
 import type { Register, PromptContextBlock } from 'claude-code'
-import { binaryScan, scrub, restore, isLiteral, ScanFailed, type MaskOptions, type Scan } from './vault.ts'
+import { binaryScan, scrub, restore, valuesIn, isLiteral, ScanFailed, type MaskOptions, type Scan } from './vault.ts'
 import { maskResult, walk } from './result.ts'
 
 // redact for Claude Code: every text that enters the conversation goes
@@ -23,14 +23,14 @@ const BLOCK_WITHHELD = '[redact withheld this text: the scan failed]'
 const LIVE_TAG_TOOLS = new Set(['Agent', 'Task'])
 
 // A shell command that writes into git history or posts to GitHub, GitLab or
-// Azure DevOps keeps its placeholders, so a commit message or issue body
-// cannot carry a real value off the machine.
+// Azure DevOps never gets a real value, so a commit message or issue body
+// cannot carry one off the machine (and one holding a placeholder is refused).
 //
 // This reads the command's text, not its meaning: a shell has too many ways to
 // split, quote, alias or expand a word for a parser here to follow them all.
 // So it fails closed. With quote and escape characters taken out, a command
 // that names a tool anywhere and one of its publishing words anywhere (in
-// either order) publishes: `git log --grep=commit` keeps its placeholders too.
+// either order) publishes: `git log --grep=commit` counts too.
 // Each test is one pass over the text, so no command can make it slow.
 // Each line: words that must all appear, the tool first.
 const PUBLISH_WORDS: RegExp[][] = [
@@ -131,7 +131,20 @@ function checkHosts(command: string, allowed: string[]): HostCheck {
   return { unlisted: [...hosts].filter((h) => !ok(h)), noHost: tool && hosts.size === 0 }
 }
 
-const MEDIA_FILE = /\.(?:png|jpe?g|gif|webp|bmp|tiff?|heic|pdf)$/i
+// A placeholder this session made stands for its value only here. Sent on as
+// text, in a commit, a PR body or another app's tool, it is saved where no
+// session can read it back, so the call is refused instead. The labels of
+// the ones found, never the placeholders, go in the refusal.
+function sessionLabels(input: unknown): string[] {
+  const labels = new Set<string>()
+  walk(input, (s) => {
+    for (const tag of valuesIn(s).values()) labels.add(tag.slice(1, -10))
+    return s
+  }, { incomplete: false })
+  return [...labels]
+}
+
+const MEDIA_FILE =/\.(?:png|jpe?g|gif|webp|bmp|tiff?|heic|pdf)$/i
 
 type Budget = { budget: { remainingMs: number } }
 
@@ -216,6 +229,14 @@ export const register: Register = (on, options) => {
     const command = e.tool in SHELL_ACTIVE ? (e as { command?: unknown }).command : undefined
     const isPublish = typeof command === 'string' && publishes(command)
     const isLocal = restoreTools.has(e.tool) && !isPublish
+    const outgoing = isPublish ? command : e.tool.startsWith('mcp__') && !isLocal ? { ...e } : undefined
+    const labels = outgoing === undefined ? [] : sessionLabels(outgoing)
+    if (labels.length > 0) {
+      const fix = isPublish
+        ? 'Leave the value out, or describe it in words.'
+        : 'Leave the value out, or describe it in words. If this tool runs on this machine, the person can add it to restoreTools in the mod\'s settings.'
+      return { deny: `redact: this call holds a placeholder (${labels.join(', ')}) that only this session can read. Sent on, it would be saved as placeholder text, so the call was not run. ${fix}` }
+    }
     // Real values this call was handed: whatever the tool prints of them
     // comes back hidden, even bare and short, where no rule would fire.
     const handed = new Set<string>()
