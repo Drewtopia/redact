@@ -54,7 +54,7 @@ When Claude writes a placeholder into a command or a file, the mod swaps it back
 
 ### Only local tools
 
-Bash, PowerShell, Write, Edit, MultiEdit, NotebookEdit, Read, Glob, and Grep get real values. Agent, WebFetch, WebSearch, and MCP tools never do. To change the list, use the `restoreTools` setting.
+Bash, PowerShell, Write, Edit, MultiEdit, NotebookEdit, Read, Glob, and Grep get real values. Agent, WebFetch, WebSearch, and MCP tools never do. An MCP tool off the list is refused a placeholder this session made, since it would store the placeholder text where nothing can read it back. To change the list, use the `restoreTools` setting.
 
 ### Only to hosts you list
 
@@ -80,9 +80,9 @@ Like the git check below, this reads text. A host the command puts together whil
 
 ### Not into git history or a pull request
 
-These commands keep their placeholders: `git commit`, `git tag`, `gh pr`, `gh issue`, `gh api`, `glab mr`, and `az repos`. A commit message or an issue body cannot carry the value off the machine.
+These commands never get a real value: `git commit`, `git tag`, `gh pr`, `gh issue`, `gh api`, `glab mr`, and `az repos`. One that holds a placeholder this session made is refused and not run, so a commit message or an issue body can neither carry the value off the machine nor keep a placeholder no one can read back. Placeholder-shaped text the session did not make, such as an example in a doc, goes through as it is.
 
-The check reads the command's text with its quotes and escapes taken out. A command that names `git` and `commit` anywhere keeps its placeholders, in either order and however they are quoted, split or nested. So `git log --grep=commit` keeps them too. It is a check on text, not a sandbox: a command that builds the word `git` or `commit` while it runs (`$'\x67it'`, `g[i]t`, `$(printf git)`) can still get a real value. It stops a placeholder going out by accident, not a model set on leaking one, which could also write the value to a file and commit that.
+The check reads the command's text with its quotes and escapes taken out. A command that names `git` and `commit` anywhere counts, in either order and however they are quoted, split or nested. So `git log --grep=commit` is refused a placeholder too. It is a check on text, not a sandbox: a command that builds the word `git` or `commit` while it runs (`$'\x67it'`, `g[i]t`, `$(printf git)`) can still get a real value. It stops a placeholder going out by accident, not a model set on leaking one, which could also write the value to a file and commit that.
 
 ::: warning A file still gets the real value
 Write puts the real value into a file, and a later `git add` and `git commit` would publish it. The [pre-commit check](./git-ci) catches that.

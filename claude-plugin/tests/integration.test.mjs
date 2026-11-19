@@ -86,6 +86,15 @@ for (const [name, result, secret] of [
   })
 }
 
+// A publishing command holding a placeholder this session made is refused,
+// and the tool beneath never runs, so no real value can reach it either.
+async function refused(h, tool, command) {
+  const before = h.seen.length
+  const r = await h.call({ tool, command })
+  assert.ok(r.deny?.includes('only this session'), `${command}: ${JSON.stringify(r)}`)
+  assert.equal(h.seen.length, before, command)
+}
+
 test('a match crossing JSON fields withholds the result instead of guessing', async () => {
   const path = join(dir, 'cross-config.toml')
   writeFileSync(path, 'import = ["cross.toml"]\n')
@@ -116,15 +125,8 @@ test('Git global options cannot restore a credential into a commit message', asy
     `git --config-env=alias.save=GIT_SAVE commit -m "${tag}"`,
     `GIT --WORK-TREE . COMMIT -m "${tag}"`,
     `gh --repo owner/repo pr create --body "${tag}"`,
-  ]) {
-    await h.call({ tool: 'Bash', command })
-    assert.equal(h.seen.at(-1).command, command)
-  }
-  for (const path of ['my` repo', '"my`" repo"']) {
-    const command = `git --work-tree ${path} commit -m "${tag}"`
-    await h.call({ tool: 'PowerShell', command })
-    assert.equal(h.seen.at(-1).command, command)
-  }
+  ]) await refused(h, 'Bash', command)
+  for (const path of ['my` repo', '"my`" repo"']) await refused(h, 'PowerShell', `git --work-tree ${path} commit -m "${tag}"`)
   await h.call({ tool: 'Bash', command: `./deploy.sh -H x:${tag}` })
   assert.equal(h.seen.at(-1).command, `./deploy.sh -H x:${secret}`)
 })
@@ -185,10 +187,7 @@ test('quoted Git option names and nested shells cannot restore into a commit', a
     `sh -c 'git commit -m ${tag}'`,
     `echo "$(git commit -m ${tag})"`,
     `cd repo && git commit -m "${tag}"`,
-  ]) {
-    await h.call({ tool: 'Bash', command })
-    assert.equal(h.seen.at(-1).command, command)
-  }
+  ]) await refused(h, 'Bash', command)
   await h.call({ tool: 'Bash', command: `git --work-tree . log --grep=${tag}` })
   assert.equal(h.seen.at(-1).command, 'git --work-tree . log --grep=quotedpassword42')
 })
@@ -211,7 +210,7 @@ test("a structured Kubernetes Secret keeps its metadata visible", async () => {
   assert.equal(r.result.metadata.labels.app, 'frontend')
 })
 
-test('a publish command keeps its placeholders however it is spelled', async () => {
+test('a publish command is refused a placeholder however it is spelled', async () => {
   const h = hook((e) => e.tool === 'Read' ? { password: 'spelledpassword42' } : 'ok')
   const tag = (await h.call({ tool: 'Read', file_path: 'synthetic.json' })).result.password
   for (const [tool, command] of [
@@ -227,11 +226,7 @@ test('a publish command keeps its placeholders however it is spelled', async () 
     ['PowerShell', '& "C:\\Program Files\\Git\\cmd\\git.exe" commit -m "TAG"'],
     ['PowerShell', 'C:\\tools\\git.exe commit -m "TAG"'],
     ['PowerShell', "Start-Process git -ArgumentList 'commit','-m','TAG'"],
-  ]) {
-    const c = command.replaceAll('TAG', tag)
-    await h.call({ tool, command: c })
-    assert.equal(h.seen.at(-1).command, c, command)
-  }
+  ]) await refused(h, tool, command.replaceAll('TAG', tag))
 })
 
 test('placeholder text beside a value found by name stays escaped', async () => {
