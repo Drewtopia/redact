@@ -1499,17 +1499,58 @@ mod tests {
     }
 
     #[test]
-    fn env_dump_values_but_not_settings() {
-        let text = "AZURE_ORGANISATION=fabrikam-dev\nPORT=3000\nNODE_ENV=development\nexport PROJECT_NAME=\"Bluefinq Portal\"\n";
-        let out = azure(text);
-        assert!(
-            !out.contains("fabrikam-dev") && !out.contains("Bluefinq"),
-            "{out}"
-        );
-        assert!(
-            out.contains("PORT=3000") && out.contains("NODE_ENV=development"),
-            "{out}"
-        );
+    fn env_lines_hide_only_values_whose_name_says_secret() {
+        // Built at run time, so no secret-shaped literal sits in the source.
+        let fake = |tag: &str| format!("Zq8vFake{tag}42");
+        let pw = ["PASS", "WORD"].concat();
+        let kept = [
+            "TMPDIR=/var/folders/ab/T/".to_string(),
+            "export CONF_FILE=\"/etc/app/app.conf\"".to_string(),
+            "LOG_FILE=/var/log/app/app.log".to_string(),
+            "REPO_URL=https://example.test/app.git".to_string(),
+            "NODE_ENV=development".to_string(),
+            "export PROJECT_NAME='Bluefinq Portal'".to_string(),
+            "KEY_FILE=/etc/app/tls/server.pem".to_string(),
+            "SESSION_DIR=/var/lib/app/sessions".to_string(),
+            "GITHUB_TOKEN_FILE=/run/secrets/gh".to_string(),
+            "SSH_AUTH_SOCK=/private/tmp/agent.sock".to_string(),
+            "AWS_ACCESS_KEY_ID_FILE=/run/aws/id".to_string(),
+            "NEXT_PAGE_TOKEN=cursor-0002".to_string(),
+        ];
+        let hidden = [
+            ("GITHUB_TOKEN", fake("Token")),
+            (&*format!("DB_{pw}"), fake("Pass")),
+            ("export STRIPE_API_KEY", fake("ApiKey")),
+            ("SIGNING_KEY", fake("Signing")),
+            ("GOOGLE_CREDENTIALS", fake("Creds")),
+            ("NPM_AUTH", fake("Auth")),
+            ("SESSION_COOKIE", fake("Cookie")),
+            ("FLASK_SESSION", fake("Session")),
+            ("SENTRY_DSN", fake("Dsn")),
+            ("GITHUB_TOKEN_2", fake("Token2")),
+            ("GOOGLE_CREDENTIALS_JSON", fake("CredsJson")),
+            // A comma or semicolon in the value is hidden with the rest.
+            (
+                &*format!("SMTP_{pw}"),
+                format!("{},{};x", fake("A"), fake("B")),
+            ),
+        ];
+        for line in &kept {
+            let text = format!("{line}\n");
+            assert_eq!(azure(&text), text, "an ordinary setting was hidden");
+        }
+        for (name, value) in &hidden {
+            let out = azure(&format!("{name}={value}\n"));
+            assert!(
+                !out.contains(value.as_str()),
+                "{name} was not hidden: {out}"
+            );
+            assert!(out.contains(&format!("{name}=")), "{out}");
+        }
+        // A known token shape is still hidden under an ordinary name.
+        let pat = format!("ghp_{}", "FAKEfake".repeat(4) + "0123");
+        let out = azure(&format!("DEPLOY_HOOK={pat}\n"));
+        assert!(!out.contains(&pat), "{out}");
     }
 
     #[test]
