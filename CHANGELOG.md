@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.2](https://github.com/Drewtopia/redact/compare/v0.4.1...v0.4.2) (2026-11-19)
+
+
+### Bug Fixes
+
+* **claude:** refuse a call that would send on a placeholder this session made ([#116](https://github.com/Drewtopia/redact/issues/116)) ([a64ff64](https://github.com/Drewtopia/redact/commit/a64ff6478eca6841c7a620edef80daa1e1a85644))
+* quote nothing from the file in a TOML error ([#113](https://github.com/Drewtopia/redact/issues/113)) ([96770ee](https://github.com/Drewtopia/redact/commit/96770ee21949b0be747917c09d1cf7885c626975))
+
 ## [0.4.1](https://github.com/Drewtopia/redact/compare/v0.4.0...v0.4.1) (2026-11-18)
 
 
