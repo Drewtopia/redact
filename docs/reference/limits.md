@@ -7,7 +7,7 @@ redact will miss things. Check its output before you share anything that matters
 ## What it misses
 
 - **Free text.** A customer named in an issue title, a log line, or a commit message is hidden only if it is in a word list, an environment variable you named, or a `.env` file. No rule can tell a customer's name from any other word.
-- **Shapes no pack knows.** redact shows the IDs and names of a service it has no pack for. The built-in packs cover Azure, people, credentials, Kubernetes, Docker, npm, HTTP headers, and Google Cloud, plus personal data once `pii` is on.
+- **Shapes no pack knows.** redact shows the IDs and names of a service it has no pack for. The built-in packs cover Azure, people, credentials, Kubernetes, Docker, npm, HTTP headers, and Google Cloud, plus personal data and work names once `pii` and `work` are on.
 - **Values without a name or shape.** A password printed on its own, with nothing like `password=` beside it, looks like any other word.
 - **Transformed values.** redact does not recognise a key that is base64-encoded, reversed, or split across lines.
 - **Case beyond ASCII.** Word matching ignores case for ASCII letters only, so `ÄBC` does not match `äbc`.
@@ -34,6 +34,7 @@ Each integration has limits of its own. See [Claude Code](../integrations/claude
 
 ## What stays visible on purpose
 
+- Work names: organisation, project, repo and host names, such as the org and project in a `dev.azure.com` link or a Google Cloud project ID. Hiding them breaks the paths, commands and links they sit in ([ADR 0001](../adr/0001-defaults-and-opt-in)); the `work` pack hides them.
 - Bare GUIDs, such as request IDs. redact hides a GUID only beside a name that says what it is, such as `tenantId`.
 - Public values a pack knows, such as the app IDs and hosts Microsoft documents for Azure.
 - Settings in `.env` files: numbers, `true`, `localhost`, and `development`.

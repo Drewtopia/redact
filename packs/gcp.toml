@@ -1,8 +1,8 @@
 # Built-in pack: Google Cloud.
 schema_version = 1
 id = "gcp"
-description = "Google access tokens, and project IDs in key files, resource paths and --project flags"
-keywords = ["ya29.", "project_id", "projectid", "projects/", "--project", "private_key_id"]
+description = "Google access tokens and private key IDs. Project IDs are in the work pack"
+keywords = ["ya29.", "private_key_id"]
 
 [[rules]]
 id = "access-token"
@@ -15,48 +15,6 @@ keywords = ["ya29."]
 [[rules.tests]]
 input = "ya29.a0FakeFakeFakeFakeFake12345"
 expect = ["ya29.a0FakeFakeFakeFakeFake12345"]
-
-[[rules]]
-id = "project-id-field"
-description = "project_id and projectId in a service account key file or API output"
-regex = '''(?i)"(?:project_id|projectId|quota_project_id)"\s*:\s*"([a-z][a-z0-9-]{4,28}[a-z0-9])"'''
-secretGroup = 1
-label = "PROJECT"
-remember = "any"
-keywords = ["project_id", "projectid"]
-
-matrix = false
-[[rules.tests]]
-input = "{\"project_id\": \"fabrikam-dev-123\"}"
-expect = ["fabrikam-dev-123"]
-
-[[rules]]
-id = "project-path"
-description = "The project in a resource path: projects/<id>/..."
-regex = '''(?:^|[^A-Za-z0-9_]|\\[nrt])projects/([a-z][a-z0-9-]{4,28}[a-z0-9])\b'''
-secretGroup = 1
-label = "PROJECT"
-remember = "any"
-keywords = ["projects/"]
-
-matrix = false
-[[rules.tests]]
-input = "projects/fabrikam-dev-123/locations/us"
-expect = ["fabrikam-dev-123"]
-
-[[rules]]
-id = "project-flag"
-description = "The project after --project (gcloud)"
-regex = '''--project[= \t]+([a-z][a-z0-9-]{4,28}[a-z0-9])\b'''
-secretGroup = 1
-label = "PROJECT"
-remember = "any"
-keywords = ["--project"]
-
-matrix = false
-[[rules.tests]]
-input = "gcloud run deploy --project fabrikam-dev-123"
-expect = ["fabrikam-dev-123"]
 
 [[rules]]
 id = "private-key-id"

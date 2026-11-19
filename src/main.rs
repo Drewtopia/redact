@@ -162,6 +162,8 @@ enum Preset {
     Minimal,
     /// Every setting that needs none of your own names, switched on, pii included.
     Full,
+    /// Everything hidden: you, personal data (pii) and work names (work).
+    Strict,
     /// Every setting shown and switched off, as a reference.
     Commented,
 }
@@ -171,12 +173,14 @@ enum Preset {
 const STARTER_CONFIG: &str = include_str!("../config.example.toml");
 const MINIMAL_CONFIG: &str = include_str!("../config.minimal.toml");
 const FULL_CONFIG: &str = include_str!("../config.full.toml");
+const STRICT_CONFIG: &str = include_str!("../config.strict.toml");
 
 /// `redact config init`: writes the starter config unless one is there already.
 fn config_init(path: Option<PathBuf>, preset: Preset, force: bool, print: bool) -> ExitCode {
     let starter = match preset {
         Preset::Minimal => MINIMAL_CONFIG,
         Preset::Full => FULL_CONFIG,
+        Preset::Strict => STRICT_CONFIG,
         Preset::Commented => STARTER_CONFIG,
     };
     if print {
@@ -535,31 +539,60 @@ mod docs {
         assert!(out.contains("status=3"), "{out}");
     }
 
-    /// The minimal and full presets load as written, and full turns pii on.
+    /// Loads `text` as the user's config, beside nothing else.
+    fn with_config(name: &str, text: &str) -> Result<pack::Loaded, String> {
+        let d = std::env::temp_dir().join(format!("redact-test-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("config.toml"), text).unwrap();
+        let loaded = pack::load(&pack::Options {
+            files: vec![],
+            builtin: true,
+            user: true,
+            config: Some(d.join("config.toml")),
+            env_files: vec![],
+            command: None,
+            cwd: Some(d.clone()),
+            host: None,
+        });
+        std::fs::remove_dir_all(&d).unwrap();
+        loaded
+    }
+
+    /// The minimal, full and strict presets load as written; full turns pii on,
+    /// and strict turns on pii and work.
     #[test]
     fn the_live_presets_load() {
-        for (name, text) in [("minimal", MINIMAL_CONFIG), ("full", FULL_CONFIG)] {
-            let d = std::env::temp_dir().join(format!("redact-test-{}-{name}", std::process::id()));
-            std::fs::create_dir_all(&d).unwrap();
-            std::fs::write(d.join("config.toml"), text).unwrap();
-            let loaded = pack::load(&pack::Options {
-                files: vec![],
-                builtin: true,
-                user: true,
-                config: Some(d.join("config.toml")),
-                env_files: vec![],
-                command: None,
-                cwd: Some(d.clone()),
-                host: None,
-            });
-            std::fs::remove_dir_all(&d).unwrap();
-            let loaded = loaded.unwrap_or_else(|e| panic!("{name} preset: {e}"));
-            assert_eq!(
-                loaded.packs.iter().any(|p| p.id == "pii"),
-                name == "full",
-                "{name}: pii"
-            );
+        for (name, text) in [
+            ("minimal", MINIMAL_CONFIG),
+            ("full", FULL_CONFIG),
+            ("strict", STRICT_CONFIG),
+        ] {
+            let loaded = with_config(name, text).unwrap_or_else(|e| panic!("{name} preset: {e}"));
+            let on = |id: &str| loaded.packs.iter().any(|p| p.id == id);
+            assert_eq!(on("pii"), name != "minimal", "{name}: pii");
+            assert_eq!(on("work"), name == "strict", "{name}: work");
+            assert!(loaded.sources.iter().any(|s| s.kind == "me"), "{name}: me");
         }
+    }
+
+    /// Work names show by default and are hidden once `work` is on (ADR 0001).
+    #[test]
+    fn work_names_are_hidden_only_with_the_work_pack_on() {
+        let text = "https://dev.azure.com/contoso/Fabrikam/_git/storefront\n\
+                    gcloud projects/contoso-web-prod\n";
+        let hidden = |loaded: &pack::Loaded| -> Vec<String> {
+            scan::scan(text, loaded)
+                .unwrap()
+                .iter()
+                .map(|s| text[s.start..s.end].to_string())
+                .collect()
+        };
+        assert_eq!(hidden(&builtin()), Vec::<String>::new());
+        let on = with_config("work-on", "[packs]\nenable = [\"work\"]\n").unwrap();
+        assert_eq!(
+            hidden(&on),
+            ["contoso", "Fabrikam", "storefront", "contoso-web-prod"]
+        );
     }
 
     /// Every example in the starter config, uncommented, loads: the starter can
@@ -666,6 +699,7 @@ mod docs {
         };
         assert_eq!(on("azure"), true);
         assert_eq!(on("pii"), false);
+        assert_eq!(on("work"), false);
         let azure = &v["packs"][0];
         assert_eq!(
             azure["rules"].as_array().unwrap().len(),
