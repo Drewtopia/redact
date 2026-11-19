@@ -357,3 +357,39 @@ fn with_every_pack_on_a_value_is_hidden_by_its_own_rule() {
     }
     assert!(fails.is_empty(), "{}", fails.join("\n"));
 }
+
+/// The version just after `marker` in `file`'s `text`, as `x.y.z` or `"x.y.z"`.
+fn version_after(file: &str, text: &str, marker: &str) -> Vec<u32> {
+    let at = text
+        .find(marker)
+        .unwrap_or_else(|| panic!("{file} no longer says {marker:?}: fix this test"))
+        + marker.len();
+    let v = text[at..].trim_start_matches([' ', '"', '=']);
+    let end = v
+        .find(|c: char| !c.is_ascii_digit() && c != '.')
+        .unwrap_or(v.len());
+    v[..end].split('.').map(|n| n.parse().unwrap()).collect()
+}
+
+/// identity.toml takes its AI tool list from commit-check's signatures, and
+/// says which version. mise.toml may pin an older commit-check (the git hooks
+/// use it); once it pins a newer one, the list may have changed: refresh the
+/// pack (CONTRIBUTING.md) and bump that version.
+#[test]
+fn the_ai_tool_list_is_not_older_than_the_commit_check_in_use() {
+    let list_version = version_after(
+        "packs/identity.toml",
+        include_str!("../packs/identity.toml"),
+        "known AI tool signatures, version",
+    );
+    let pinned = version_after(
+        "mise.toml",
+        include_str!("../mise.toml"),
+        "\"pipx:commit-check\"",
+    );
+    assert!(
+        pinned <= list_version,
+        "mise.toml pins commit-check {pinned:?}, newer than the {list_version:?} that \
+         packs/identity.toml's AI tool list came from: refresh it (CONTRIBUTING.md)"
+    );
+}

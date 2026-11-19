@@ -1,6 +1,6 @@
 # Prior art and thanks
 
-redact draws on the projects below. Thank you to their authors. [Third-party notices](#third-party-notices) covers the credential patterns adapted from transcript-redactor and redact-transcripts, and the code that overlaps with fnox.
+redact draws on the projects below. Thank you to their authors. [Third-party notices](#third-party-notices) covers the credential patterns adapted from transcript-redactor and redact-transcripts, the AI tool list taken from commit-check, and the code that overlaps with fnox.
 
 | Project | Contribution |
 | :- | :- |
@@ -11,6 +11,7 @@ redact draws on the projects below. Thank you to their authors. [Third-party not
 | [worktrunk](https://github.com/max-sixty/worktrunk) | Config layers merged in a fixed order, and typos in config reported rather than ignored |
 | [dotenvx](https://dotenvx.com) | Hiding every value in a `.env` file, `.env.keys` included |
 | [gitleaks](https://github.com/gitleaks/gitleaks) | The `regex`, `keywords` and `secretGroup` field names of its rule files |
+| [commit-check](https://github.com/commit-check/commit-check) | The known AI tool signatures that decide which agent attribution trailers the identity pack leaves visible. MIT notice retained below |
 | [Betterleaks](https://github.com/betterleaks/betterleaks) | The shape of an Entra client secret: three characters and a digit before `Q~` |
 | [redact-transcripts](https://github.com/crossvault/redact-transcripts) by crossVault | The real lengths of Groq, xAI and Google OAuth keys. Apache-2.0 notice retained below |
 
@@ -21,6 +22,8 @@ The docs are built with [VitePress](https://vitepress.dev).
 `packs/credentials.toml` adapts credential patterns from [transcript-redactor's detector](https://github.com/ray-amjad/claude-code-mods/blob/467b20300d8ec56e24fb0534befb4d1f51dc6b92/plugins/transcript-redactor/hooks/detect.ts), version 0.4.1, by Ray Amjad.
 
 `packs/credentials.toml` takes the Groq, xAI and Google OAuth key lengths from [redact-transcripts' scrub rules](https://github.com/crossvault/redact-transcripts/blob/9124199939a2c5519f484fbd46b1a77b076094ba/src/redact_transcripts/_scrub_rules.py), version 0.2.0, by crossVault GmbH, under the Apache License 2.0.
+
+`packs/identity.toml` takes the AI tool addresses and GitHub App names it leaves visible from commit-check's known AI tool signatures (`commit_check/ai_signatures_data.py`), version 2.21.0, by Xianpeng Shen, under the MIT License.
 
 The `unescape` helper in `src/pack.rs` closely matches [fnox's `unescape_double_quoted` helper](https://github.com/jdx/fnox/blob/cb634672672d3ad031ddefef832d32b407dd55ad/crates/fnox-core/src/providers/onepassword.rs#L657). Similarity alone does not establish that it was copied. The fnox MIT notice is retained conservatively for this overlap.
 
