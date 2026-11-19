@@ -152,7 +152,7 @@ const countHidden = (tags: Set<string>): number => [...tags].filter((t) => !isLi
 
 // release-please bumps this with plugin.json. The rules live in the binary and
 // the hook logic here, so a fix can need both, and a mismatch is worth saying.
-export const MOD_VERSION = '0.4.1' // x-release-please-version
+export const MOD_VERSION = '0.4.2' // x-release-please-version
 let versionChecked = false
 
 async function checkVersion($: any, binary: string): Promise<void> {
