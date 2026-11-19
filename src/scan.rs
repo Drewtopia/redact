@@ -556,10 +556,11 @@ mod tests {
         })
     }
 
-    /// The built-in packs' output, with each tag's random hex shown as `…`: a
-    /// random tag such as `[ID-a17946f0]` must not read as a leaked `7946`.
+    /// The built-in packs' output, `work` switched on, with each tag's random hex
+    /// shown as `…`: a random tag such as `[ID-a17946f0]` must not read as a
+    /// leaked `7946`.
     fn azure(text: &str) -> String {
-        let loaded = pack::load(&pack::Options {
+        let mut loaded = pack::load(&pack::Options {
             files: vec![],
             builtin: true,
             user: false,
@@ -570,12 +571,21 @@ mod tests {
             host: None,
         })
         .unwrap();
+        work_on(&mut loaded);
         let out = mask(
             text,
             &scan(text, &loaded).unwrap(),
             &mut Tagger::new(None).unwrap(),
         );
         blank_tags(&out)
+    }
+
+    /// Switches on `work` in the built-in order, as `[packs] enable = ["work"]`
+    /// leaves it: right after azure.
+    fn work_on(loaded: &mut pack::Loaded) {
+        let work = loaded.off.iter().position(|p| p.id == "work").unwrap();
+        let after = loaded.packs.iter().position(|p| p.id == "azure").unwrap() + 1;
+        loaded.packs.insert(after, loaded.off.remove(work));
     }
 
     fn blank_tags(out: &str) -> String {
@@ -835,7 +845,7 @@ mod tests {
             host: None,
         })
         .unwrap();
-        // `pii` is off by default; its rules are tested here too.
+        // `pii` and `work` are off by default; their rules are tested here too.
         loaded.packs.append(&mut loaded.off);
         loaded.packs.retain(|p| p.id == pack_id);
         for p in &mut loaded.packs {
@@ -882,27 +892,27 @@ mod tests {
         for end in ["\\n", "\\\"", "\\\\"] {
             for (id, url, value) in [
                 (
-                    "azure:ado-repo-url",
+                    "work:ado-repo-url",
                     "https://dev.azure.com/fabrikamqa/Ops/_git/widget-api",
                     "widget-api",
                 ),
                 (
-                    "azure:ado-project-url",
+                    "work:ado-project-url",
                     "https://dev.azure.com/fabrikamqa/Ops",
                     "Ops",
                 ),
                 (
-                    "azure:ado-project-visualstudio",
+                    "work:ado-project-visualstudio",
                     "https://fabrikamqa.visualstudio.com/Ops",
                     "Ops",
                 ),
                 (
-                    "azure:ado-org-ssh",
+                    "work:ado-org-ssh",
                     "git@ssh.dev.azure.com:v3/fabrikamqa",
                     "",
                 ),
                 (
-                    "azure:ado-project-ssh",
+                    "work:ado-project-ssh",
                     "git@ssh.dev.azure.com:v3/fabrikamqa/Ops",
                     "",
                 ),
@@ -982,7 +992,7 @@ mod tests {
                 String::new(),
             ),
             (
-                "gcp:project-path",
+                "work:project-path",
                 "projects/bluefinq-prod-45/x".into(),
                 "bluefinq-prod-45".into(),
             ),
@@ -2027,7 +2037,7 @@ mod tests {
     fn a_label_never_shows_a_value_a_rule_hid() {
         let d = tmp("labelvalue");
         std::fs::write(d.join("x.env"), "CONTOSOQ_API_KEY=Zq8vToken42abc\n").unwrap();
-        let loaded = pack::load(&pack::Options {
+        let mut loaded = pack::load(&pack::Options {
             files: vec![],
             builtin: true,
             user: false,
@@ -2038,6 +2048,7 @@ mod tests {
             host: None,
         })
         .unwrap();
+        work_on(&mut loaded);
         let text = r#"{"name": "Contosoq", "isDefault": true} and Zq8vToken42abc"#;
         let out = blank_tags(&mask(
             text,
@@ -2256,26 +2267,37 @@ mod tests {
     #[test]
     fn allowed_values_stay_visible_in_any_case() {
         let url = "https://dev.azure.com/fabrikamq/Bluefinq/_git/app and C:\\BLUEFINQ\\x";
-        let out = with_config("allow", "allow = [\"fabrikamq\", \"bluefinq\"]\n", url).unwrap();
+        let out = with_config(
+            "allow",
+            "allow = [\"fabrikamq\", \"bluefinq\"]\n[packs]\nenable = [\"work\"]\n",
+            url,
+        )
+        .unwrap();
         assert!(
             out.contains("dev.azure.com/fabrikamq/Bluefinq/_git/")
                 && out.contains("C:\\BLUEFINQ\\"),
             "{out}"
         );
         // Not allowed: still hidden.
-        let out = with_config("allow2", "allow = [\"fabrikamq\"]\n", url).unwrap();
+        let out = with_config(
+            "allow2",
+            "allow = [\"fabrikamq\"]\n[packs]\nenable = [\"work\"]\n",
+            url,
+        )
+        .unwrap();
         assert!(!out.contains("Bluefinq"), "{out}");
     }
 
     #[test]
     fn packs_can_be_turned_on_and_off() {
+        // `work` is off by default (ADR 0001); `enable` turns it on.
         let text = "projects/bluefinq-prod-45/locations/eu";
         assert!(
-            !with_config("on", "", text)
+            !with_config("on", "[packs]\nenable = [\"work\"]\n", text)
                 .unwrap()
                 .contains("bluefinq-prod-45")
         );
-        let off = with_config("off", "[packs]\ndisable = [\"gcp\"]\n", text).unwrap();
+        let off = with_config("off", "", text).unwrap();
         assert!(off.contains("bluefinq-prod-45"), "{off}");
         let err = with_config("typo", "[packs]\ndisable = [\"gpc\"]\n", text)
             .err()
@@ -2354,7 +2376,7 @@ mod tests {
     #[test]
     fn overrides_by_machine_folder_and_command() {
         let url = "https://dev.azure.com/fabrikamq/Bluefinq/_git/app";
-        let cfg = "[[override]]\nhost = \"work-*\"\nallow = [\"fabrikamq\"]\n\n[[override]]\ndir = \"/srv/bluefinq\"\nallow = [\"bluefinq\"]\n\n[[override]]\ncommand = \"az repos pr *\"\n[override.packs]\ndisable = [\"identity\"]\n";
+        let cfg = "[packs]\nenable = [\"work\"]\n\n[[override]]\nhost = \"work-*\"\nallow = [\"fabrikamq\"]\n\n[[override]]\ndir = \"/srv/bluefinq\"\nallow = [\"bluefinq\"]\n\n[[override]]\ncommand = \"az repos pr *\"\n[override.packs]\ndisable = [\"identity\"]\n";
         // host matches: the org shows; folder does not: the project stays hidden.
         let out = with_context("ov1", cfg, url, Some("WORK-LAPTOP"), Some("/tmp"), None).unwrap();
         assert!(

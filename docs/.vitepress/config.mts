@@ -44,6 +44,7 @@ export default defineConfig({
         items: [
           { text: 'How packs work', link: '/packs/' },
           { text: 'azure', link: '/packs/azure' },
+          { text: 'work', link: '/packs/work' },
           { text: 'identity', link: '/packs/identity' },
           { text: 'kubernetes', link: '/packs/kubernetes' },
           { text: 'docker', link: '/packs/docker' },

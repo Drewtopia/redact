@@ -1,0 +1,346 @@
+# Built-in pack: work names. Off by default; turn it on in config.toml:
+#   [packs]
+#   enable = ["work"]
+# or write a config that does with `redact config init --preset strict`.
+# It hides organisation, project, repo and host names, which turn up in paths,
+# commands and links: once hidden, those hold placeholders and may not run.
+# ADR 0001 (docs/adr/0001-defaults-and-opt-in.md) explains why it is a choice.
+# People, credentials and cloud IDs stay in the azure and gcp packs, on by default.
+# Each rule's regex finds a spot; `secretGroup` is the capture group that gets hidden,
+# and `label` is what the placeholder says instead: [ORG-1a2b3c4d].
+# `remember = "distinctive"` hides that value everywhere else in the same text when it
+# reads as a name; `"any"` does so for any capitalised or 5+ character value.
+schema_version = 1
+id = "work"
+description = "Work names: Azure DevOps organisation, project and repo names; your own Azure hosts; tenant, subscription and company names; Google Cloud project IDs. Off by default"
+default = false
+keywords = ["dev.azure.com", "/_git/", "visualstudio", "system.", "wellformed", "remoteurl", "sshurl", "dynamics.com", "azurewebsites", "powerappsportals", "vault.azure", "windows.net", "azurecr", "sharepoint", "onmicrosoft", "tenantdisplayname", "isdefault", "companyname", "project_id", "projectid", "projects/", "--project"]
+
+# A public value Microsoft documents: never hidden.
+allow = ["AzureCloud"]
+
+# --- Azure DevOps: found by place, not listed ---------------------------------
+
+[[rules]]
+id = "ado-org"
+description = "dev.azure.com/<org>"
+regex = '''(?i)dev\.azure\.com/([a-z0-9][a-z0-9-]{0,49})\b'''
+secretGroup = 1
+label = "ORG"
+remember = "any"
+keywords = ["dev.azure.com"]
+
+matrix = false
+[[rules.tests]]
+input = "https://dev.azure.com/fabrikamq/"
+expect = ["fabrikamq"]
+
+[[rules]]
+id = "ado-project-url"
+description = "dev.azure.com/<org>/<project>"
+regex = '''(?i)dev\.azure\.com/[^/\\\s"']{1,60}/([^/\\\s"'?#_][^/\\\s"'?#]{0,63})'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["dev.azure.com"]
+
+matrix = false
+[[rules.tests]]
+input = "https://dev.azure.com/fabrikamq/Northwind%20App/_git/repo"
+expect = ["Northwind%20App"]
+
+[[rules]]
+id = "ado-repo-url"
+description = ".../_git/<repo>"
+regex = '''/_git/([^/\\\s"'?#]{1,64})'''
+secretGroup = 1
+label = "REPO"
+remember = "distinctive"
+keywords = ["/_git/"]
+
+matrix = false
+[[rules.tests]]
+input = "https://dev.azure.com/fabrikamq/Proj/_git/northwind-api"
+expect = ["northwind-api"]
+
+[[rules]]
+id = "ado-org-ssh"
+description = "The org in an Azure Repos SSH URL: ssh.dev.azure.com:v3/<org>/..."
+regex = '''(?i)(?:ssh\.dev\.azure\.com|vs-ssh\.visualstudio\.com):v3/([^/\\\s"']{1,60})/'''
+secretGroup = 1
+label = "ORG"
+remember = "any"
+keywords = ["ssh.dev.azure.com", "vs-ssh.visualstudio"]
+
+matrix = false
+[[rules.tests]]
+input = "git@ssh.dev.azure.com:v3/fabrikamq/Northwind/northwind-api"
+expect = ["fabrikamq"]
+
+[[rules]]
+id = "ado-project-ssh"
+description = "The project in an Azure Repos SSH URL: ssh.dev.azure.com:v3/<org>/<project>/..."
+regex = '''(?i)(?:ssh\.dev\.azure\.com|vs-ssh\.visualstudio\.com):v3/[^/\\\s"']{1,60}/([^/\\\s"']{1,64})/'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["ssh.dev.azure.com", "vs-ssh.visualstudio"]
+
+matrix = false
+[[rules.tests]]
+input = "git@ssh.dev.azure.com:v3/fabrikamq/Northwind/api"
+expect = ["Northwind"]
+
+[[rules]]
+id = "ado-org-visualstudio"
+description = "The org in the older <org>.visualstudio.com Azure DevOps URLs"
+regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{0,49})\.visualstudio\.com'''
+secretGroup = 1
+label = "ORG"
+# Microsoft's own hosts under visualstudio.com, not an org.
+except = '''(?i)^(?:vs-ssh|pkgs|app|marketplace|vssps|aex|vsaex|vsrm|status|vsassets|spsprod[a-z]{2,6}[0-9]{0,3}|login|management)$'''
+remember = "any"
+keywords = ["visualstudio.com"]
+
+matrix = false
+[[rules.tests]]
+input = "https://fabrikamq.visualstudio.com/Proj"
+expect = ["fabrikamq"]
+[[rules.tests]]
+input = "https://marketplace.visualstudio.com/items"
+expect = []
+
+[[rules]]
+id = "ado-project-visualstudio"
+description = "The project in <org>.visualstudio.com/<project>/ URLs"
+regex = '''(?i)[a-z0-9][a-z0-9-]{0,49}\.visualstudio\.com/(?:DefaultCollection/)?([^/\\\s"'?#_][^/\\\s"'?#]{0,63})'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["visualstudio.com/"]
+
+matrix = false
+[[rules.tests]]
+input = "https://fabrikamq.visualstudio.com/Northwind/_git/x"
+expect = ["Northwind"]
+
+[[rules]]
+id = "ado-org-artifacts"
+description = "The org in Azure Artifacts feed URLs: pkgs.dev.azure.com/<org>/"
+regex = '''(?i)pkgs\.dev\.azure\.com/([a-z0-9][a-z0-9-]{0,49})'''
+secretGroup = 1
+label = "ORG"
+remember = "any"
+keywords = ["pkgs.dev.azure.com"]
+
+matrix = false
+[[rules.tests]]
+input = "https://pkgs.dev.azure.com/fabrikamq/_packaging/feed/npm/registry/"
+expect = ["fabrikamq"]
+
+[[rules]]
+id = "ado-org-artifacts-vs"
+description = "The org in older Azure Artifacts feed URLs: <org>.pkgs.visualstudio.com"
+regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{0,49})\.pkgs\.visualstudio\.com'''
+secretGroup = 1
+label = "ORG"
+remember = "any"
+keywords = ["pkgs.visualstudio.com"]
+
+matrix = false
+[[rules.tests]]
+input = "https://fabrikamq.pkgs.visualstudio.com/_packaging"
+expect = ["fabrikamq"]
+
+# --- Azure DevOps records -----------------------------------------------------
+
+[[rules]]
+id = "work-item-project"
+description = "A work item's TeamProject, and the first part of AreaPath and IterationPath"
+regex = '''(?i)"System\.(?:TeamProject|AreaPath|IterationPath|AreaLevel1|IterationLevel1)"\s*:\s*"([^"\\]{1,64})'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["system."]
+
+matrix = false
+[[rules.tests]]
+input = "{\"System.TeamProject\": \"Northwind App\"}"
+expect = ["Northwind App"]
+
+[[rules]]
+id = "project-record"
+description = "The name in an az devops project record"
+regex = '''(?i)"name"\s*:\s*"((?:[^"\\]|\\.){1,})"'''
+secretGroup = 1
+label = "PROJECT"
+within = '''(?i)"state"\s*:\s*"wellFormed"'''
+remember = "any"
+keywords = ["wellformed"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"name\": \"Northwind App\", \"state\": \"wellFormed\"}"
+expect = ["Northwind App"]
+
+[[rules]]
+id = "repo-record"
+description = "The name in an az repos record"
+regex = '''(?i)"name"\s*:\s*"((?:[^"\\]|\\.){1,})"'''
+secretGroup = 1
+label = "REPO"
+within = '''(?i)"(?:remoteUrl|sshUrl)"\s*:'''
+remember = "distinctive"
+keywords = ["remoteurl", "sshurl"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"name\": \"northwind-api\", \"remoteUrl\": \"https://example.test/r\"}"
+expect = ["northwind-api"]
+
+# --- Your own Azure hosts: the <name> part is yours, the suffix is Microsoft's ---
+
+[[rules]]
+id = "dataverse-env"
+description = "<name>.crm11.dynamics.com"
+regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{1,62})\.crm[0-9]*\.dynamics\.com'''
+secretGroup = 1
+label = "RESOURCE"
+remember = "distinctive"
+keywords = ["dynamics.com"]
+
+matrix = false
+[[rules.tests]]
+input = "https://fabrikamq-dev.crm4.dynamics.com/api"
+expect = ["fabrikamq-dev"]
+
+[[rules]]
+id = "web-app"
+description = "<name>.azurewebsites.net and <name>.powerappsportals.com"
+regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{1,62})\.(?:(?:scm\.)?azurewebsites\.net|powerappsportals\.com)'''
+secretGroup = 1
+label = "RESOURCE"
+remember = "distinctive"
+keywords = ["azurewebsites", "powerappsportals"]
+
+matrix = false
+[[rules.tests]]
+input = "https://fabrikamq-api.azurewebsites.net"
+expect = ["fabrikamq-api"]
+
+[[rules]]
+id = "azure-resource"
+description = "Key Vault, storage, SQL, Service Bus and container registry names"
+regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{1,62})\.(?:vault\.azure\.net|(?:blob|file|queue|table|dfs)\.core\.windows\.net|database\.windows\.net|servicebus\.windows\.net|azurecr\.io)'''
+secretGroup = 1
+label = "RESOURCE"
+remember = "distinctive"
+keywords = ["vault.azure", "windows.net", "azurecr"]
+
+matrix = false
+[[rules.tests]]
+input = "https://fabrikamq-kv.vault.azure.net/secrets/x"
+expect = ["fabrikamq-kv"]
+
+[[rules]]
+id = "tenant-name"
+description = "<name>.sharepoint.com and <name>.onmicrosoft.com"
+regex = '''(?i)(?:^|[^a-z0-9-])([a-z0-9][a-z0-9-]{1,62})\.(?:sharepoint\.com|onmicrosoft\.com)'''
+secretGroup = 1
+label = "ORG"
+remember = "any"
+keywords = ["sharepoint", "onmicrosoft"]
+
+matrix = false
+[[rules.tests]]
+input = "https://fabrikamq.sharepoint.com/sites/x"
+expect = ["fabrikamq"]
+
+# --- az account and Microsoft Graph: the organisation's own names -------------
+
+[[rules]]
+id = "tenant-display-name"
+description = "tenantDisplayName: usually the organisation's own name"
+regex = '''(?i)"tenantDisplayName"\s*:\s*"((?:[^"\\]|\\.){1,})"'''
+secretGroup = 1
+label = "ORG"
+remember = "any"
+keywords = ["tenantdisplayname"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"tenantDisplayName\": \"Fabrikam Q Ltd\"}"
+expect = ["Fabrikam Q Ltd"]
+
+[[rules]]
+id = "subscription-name"
+description = "The name of a subscription in an az account record"
+regex = '''(?i)"name"\s*:\s*"((?:[^"\\]|\\.){1,})"'''
+secretGroup = 1
+label = "RESOURCE"
+within = '''(?i)"isDefault"\s*:'''
+remember = "distinctive"
+keywords = ["isdefault"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"name\": \"Contoso Dev\", \"isDefault\": true}"
+expect = ["Contoso Dev"]
+
+[[rules]]
+id = "graph-company"
+description = "companyName: the employer"
+regex = '''(?i)"companyName"\s*:\s*"((?:[^"\\]|\\.){1,})"'''
+secretGroup = 1
+label = "PROFILE"
+remember = "any"
+keywords = ["companyname"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"companyName\": \"Fabrikam Q Ltd\"}"
+expect = ["Fabrikam Q Ltd"]
+
+# --- Google Cloud project IDs -------------------------------------------------
+
+[[rules]]
+id = "project-id-field"
+description = "project_id and projectId in a service account key file or API output"
+regex = '''(?i)"(?:project_id|projectId|quota_project_id)"\s*:\s*"([a-z][a-z0-9-]{4,28}[a-z0-9])"'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["project_id", "projectid"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"project_id\": \"fabrikam-dev-123\"}"
+expect = ["fabrikam-dev-123"]
+
+[[rules]]
+id = "project-path"
+description = "The project in a resource path: projects/<id>/..."
+regex = '''(?:^|[^A-Za-z0-9_]|\\[nrt])projects/([a-z][a-z0-9-]{4,28}[a-z0-9])\b'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["projects/"]
+
+matrix = false
+[[rules.tests]]
+input = "projects/fabrikam-dev-123/locations/us"
+expect = ["fabrikam-dev-123"]
+
+[[rules]]
+id = "project-flag"
+description = "The project after --project (gcloud)"
+regex = '''--project[= \t]+([a-z][a-z0-9-]{4,28}[a-z0-9])\b'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["--project"]
+
+matrix = false
+[[rules.tests]]
+input = "gcloud run deploy --project fabrikam-dev-123"
+expect = ["fabrikam-dev-123"]
