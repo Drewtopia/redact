@@ -1,5 +1,10 @@
 # Built-in pack: who people are, outside Azure records.
 # Emails anywhere, git authors and your git identity, and GitHub user records.
+# The AI tool addresses and GitHub App names the email and git-person rules
+# leave visible come from commit-check's (github.com/commit-check/commit-check,
+# MIT) list of known AI tool signatures, version 2.21.0: its address-anchored
+# and [bot] identities only, never a bare name. CONTRIBUTING.md says how to
+# refresh them.
 schema_version = 1
 id = "identity"
 description = "Email addresses anywhere, git commit authors and git config user lines, and the login, name and profile of a GitHub user record"
@@ -9,14 +14,20 @@ allow = ["git@github.com", "git@gitlab.com", "git@bitbucket.org", "git@ssh.dev.a
 
 [[rules]]
 id = "email"
-description = "An email address, anywhere, except at the documentation domains example.com, example.org and example.net"
+description = "An email address, anywhere, except at the documentation domains example.com, example.org and example.net, GitHub's noreply@ or no-reply@ address, and a known AI tool's own address"
 # Not straight after `scheme://user:`, where `password@host` would read as an
 # address: the credentials pack hides that password. After `email:` or `mailto:` it still matches.
 regex = '''(?:^|[^A-Za-z0-9._%+:/-]|(?:^|[^/A-Za-z0-9._%+-])[A-Za-z0-9_-]*:)([A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24})\b'''
 secretGroup = 1
 label = "EMAIL"
-# An address at a domain reserved for documentation (RFC 2606) names no one.
-except = '''(?i)@(?:[a-z0-9-]+\.)*example\.(?:com|org|net)$'''
+# These name no one: an address at a domain reserved for documentation
+# (RFC 2606), GitHub's noreply@ or no-reply@ address, and the address of an AI
+# tool on commit-check's list (see the header), as in an agent's own
+# Co-Authored-By trailer. Only known addresses: noreply@ at a person's own
+# domain names that domain. A person's GitHub noreply address,
+# `<id>+<login>@users.noreply.github.com`, holds their login and stays hidden;
+# only the Claude and Copilot accounts' own are left.
+except = '''(?i)@(?:[a-z0-9-]+\.)*example\.(?:com|org|net)$|^no-?reply@github\.com$|^(?:noreply@anthropic\.com|[0-9]+\+(?:claude|copilot)@users\.noreply\.github\.com|cursoragent@cursor\.com|aider@aider\.chat|amp@ampcode\.com|noreply@continue\.dev|vibe@mistral\.ai|qwen-coder@alibabacloud\.com|agent@warp\.dev|crush@charm\.land)$'''
 # Not remembered: this rule already finds an address wherever it appears, and
 # remembering every address made email-heavy input slow and memory-hungry.
 keywords = ["@"]
@@ -27,11 +38,44 @@ expect = ["jordan.fake@fabrikamq.example"]
 [[rules.tests]]
 input = "write to docs@example.com"
 expect = []
+[[rules.tests]]
+input = "sent by noreply@anthropic.com and No-Reply@GitHub.com"
+expect = []
+[[rules.tests]]
+input = "noreply@fakeshop.test"
+expect = ["noreply@fakeshop.test"]
+[[rules.tests]]
+input = "175728472+Copilot@users.noreply.github.com"
+expect = []
+[[rules.tests]]
+input = "12345+jqfake@users.noreply.github.com"
+expect = ["12345+jqfake@users.noreply.github.com"]
+[[rules.tests]]
+input = "jq.noreply@fakeshop.test"
+expect = ["jq.noreply@fakeshop.test"]
+[[rules.tests]]
+input = "agents: 12345+Claude@users.noreply.github.com cursoragent@cursor.com aider@aider.chat amp@ampcode.com noreply@continue.dev vibe@mistral.ai qwen-coder@alibabacloud.com agent@warp.dev crush@charm.land"
+expect = []
+[[rules.tests]]
+input = "devin@fakeshop.test"
+expect = ["devin@fakeshop.test"]
 
 [[rules]]
 id = "git-person"
-description = "The name in Author:, Commit:, Tagger:, Signed-off-by: and Co-authored-by: lines"
-regex = '''(?mi)^\s*(?:Author|Commit|Tagger|Signed-off-by|Co-authored-by):\s+([^<\n]+?)\s+<'''
+description = "The name in Author:, Commit:, Tagger:, Signed-off-by: and Co-authored-by: lines, unless its address is GitHub's noreply@ or no-reply@ address or a known AI tool's own, or the name is a known AI tool's GitHub App"
+# The match runs on through the address so `exceptMatch` can read it.
+regex = '''(?mi)^\s*(?:Author|Commit|Tagger|Signed-off-by|Co-authored-by):\s+([^<\n]+?)\s+<[^>\s]*'''
+# An agent's own trailer names no one, and a hit here is then hidden
+# everywhere: `Claude`, `GitHub`. Left alone: any name before GitHub's address
+# or an AI tool's on commit-check's list (see the header; the same list as the
+# email rule's, plus Devin's GitHub App address), and an AI tool's GitHub App
+# name, `<login>[bot]`, before any address. A bare name never counts: Devin,
+# Jules, Amp and Claude are people too. Every other name stays hidden: before a
+# person's GitHub noreply address, before another bot's, and before noreply@ at
+# any other domain, which a person can own. commit-check also wants the name
+# Claude or Amp before the Claude account's or Amp's address; here the address
+# decides, since no person holds either and the email rule shows it anyway.
+exceptMatch = '''(?i)^[^<]*<(?:no-?reply@github\.com|noreply@anthropic\.com|[0-9]+\+(?:claude|copilot)@users\.noreply\.github\.com|(?:[0-9]+\+)?devin-ai-integration\[bot\]@users\.noreply\.github\.com|cursoragent@cursor\.com|aider@aider\.chat|amp@ampcode\.com|noreply@continue\.dev|vibe@mistral\.ai|qwen-coder@alibabacloud\.com|agent@warp\.dev|crush@charm\.land)$|^[^:<]*:\s+(?:claude|chatgpt-codex-connector|cursor|factory-droid|google-labs-jules|amazon-q-developer)\[bot\]\s+<[^>]*$'''
 secretGroup = 1
 label = "PERSON"
 remember = "distinctive"
@@ -41,6 +85,72 @@ matrix = false
 [[rules.tests]]
 input = "Author: Jordan Quillfake <jordan.fake@fabrikamq.example>"
 expect = ["Jordan Quillfake"]
+[[rules.tests]]
+input = "Co-Authored-By: Claude <noreply@anthropic.com>\nCommit: GitHub <noreply@github.com>"
+expect = []
+[[rules.tests]]
+input = "Signed-off-by: Jordan Quillfake <noreply@fakeshop.test>\nAuthor: Casey Fakename <x@fakeshop.test> <noreply@github.com>"
+expect = ["Casey Fakename", "Jordan Quillfake"]
+[[rules.tests]]
+input = "Co-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>"
+expect = ["dependabot[bot]"]
+[[rules.tests]]
+input = "Co-authored-by: Jordan Quillfake <12345+jqfake@users.noreply.github.com>"
+expect = ["Jordan Quillfake"]
+[[rules.tests]]
+input = "Author: Jordan Quillfake <jq.noreply@fakeshop.test>\nAuthor: Casey Fakename <"
+expect = ["Casey Fakename", "Jordan Quillfake"]
+[[rules.tests]]
+input = "Author: Copilot Fan <175728472+Copilot@users.noreply.github.com.fakeshop.test>"
+expect = ["Copilot Fan"]
+[[rules.tests]]
+input = "Co-Authored-By: Claude Opus 4.5 (1M context) <noreply@anthropic.com>\nCo-authored-by: Claude <12345+Claude@users.noreply.github.com>\nAuthor: claude[bot] <209825114+claude[bot]@users.noreply.github.com>"
+expect = []
+[[rules.tests]]
+input = "Author: chatgpt-codex-connector[bot] <199175422+chatgpt-codex-connector[bot]@users.noreply.github.com>"
+expect = []
+[[rules.tests]]
+input = "Co-authored-by: Cursor Agent <cursoragent@cursor.com>\nAuthor: cursor[bot] <206951365+cursor[bot]@users.noreply.github.com>"
+expect = []
+[[rules.tests]]
+input = "Co-authored-by: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>"
+expect = []
+[[rules.tests]]
+input = "Co-authored-by: aider (gpt-4o) <aider@aider.chat>"
+expect = []
+[[rules.tests]]
+input = "Co-authored-by: Amp <amp@ampcode.com>"
+expect = []
+[[rules.tests]]
+input = "Co-authored-by: factory-droid[bot] <138933559+factory-droid[bot]@users.noreply.github.com>"
+expect = []
+[[rules.tests]]
+input = "Author: google-labs-jules[bot] <161369871+google-labs-jules[bot]@users.noreply.github.com>"
+expect = []
+[[rules.tests]]
+input = "Co-authored-by: Continue <noreply@continue.dev>"
+expect = []
+[[rules.tests]]
+input = "Co-Authored-By: Mistral Vibe <vibe@mistral.ai>"
+expect = []
+[[rules.tests]]
+input = "Co-authored-by: Qwen-Coder <qwen-coder@alibabacloud.com>"
+expect = []
+[[rules.tests]]
+input = "Author: amazon-q-developer[bot] <208079219+amazon-q-developer[bot]@users.noreply.github.com>"
+expect = []
+[[rules.tests]]
+input = "Author: Warp <agent@warp.dev>"
+expect = []
+[[rules.tests]]
+input = "Co-Authored-By: Crush <crush@charm.land>"
+expect = []
+[[rules.tests]]
+input = "Author: Devin Fakename <devin@fakeshop.test>\nCo-authored-by: Jules <jules@fakeshop.test>\nCo-authored-by: Amp <amp@fakeshop.test>"
+expect = ["Amp", "Devin Fakename", "Jules"]
+[[rules.tests]]
+input = "Author: Jordan Quillfake (aider) <jq@fakeshop.test>\nCo-authored-by: Codex <codex@fakeshop.test>\nCo-authored-by: Gemini <12345+gemini@users.noreply.github.com>"
+expect = ["Codex", "Gemini", "Jordan Quillfake (aider)"]
 
 [[rules]]
 id = "git-config-user"
