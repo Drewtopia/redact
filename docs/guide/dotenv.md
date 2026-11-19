@@ -31,4 +31,4 @@ redact hides each value everywhere it appears, so an ordinary word would be hidd
 
 ## A .env that is not loaded
 
-`cat apps/web/.env.local | redact` still hides the values, even when you run it from another folder. The `credentials` pack hides the value on every `NAME=value` line of an environment dump. See [credentials](../packs/credentials).
+`cat apps/web/.env.local | redact` hides only the values whose name says secret, such as `*_TOKEN`, `*_PASSWORD` or `*_KEY`, and values shaped like a known token. To hide every value in the file, list it in `env_files`. See [credentials](../packs/credentials).

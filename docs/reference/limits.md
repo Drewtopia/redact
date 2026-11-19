@@ -9,6 +9,7 @@ redact will miss things. Check its output before you share anything that matters
 - **Free text.** A customer named in an issue title, a log line, or a commit message is hidden only if it is in a word list, an environment variable you named, or a `.env` file. No rule can tell a customer's name from any other word.
 - **Shapes no pack knows.** redact shows the IDs and names of a service it has no pack for. The built-in packs cover Azure, people, credentials, Kubernetes, Docker, npm, HTTP headers, and Google Cloud, plus personal data once `pii` is on.
 - **Values without a name or shape.** A password printed on its own, with nothing like `password=` beside it, looks like any other word.
+- **Environment values under an ordinary name.** In `env`, `mise env` or `.env` text piped to redact, a `NAME=value` line is hidden only when the name says secret, such as `GITHUB_TOKEN`, `DB_PASSWORD` or `SIGNING_KEY`, or when the value has a known token shape. So `DEPLOY_HOOK=https://hooks.example.test/x` shows. To hide such a value, name the variable in `env` or list the file in `env_files`.
 - **Transformed values.** redact does not recognise a key that is base64-encoded, reversed, or split across lines.
 - **Case beyond ASCII.** Word matching ignores case for ASCII letters only, so `ÄBC` does not match `äbc`.
 - **Very short values.** To avoid hiding ordinary words everywhere, redact skips word-list entries under 3 characters, `.env` values under 4, and values named as secrets under 6. So `password: Ab3$x` shows. To hide a short secret, add it to a word list.
