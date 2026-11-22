@@ -465,3 +465,45 @@ test('Bash stdout that already holds placeholders, as field lines and JSON, pass
   assert.equal(r.deny, undefined, r.deny)
   assert.ok(!r.result.stdout.includes('widget-api'), r.result.stdout)
 })
+
+// restoreTools entries: an exact name, `*` for any run of characters, `!` to exclude.
+async function restoresFor(restoreTools, tool) {
+  const secret = fakeSecret(40)
+  const h = holding(secret, () => 'ok', { restoreTools })
+  const tag = await h.tag()
+  const r = await h.call({ tool, id: tag })
+  if (r.deny !== undefined) {
+    assert.ok(r.deny.includes('restoreTools'), r.deny)
+    return false
+  }
+  // A tool off the list that is not an MCP tool runs with the placeholder.
+  const got = h.seen.at(-1).id
+  assert.ok(got === secret || got === tag, got)
+  return got === secret
+}
+
+test('an exact name in restoreTools still restores, and only for that tool', async () => {
+  assert.equal(await restoresFor('Read,mcp__someapp__open', 'mcp__someapp__open'), true)
+  assert.equal(await restoresFor('Read,mcp__someapp__open', 'mcp__someapp__open_all'), false)
+})
+
+test('a glob in restoreTools restores for a matching tool, and not for another', async () => {
+  assert.equal(await restoresFor('Read,mcp__someapp__*', 'mcp__someapp__open_thread'), true)
+  assert.equal(await restoresFor('Read,mcp__someapp__*', 'mcp__otherapp__open_thread'), false)
+  assert.equal(await restoresFor('Read,mcp__someapp__*', 'xmcp__someapp__open'), false)
+})
+
+test('an exclusion in restoreTools beats a matching glob, in either order', async () => {
+  for (const list of ['Read,mcp__someapp__*,!mcp__someapp__post_comment', 'Read,!mcp__someapp__post_comment,mcp__someapp__*']) {
+    assert.equal(await restoresFor(list, 'mcp__someapp__post_comment'), false, list)
+    assert.equal(await restoresFor(list, 'mcp__someapp__open_thread'), true, list)
+  }
+  assert.equal(await restoresFor('Read,mcp__someapp__*,!mcp__someapp__post_*', 'mcp__someapp__post_issue'), false)
+})
+
+test('an empty or malformed restoreTools entry is ignored without throwing', async () => {
+  const list = 'Read, ,,!, ! ,mcp__some[app(__*,mcp__someapp__open'
+  assert.equal(await restoresFor(list, 'mcp__someapp__open'), true)
+  assert.equal(await restoresFor(list, 'mcp__some[app(__x'), true)
+  assert.equal(await restoresFor(list, 'mcp__someapp__x'), false)
+})

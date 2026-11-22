@@ -198,16 +198,27 @@ async function run($: any, next: Budget, binary: string, texts: string[], mask: 
   return scrub(scanner($, next, binary, command), texts, mask)
 }
 
+// `restoreTools`: comma-separated tool names, where `*` matches any run of
+// characters and a leading `!` excludes. An exclusion wins over any include.
+function toolMatcher(list: string): (tool: string) => boolean {
+  const include: RegExp[] = []
+  const exclude: RegExp[] = []
+  for (const raw of list.split(',')) {
+    const entry = raw.trim()
+    const excluded = entry.startsWith('!')
+    const name = (excluded ? entry.slice(1) : entry).trim()
+    if (!name) continue
+    const literal = name.split('*').map((s) => s.replace(/[\\^$.|?+()[\]{}]/g, '\\$&'))
+    ;(excluded ? exclude : include).push(new RegExp(`^${literal.join('.*')}$`, 's'))
+  }
+  return (tool) => include.some((r) => r.test(tool)) && !exclude.some((r) => r.test(tool))
+}
+
 export const register: Register = (on, options) => {
   const opts = options as Record<string, unknown>
   const binary = String(opts.binary || 'redact')
   const notify = opts.notify !== false && opts.notify !== 'false'
-  const restoreTools = new Set(
-    String(opts.restoreTools ?? 'Bash,PowerShell,Write,Edit,MultiEdit,NotebookEdit,Read,Glob,Grep')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
-  )
+  const restoresTo = toolMatcher(String(opts.restoreTools ?? 'Bash,PowerShell,Write,Edit,MultiEdit,NotebookEdit,Read,Glob,Grep'))
   const restoreHosts = String(opts.restoreHosts ?? '')
     .split(',')
     .map((s) => s.trim().toLowerCase().replace(/^\*?\./, ''))
@@ -228,7 +239,7 @@ export const register: Register = (on, options) => {
   on('tool.call', async ($, e, next) => {
     const command = e.tool in SHELL_ACTIVE ? (e as { command?: unknown }).command : undefined
     const isPublish = typeof command === 'string' && publishes(command)
-    const isLocal = restoreTools.has(e.tool) && !isPublish
+    const isLocal = restoresTo(e.tool) && !isPublish
     const outgoing = isPublish ? command : e.tool.startsWith('mcp__') && !isLocal ? { ...e } : undefined
     const labels = outgoing === undefined ? [] : sessionLabels(outgoing)
     if (labels.length > 0) {
