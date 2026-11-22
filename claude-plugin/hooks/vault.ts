@@ -239,25 +239,56 @@ export async function locate($: any, name: string): Promise<string | undefined> 
 // The binary would not start, exited non-zero or printed something unreadable.
 export class ScanFailed extends Error {}
 
+// A session whose folder was deleted (its worktree removed) cannot start any
+// process there, and that fails as a missing binary would. Scan matches `dir =`
+// packs against its folder, so the nearest folder above that still exists
+// stands in, keeping packs scoped to a parent; home when none does.
+// Undefined when the session's folder exists.
+async function cwdIfGone($: any): Promise<string | undefined> {
+  let dir: string = await $.session.cwd()
+  if (await $.fs.exists(dir)) return undefined
+  for (;;) {
+    dir = dir.replace(/[\\/]+[^\\/]*[\\/]*$/, '')
+    // A bare root or drive is no better a stand-in than home.
+    if (!/[\\/]/.test(dir)) break
+    if (await $.fs.exists(dir)) return dir
+  }
+  return (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE'))
+}
+
 // The redact binary behind the scan port. Throws ScanFailed when it fails, so the hook withholds.
 export function binaryScan($: any, o: ScanOptions): Scan {
   return async (pieces) => {
     if (pieces.length === 0) return []
     const joined = pieces.join(SEP)
     // An env var, not --command: a build too old to know it still runs.
-    const exec = (binary: string) =>
-      $.process.run([binary, 'scan', '--json'], { stdin: joined, timeoutMs: o.timeoutMs, ...(o.command ? { env: { REDACT_COMMAND: o.command } } : {}) })
+    const exec = (binary: string, cwd?: string) =>
+      $.process.run([binary, 'scan', '--json'], {
+        stdin: joined,
+        timeoutMs: o.timeoutMs,
+        ...(cwd ? { cwd } : {}),
+        ...(o.command ? { env: { REDACT_COMMAND: o.command } } : {}),
+      })
     let r: { exitCode: number; stdout: string; stderr: string; isStdoutTruncated: boolean }
     try {
       r = await exec(o.binary)
     } catch (err) {
-      const found = await locate($, o.binary).catch(() => undefined)
-      try {
+      const cwd = await cwdIfGone($).catch(() => undefined)
+      const retry = async () => {
+        const ran = cwd && (await exec(o.binary, cwd).catch(() => undefined))
+        if (ran) return ran
+        const found = await locate($, o.binary).catch(() => undefined)
         if (!found) throw err
-        r = await exec(found)
+        const r = await exec(found, cwd)
         o.onLocated?.(found)
+        return r
+      }
+      try {
+        r = await retry()
       } catch {
-        const why = `could not run \`${o.binary}\` (${err instanceof Error ? err.message : String(err)})`
+        const why = cwd
+          ? `could not run \`${o.binary}\`: this session's working folder no longer exists, and running it from ${cwd} failed too`
+          : `could not run \`${o.binary}\` (${err instanceof Error ? err.message : String(err)})`
         o.onBroken?.(why)
         throw new ScanFailed(why)
       }

@@ -12,9 +12,9 @@ const call = async ($: any, input: Record<string, unknown>): Promise<Answer> => 
 
 // Claude Code beneath the mod: each tool prints `output(e)`; `seen` keeps what it was given.
 // `start` runs first and may throw, as a spawn that cannot find the binary does.
-function fakeRedact(on: any, label = 'SECRET', start?: (argv0: string) => void) {
+function fakeRedact(on: any, label = 'SECRET', start?: (argv0: string, init?: { cwd?: string }) => void) {
   on('process.run', (_$: unknown, e: any) => {
-    start?.(e.argv[0])
+    start?.(e.argv[0], e.init)
     const text: string = e.init?.stdin ?? ''
     const bytes = (s: string) => new TextEncoder().encode(s).length
     // `password: x` stands for a rule keyed on a field name.
@@ -256,6 +256,36 @@ test('redact found nowhere still withholds the result', async ($, on) => {
   const r = await call($, { tool: 'Bash', command: 'cat .env' })
   expect(JSON.stringify(r)).not.toContain(TOKEN)
   expect(JSON.stringify(r)).toContain('withheld')
+})
+
+// A session whose worktree was removed: no process can start in its folder,
+// which fails as a missing binary would.
+function deletedFolder(on: any, cwd: string, existing: string[]) {
+  const cwds: (string | undefined)[] = []
+  mock.env(on, { HOME: '/home/t' })
+  on('session.cwd', () => ({ value: cwd }))
+  on('fs.exists', (_$: unknown, e: any) => ({ value: existing.includes(e.path) }))
+  fakeRedact(on, 'SECRET', (argv0, init) => {
+    cwds.push(init?.cwd)
+    if (!init?.cwd || !existing.includes(init.cwd)) throw new Error(`spawn ${argv0} ENOENT`)
+  })
+  return cwds
+}
+
+test('a session whose folder was deleted still scans, from the nearest folder above it', async ($, on) => {
+  const cwds = deletedFolder(on, '/home/t/dev/wt', ['/home/t/dev', '/home/t'])
+  on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
+  const r = await call($, { tool: 'Bash', command: 'cat .env' })
+  expect(String(r.result)).toMatch(/^TOKEN=\[SECRET-[0-9a-f]{8}\]$/)
+  expect(cwds.slice(0, 2)).toEqual([undefined, '/home/t/dev'])
+})
+
+test('a session whose folder and every folder above it are gone scans from home', async ($, on) => {
+  const cwds = deletedFolder(on, '/gone/a/wt', ['/home/t'])
+  on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
+  const r = await call($, { tool: 'Bash', command: 'cat .env' })
+  expect(String(r.result)).toMatch(/^TOKEN=\[SECRET-[0-9a-f]{8}\]$/)
+  expect(cwds.slice(0, 2)).toEqual([undefined, '/home/t'])
 })
 
 test('a binary from another release than the mod gets one toast that says so', async ($, on) => {

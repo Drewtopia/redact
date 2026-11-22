@@ -119,6 +119,8 @@ If `redact` is not on Claude Code's `PATH`, the mod looks for it where installer
 
 This covers a session started by an app or service that was already running when you installed redact, so its `PATH` was set before redact existed. If the mod still cannot find it, set the `binary` setting to its full path. A `binary` that holds a path is used as given.
 
+If the session's working folder has been deleted, for example when its git worktree was removed, no program can start there. The mod then runs redact from the nearest folder above it that still exists, or from your home folder. A pack scoped with `dir =` to the deleted folder itself does not apply to that session; one scoped to a folder above it still does.
+
 ## Settings
 
 Claude Code asks for these settings when you install the mod. To change them later, open the `/plugin` menu.
