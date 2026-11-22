@@ -59,7 +59,7 @@ The built-in `credentials` pack hides credentials wherever they appear:
 
 - **On sight:** JWTs, bearer tokens, GitHub, GitLab, Anthropic, OpenAI, Groq, xAI, AWS, Slack, Stripe (webhook secrets too), Google and Azure keys, PEM private key blocks, the password in `scheme://user:password@host`, and random 24+ character tokens with no prefix.
 - **By name:** the value of anything named as a secret: `TOKEN=`, `"password":`, `client_secret:`, `API_KEY=`, `*_PAT=`, `Authorization:` and the like.
-- **Environment dumps:** the value on each `NAME=value` line of `env`, `mise env` or a `.env` file, except settings such as numbers, `true` and `development`.
+- **Environment dumps:** the value on a `NAME=value` line of `env`, `mise env` or a `.env` file when the name says secret, such as `GITHUB_TOKEN`, `DB_PASSWORD`, `SIGNING_KEY` or `SENTRY_DSN`. A setting such as `TMPDIR` or `CONF_FILE` stays visible; to hide it too, name it in `env`.
 
 The built-in `identity` pack hides who people are, outside any one service:
 
