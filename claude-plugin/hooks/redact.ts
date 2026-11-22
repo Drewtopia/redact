@@ -18,9 +18,12 @@ const HINT = "Is `redact` on this session's PATH? Install it with `mise use -g g
 // What failed, to end a message with. The PATH hint only helps when the
 // binary was not found, not when it timed out, exited non-zero or the
 // session's folder is gone.
-const because = (err: unknown): string => (err instanceof ScanFailed ? `: ${err.message}.${err.notFound ? ` ${HINT}` : ''}` : '.')
-const WITHHELD = 'redact could not scan this result, so it was withheld. Narrow the output (head, grep, offset) and retry.'
-const withheld = (err: unknown): string => (err instanceof ScanFailed ? `redact could not scan this result, so it was withheld${because(err)}` : WITHHELD)
+const because = (err: unknown): string =>
+  err instanceof ScanFailed ? `: ${err.message.replace(/\.+$/, '')}.${err.notFound ? ` ${HINT}` : ''}` : '.'
+const NARROW = 'Narrow the output (head, grep, offset) and retry.'
+const WITHHELD = `redact could not scan this result, so it was withheld. ${NARROW}`
+// Narrowing cannot help a binary that was not found.
+const withheld = (err: ScanFailed): string => `redact could not scan this result, so it was withheld${because(err)}${err.notFound ? '' : ` ${NARROW}`}`
 const UNMAPPED = 'redact could not scan this result in full or map a hidden value back into it, so it was withheld. Narrow the output (head, grep, offset) and retry.'
 const BLOCK_WITHHELD = '[redact withheld this text: the scan failed]'
 

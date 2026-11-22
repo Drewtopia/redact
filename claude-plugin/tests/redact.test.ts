@@ -362,9 +362,7 @@ test('a session folder with nothing above it drops the prompt, names the folder 
 
 test('a scan that times out withholds without the PATH hint', async ($, on) => {
   const toasts: string[] = []
-  on('ui.notice', () => ({ value: undefined }))
-  on('ui.toast', (_$: unknown, e: unknown) => (toasts.push(JSON.stringify(e)), { value: undefined }))
-  on('process.run', () => ({ deny: 'aborted: still running after 1000ms' }))
+  fakeRedact(on, 'SECRET', () => 'aborted: still running after 1000ms', toasts)
   on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
   on('prompt.submit', (_$: unknown, e: any) => ({ text: e.text }))
   const r = await call($, { tool: 'Bash', command: 'cat .env' })
@@ -384,4 +382,15 @@ test('a binary that exits non-zero drops the prompt without the PATH hint', asyn
   const r = await submit($, `TOKEN=${TOKEN}`)
   expect(r.drop).toContain('pack would not load')
   expect(r.drop).not.toContain('PATH')
+})
+
+test('output the mod cannot read withholds without the PATH hint', async ($, on) => {
+  on('ui.notice', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: 'warning: old config', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
+  const r = await call($, { tool: 'Bash', command: 'cat .env' })
+  expect(JSON.stringify(r)).not.toContain(TOKEN)
+  expect(r.deny).toContain('unknown shape')
+  expect(r.deny).not.toContain('PATH')
 })

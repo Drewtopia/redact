@@ -287,35 +287,34 @@ export function binaryScan($: any, o: ScanOptions): Scan {
         ...(cwd ? { cwd } : {}),
         ...(o.command ? { env: { REDACT_COMMAND: o.command } } : {}),
       })
-    let last: unknown
-    let timedOut = false
-    const attempt = async (binary: string, cwd?: string): Promise<RunResult | undefined> => {
+    // The engine rejects a run that cannot start with `failed to start: ENOENT: …`,
+    // and one past its timeout with `aborted: still running after …ms`.
+    const attempt = async (binary: string, cwd?: string): Promise<{ ran: RunResult } | { message: string; timedOut: boolean }> => {
       const started = Date.now()
       try {
-        return await exec(binary, cwd)
+        return { ran: await exec(binary, cwd) }
       } catch (err) {
-        last = err
-        timedOut = Date.now() - started >= o.timeoutMs || /still running after|timed? ?out|ETIMEDOUT/i.test(String((err as Error)?.message ?? err))
-        return undefined
+        const message = String((err as Error)?.message ?? err)
+        return { message, timedOut: Date.now() - started >= o.timeoutMs || /still running after|timed? ?out|ETIMEDOUT/i.test(message) }
       }
     }
-    let r = await attempt(o.binary)
-    if (!r && !timedOut) {
+    let run = await attempt(o.binary)
+    if (!('ran' in run) && !run.timedOut) {
       const folder = await goneFolder($).catch(() => undefined)
       if (folder && !folder.start) throw fail(`this session's folder ${folder.gone} no longer exists, nor any folder above it`)
-      if (folder) r = await attempt(o.binary, folder.start)
-      const found = r || timedOut ? undefined : await locate($, o.binary).catch(() => undefined)
+      if (folder) run = await attempt(o.binary, folder.start)
+      const found = 'ran' in run || run.timedOut ? undefined : await locate($, o.binary).catch(() => undefined)
       if (found) {
-        r = await attempt(found, folder?.start)
-        if (r) o.onLocated?.(found)
+        run = await attempt(found, folder?.start)
+        if ('ran' in run) o.onLocated?.(found)
       }
     }
-    if (!r) {
-      const message = String((last as Error)?.message ?? last)
-      if (timedOut) throw fail(`\`${o.binary} scan\` did not finish within ${o.timeoutMs} ms`)
-      if (/ENOENT|not found|no such file|cannot find/i.test(message)) throw fail(`\`${o.binary}\` was not found`, true)
-      throw fail(`could not start \`${o.binary}\` (${message})`)
+    if (!('ran' in run)) {
+      if (run.timedOut) throw fail(`\`${o.binary} scan\` did not finish within ${o.timeoutMs} ms`)
+      if (/ENOENT|not found|no such file|cannot find/i.test(run.message)) throw fail(`\`${o.binary}\` was not found`, true)
+      throw fail(`could not start \`${o.binary}\` (${run.message})`)
     }
+    const r = run.ran
     if (r.exitCode !== 0 || r.isStdoutTruncated) {
       throw fail(`\`${o.binary} scan\` exit ${r.exitCode}: ${r.stderr.trim().split('\n')[0] ?? ''}`)
     }
