@@ -56,7 +56,7 @@ When Claude writes a placeholder into a command or a file, the mod swaps it back
 
 By default, Bash, PowerShell, Write, Edit, MultiEdit, NotebookEdit, Read, Glob, and Grep get real values. Agent, WebFetch, WebSearch, and MCP tools do not. An MCP tool off the list is refused a placeholder this session made, since it would store the placeholder text where nothing can read it back.
 
-To change the list, use the `restoreTools` setting. It holds tool names separated by commas and replaces the default list, so keep the names you still want. In a name, `*` matches any run of characters. A `!` in front of a name leaves that tool out, wherever it sits in the list. For example, `Bash,Read,mcp__notes__*,!mcp__notes__share` gives real values to Bash, Read, and every tool of a `notes` app except `mcp__notes__share`. A lone `*` matches every tool, Agent and WebFetch included.
+To change the list, use the `restoreTools` setting. It holds tool names separated by commas and replaces the default list, so keep the names you still want. In a name, `*` matches any run of characters. A `!` in front of a name leaves that tool out, wherever it sits in the list. For example, `Bash,Read,mcp__notes__*,!mcp__notes__share` gives real values to Bash, Read, and every tool of a `notes` app except `mcp__notes__share`. Never list a lone `*`: it would match every tool, Agent and WebFetch included.
 
 A listed tool receives real values, so list only tools you trust with them. Leave out every tool that sends text to another service, such as one that posts a comment, opens an issue, or shares a note.
 
