@@ -1,4 +1,4 @@
-import { scrub, mint, valuesIn, type MaskOptions, type Scan } from './vault.ts'
+import { scrub, mint, restore, valuesIn, type MaskOptions, type Scan } from './vault.ts'
 
 // Masking a tool's result: every string in it, keys included, plus its text
 // and context. A value found only by its field name, or only in the result
@@ -18,6 +18,7 @@ const NOT_CREDENTIAL = new Set(['PERSON', 'EMAIL', 'USER', 'PROFILE', 'ORG', 'PR
 
 const UNPLACED = 'redact: a hidden value in this result could not be put back in place, so the result was withheld. Narrow the call and retry.'
 const JSON_SYNTAX = 'redact: a match in this result ran into its JSON syntax, so it could not be mapped back and the result was withheld. Narrow the call and retry.'
+const IN_NUMBER = 'redact: a hidden value sits in a number in this result, which cannot hold a placeholder, so the result was withheld.'
 
 // A placeholder's label: `PERSON` for a `[PERSON-…]` tag.
 const labelOf = (tag: string): string => tag.slice(1, -10)
@@ -108,7 +109,11 @@ export async function maskResult(scan: Scan, r: ToolOutput, mask: MaskOptions = 
   const recording: Scan = async (pieces) => {
     const found = await scan(pieces)
     found.forEach((spans, i) => {
-      for (const s of spans ?? []) if (!NOT_CREDENTIAL.has(s.label)) credentialTexts.push(pieces[i]!.slice(s.start, s.end))
+      for (const s of spans ?? []) if (!NOT_CREDENTIAL.has(s.label)) {
+        // Also as restored, since a hit's value holds placeholder text put back.
+        const text = pieces[i]!.slice(s.start, s.end)
+        credentialTexts.push(text, restore(text))
+      }
     })
     return found
   }
@@ -144,15 +149,15 @@ export async function maskResult(scan: Scan, r: ToolOutput, mask: MaskOptions = 
   for (const [raw, tag] of valuesIn(masked[1] ?? '')) {
     if (!tags.has(tag)) continue
     const value = decode(raw)
-    const credential = isCredential(tag, raw, value ?? '')
+    const holdsCredential = isCredential(tag, raw, value ?? '')
     // A match that cuts through JSON syntax (ends mid-escape) cannot be mapped safely.
     if (value === undefined) {
-      if (credential) return { withhold: JSON_SYNTAX }
+      if (holdsCredential) return { withhold: JSON_SYNTAX }
       continue
     }
     const minted = mint(labelOf(tag), value, tags)
     if (placed(value, minted)) inContext.push([value, minted])
-    else if (credential) return { withhold: UNPLACED }
+    else if (holdsCredential) return { withhold: UNPLACED }
   }
   inContext.sort(([a], [b]) => b.length - a.length)
   const fix = (s: string): string => {
@@ -178,7 +183,7 @@ export async function maskResult(scan: Scan, r: ToolOutput, mask: MaskOptions = 
   // names stays as it is, and one holding a credential withholds.
   const st2: WalkState = { incomplete: false, keepNumber: (n) => [...valuesIn(fix(n), { literals: true })].every(([v, tag]) => !isCredential(tag, v)) }
   const result = walk(r.result, fix, st2)
-  if (st2.incomplete) return { withhold: 'redact: a hidden value sits in a number in this result, which cannot hold a placeholder, so the result was withheld.' }
+  if (st2.incomplete) return { withhold: IN_NUMBER }
   const context = r.context?.map(fix)
   if (!r.isError) return { tags, result, context }
   // An errored result is sent on as a refusal: its masked text, or the result

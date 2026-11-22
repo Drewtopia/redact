@@ -100,7 +100,7 @@ When a tool prints a value the mod handed it, that value comes back hidden, even
 
 ## What it misses
 
-- **A name that runs from a field's name into its value.** When a rule takes a field's name along with a person, email, user, profile, org, project, repo, resource or ID (the `PERSON`, `EMAIL`, `USER`, `PROFILE`, `ORG`, `PROJECT`, `REPO`, `RESOURCE`, `ID` and `ME-*` labels), the mod cannot put a placeholder back in the field, so the value shows. A name inside a number shows too. Any other label counts as a credential, and the result is withheld instead. To get that for one rule, give it another label under [`[labels]`](../reference/config#labels).
+- **Some names beside their field name.** A person, email, user, profile, org, project, repo, resource or ID (the `PERSON`, `EMAIL`, `USER`, `PROFILE`, `ORG`, `PROJECT`, `REPO`, `RESOURCE`, `ID` and `ME-*` labels) found only together with its field's name, such as `user: kim`, can show in a tool result. So can one inside a number. Any other label counts as a credential, and the result is withheld instead. To get that for one rule, give it another label under [`[labels]`](../reference/config#labels).
 
 - **PDFs and images.** The mod cannot read a PDF's text, so a PDF goes to Claude unscanned, whether it is `@`-mentioned or opened with Read. Images also go unscanned, because they reach Claude as pictures.
 - **An `allow` added mid-session.** The mod keeps hiding a value it hid earlier in the session, wherever it turns up. Start a new session for the `allow` to take effect.
