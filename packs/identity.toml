@@ -76,7 +76,7 @@ regex = '''(?mi)^\s*(?:Author|Commit|Tagger|Signed-off-by|Co-authored-by):\s+([^
 # any other domain, which a person can own. commit-check also wants the name
 # Claude or Amp before the Claude account's or Amp's address; here the address
 # decides, since no person holds either and the email rule shows it anyway.
-exceptMatch = '''(?i)^[^:<]*:\s+GitHub\s+<no-?reply@github\.com$|^[^<]*<(?:noreply@anthropic\.com|[0-9]+\+(?:claude|copilot)@users\.noreply\.github\.com|(?:[0-9]+\+)?devin-ai-integration\[bot\]@users\.noreply\.github\.com|cursoragent@cursor\.com|aider@aider\.chat|amp@ampcode\.com|noreply@continue\.dev|vibe@mistral\.ai|qwen-coder@alibabacloud\.com|agent@warp\.dev|crush@charm\.land)$|^[^:<]*:\s+(?:claude|chatgpt-codex-connector|cursor|factory-droid|google-labs-jules|amazon-q-developer)\[bot\]\s+<[^>]*$'''
+exceptMatch = '''(?i)^[^:<]*:\s+(?-i:GitHub)\s+<no-?reply@github\.com$|^[^<]*<(?:noreply@anthropic\.com|[0-9]+\+(?:claude|copilot)@users\.noreply\.github\.com|(?:[0-9]+\+)?devin-ai-integration\[bot\]@users\.noreply\.github\.com|cursoragent@cursor\.com|aider@aider\.chat|amp@ampcode\.com|noreply@continue\.dev|vibe@mistral\.ai|qwen-coder@alibabacloud\.com|agent@warp\.dev|crush@charm\.land)$|^[^:<]*:\s+(?:claude|chatgpt-codex-connector|cursor|factory-droid|google-labs-jules|amazon-q-developer)\[bot\]\s+<[^>]*$'''
 secretGroup = 1
 label = "PERSON"
 remember = "distinctive"
@@ -87,7 +87,10 @@ matrix = false
 input = "Author: Jordan Quillfake <noreply@github.com>\nSigned-off-by: Casey Fakename <no-reply@github.com>"
 expect = ["Casey Fakename", "Jordan Quillfake"]
 [[rules.tests]]
-input = "Commit: GitHub <noreply@github.com>\nCommitter: GitHub <no-reply@github.com>"
+input = "Author: github <noreply@github.com>"
+expect = ["github"]
+[[rules.tests]]
+input = "Commit: GitHub <noreply@github.com>\nAuthor: GitHub <no-reply@github.com>"
 expect = []
 [[rules.tests]]
 input = "Author: Jordan Quillfake <jordan.fake@fabrikamq.example>"
