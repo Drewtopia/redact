@@ -1,0 +1,13 @@
+{
+  "name": "redact-sandcastle",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build-image": "cd .. && sandcastle docker build-image --image-name sandcastle:redact --dockerfile .sandcastle/Dockerfile",
+    "sandcastle": "cd .. && tsx .sandcastle/main.mts"
+  },
+  "devDependencies": {
+    "@ai-hero/sandcastle": "0.14.0",
+    "tsx": "4.20.6"
+  }
+}
