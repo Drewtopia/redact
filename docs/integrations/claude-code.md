@@ -44,7 +44,8 @@ Before Claude reads a tool result, the mod also:
 - Hides object keys, not only values.
 - Reads each field with its name and scans the JSON structure, so long or multiline passwords and structured Kubernetes or Docker credentials are hidden even when their values alone look plain.
 - Withholds a result whose secret sits in a number, because a number cannot hold a placeholder.
-- Withholds a result if a match in its JSON cannot be mapped back to the original fields safely.
+- Hides a match from those two views in each string that holds it. If a credential's match cannot be mapped back to the original fields safely, it withholds the result.
+- Drops a match under a name label (`PERSON`, `EMAIL`, `USER`, `PROFILE`, `ORG`, `PROJECT`, `REPO`, `RESOURCE`, `ID`, `ME-*`) that cannot be mapped back, and does not withhold the result. Each string's own scan still hides what it holds. Any other label counts as a credential, a renamed or custom one included. A name in a number stays as it is.
 
 The mod passes a Bash or PowerShell command's own text to redact as `--command`, through `REDACT_COMMAND`. A `command` [override](../reference/config#overrides) then applies to that command's output alone. A line that could run more than one command (`;`, `&&`, `|`, a redirect, a new line, `$(…)`, backticks, or PowerShell's `(…)` and `{…}`) is not passed on, so an override never switches hiding off for the commands chained after it.
 

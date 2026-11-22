@@ -9,8 +9,8 @@ import { register } from '../hooks/redact.ts'
 
 // Everyday tool output that holds no credential, run through the production
 // hooks and scanner with the default packs: nothing in it may be withheld.
-// Build with `cargo build` first. Its own file, so values remembered by
-// integration.test.mjs do not change what is hidden here.
+// Build with `cargo build` first. integration.test.mjs imports this file, so
+// it runs first there, before any value is remembered; it also runs alone.
 //
 // Every name, path, host, org, project and email below is made up.
 
@@ -218,8 +218,8 @@ const KNOWN_GAPS = {
   'git log': ['PERSON', 'PERSON'],
   // identity:email hides an address outside the reserved example domains.
   'git log --format=%ae': ['EMAIL', 'EMAIL'],
-  // The azure work-name rules hide the org, project and repo in each SSH URL.
-  'git remote -v': ['ORG', 'ORG', 'PROJECT', 'PROJECT', 'REPO', 'REPO'],
+  // The azure work-name rules hide the org and project in each SSH URL.
+  'git remote -v': ['ORG', 'ORG', 'PROJECT', 'PROJECT'],
   // The author's display name, beside the login, hides as a person.
   'gh pr view --json': ['PERSON'],
   // PWD holds `PW`, so env-dump reads it as a password (#115, comment).
@@ -234,8 +234,9 @@ const KNOWN_GAPS = {
   'az account show': ['ID', 'ID', 'ID', 'RESOURCE', 'USER'],
   // The azure work-name rules hide the org, project and repo in each URL and field.
   'az repos show': ['ORG', 'ORG', 'ORG', 'ORG', 'PROJECT', 'PROJECT', 'PROJECT', 'PROJECT', 'REPO', 'REPO', 'REPO', 'REPO'],
-  // identity:email hides each address.
-  'az ad user list -o tsv': ['EMAIL', 'EMAIL'],
+  // identity:email hides each address. Both names were hidden in git log
+  // earlier in this session, so they are hidden again on sight (#115, cause 3).
+  'az ad user list -o tsv': ['EMAIL', 'EMAIL', 'PERSON', 'PERSON'],
 }
 
 const labels = (r) => (JSON.stringify(r.result).match(/\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\]/g) ?? []).map((t) => t.slice(1, -10)).sort()
