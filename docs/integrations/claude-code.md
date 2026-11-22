@@ -44,8 +44,7 @@ Before Claude reads a tool result, the mod also:
 - Hides object keys, not only values.
 - Reads each field with its name and scans the JSON structure, so long or multiline passwords and structured Kubernetes or Docker credentials are hidden even when their values alone look plain.
 - Withholds a result whose secret sits in a number, because a number cannot hold a placeholder.
-- Hides a match from those two views in each string that holds it. If a credential's match cannot be mapped back to the original fields safely, it withholds the result.
-- Drops a match under a name label (`PERSON`, `EMAIL`, `USER`, `PROFILE`, `ORG`, `PROJECT`, `REPO`, `RESOURCE`, `ID`, `ME-*`) that cannot be mapped back, and does not withhold the result. Each string's own scan still hides what it holds. Any other label counts as a credential, a renamed or custom one included. A name in a number stays as it is.
+- Hides what it finds that way in each field that holds it. It withholds the whole result only when a credential it found cannot be put back in its field. A name it cannot put back does not withhold the result. See [What it misses](#what-it-misses).
 
 The mod passes a Bash or PowerShell command's own text to redact as `--command`, through `REDACT_COMMAND`. A `command` [override](../reference/config#overrides) then applies to that command's output alone. A line that could run more than one command (`;`, `&&`, `|`, a redirect, a new line, `$(…)`, backticks, or PowerShell's `(…)` and `{…}`) is not passed on, so an override never switches hiding off for the commands chained after it.
 
@@ -100,6 +99,8 @@ The mod does not put a value into a Bash or PowerShell command when the value ho
 When a tool prints a value the mod handed it, that value comes back hidden, even where no rule would find it. So does any run of 6 or more of its characters that mixes kinds of character (lower case, capitals, digits, symbols), for the rest of the session, so `cut -c1-12` or `${v:0:8}` cannot show part of it. A run of one kind, such as `password`, stays visible, so a human password does not hide that word everywhere. A value the command encodes or decodes (`base64`, `xxd`, a JWT's payload) can still come back readable.
 
 ## What it misses
+
+- **A name that runs from a field's name into its value.** When a rule takes a field's name along with a person, email, user, profile, org, project, repo, resource or ID (the `PERSON`, `EMAIL`, `USER`, `PROFILE`, `ORG`, `PROJECT`, `REPO`, `RESOURCE`, `ID` and `ME-*` labels), the mod cannot put a placeholder back in the field, so the value shows. A name inside a number shows too. Any other label counts as a credential, and the result is withheld instead. To get that for one rule, give it another label under [`[labels]`](../reference/config#labels).
 
 - **PDFs and images.** The mod cannot read a PDF's text, so a PDF goes to Claude unscanned, whether it is `@`-mentioned or opened with Read. Images also go unscanned, because they reach Claude as pictures.
 - **An `allow` added mid-session.** The mod keeps hiding a value it hid earlier in the session, wherever it turns up. Start a new session for the `allow` to take effect.

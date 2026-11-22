@@ -4,8 +4,8 @@ import { scrub, mint, valuesIn, type MaskOptions, type Scan } from './vault.ts'
 // and context. A value found only by its field name, or only in the result
 // read as JSON, is put back where it sits in the result.
 
-// `keep` says a number whose hidden part may stay as it is.
-type WalkState = { incomplete: boolean; keep?: (s: string) => boolean }
+// `keepNumber` says a number whose hidden part may stay as it is.
+type WalkState = { incomplete: boolean; keepNumber?: (s: string) => boolean }
 const MAX_DEPTH = 64
 const CONTEXT_MAX = 1024
 
@@ -15,6 +15,12 @@ const CONTEXT_MAX = 1024
 // hides what it finds. Any other label, a renamed or custom one included,
 // counts as a credential, and such a hit that cannot be placed withholds.
 const NOT_CREDENTIAL = new Set(['PERSON', 'EMAIL', 'USER', 'PROFILE', 'ORG', 'PROJECT', 'REPO', 'RESOURCE', 'ID', 'ME-NAME', 'ME-EMAIL', 'ME-GITHUB'])
+
+const UNPLACED = 'redact: a hidden value in this result could not be put back in place, so the result was withheld. Narrow the call and retry.'
+const JSON_SYNTAX = 'redact: a match in this result ran into its JSON syntax, so it could not be mapped back and the result was withheld. Narrow the call and retry.'
+
+// A placeholder's label: `PERSON` for a `[PERSON-…]` tag.
+const labelOf = (tag: string): string => tag.slice(1, -10)
 
 function decode(raw: string): string | undefined {
   try {
@@ -43,7 +49,7 @@ function fields(value: unknown, out: string[] = [], depth = 0): string[] {
 export function walk(value: unknown, fn: (s: string) => string, st: WalkState, depth = 0): unknown {
   if (typeof value === 'string') return fn(value)
   if (typeof value === 'number' || typeof value === 'bigint') {
-    if (fn(String(value)) !== String(value) && !st.keep?.(String(value))) st.incomplete = true
+    if (fn(String(value)) !== String(value) && !st.keepNumber?.(String(value))) st.incomplete = true
     return value
   }
   if (value === null || typeof value !== 'object') return value
@@ -98,18 +104,18 @@ export async function maskResult(scan: Scan, r: ToolOutput, mask: MaskOptions = 
   // The text of every span found under a credential label, in any text. A
   // hit that holds one is a credential whatever its own label says: spans
   // that overlap merge under the first one's label.
-  const credentials: string[] = []
+  const credentialTexts: string[] = []
   const recording: Scan = async (pieces) => {
     const found = await scan(pieces)
     found.forEach((spans, i) => {
-      for (const s of spans ?? []) if (!NOT_CREDENTIAL.has(s.label)) credentials.push(pieces[i]!.slice(s.start, s.end))
+      for (const s of spans ?? []) if (!NOT_CREDENTIAL.has(s.label)) credentialTexts.push(pieces[i]!.slice(s.start, s.end))
     })
     return found
   }
   const { masked, tags } = await scrub(recording, texts, mask)
   if (tags.size === 0) return { tags, result: r.result, context: r.context }
-  const credential = (tag: string, ...seen: string[]) =>
-    !NOT_CREDENTIAL.has(tag.slice(1, -10)) || seen.some((t) => credentials.some((c) => t.includes(c)))
+  const isCredential = (tag: string, ...seen: string[]) =>
+    !NOT_CREDENTIAL.has(labelOf(tag)) || seen.some((t) => credentialTexts.some((c) => t.includes(c)))
 
   const leaves = masked.slice(2)
   const lookup = new Map(unique.map((s, i) => [s, leaves[i] ?? s]))
@@ -124,32 +130,29 @@ export async function maskResult(scan: Scan, r: ToolOutput, mask: MaskOptions = 
   // One that sits in no single string (it ran from a name into its value) cannot be put back,
   // unless a string's own scan already hid it there (a short project name inside a URL).
   const placed = (v: string, tag: string) => unique.some((s) => sitsIn(s, v) || (s.includes(v) && lookup.get(s)!.includes(tag)))
-  const UNPLACED = 'redact: a hidden value in this result could not be put back in place, so the result was withheld. Narrow the call and retry.'
   // Values this scan found with their field name. A placeholder already in
   // the result (a subagent's answer) was not found here. A credential that
-  // cannot be placed withholds the result; any other hit is dropped.
+  // cannot be placed withholds the result. Any other hit is dropped: a name
+  // the JSON view misread (`\n` before a line-start email reads as
+  // `nrobin@…`) sits in no string, and the string's own scan hid what it holds.
   const inContext: [string, string][] = []
   for (const [v, tag] of valuesIn(masked[0] ?? '')) {
     if (!tags.has(tag)) continue
     if (placed(v, tag)) inContext.push([v, tag])
-    else if (credential(tag, v)) return { withhold: UNPLACED }
+    else if (isCredential(tag, v)) return { withhold: UNPLACED }
   }
   for (const [raw, tag] of valuesIn(masked[1] ?? '')) {
     if (!tags.has(tag)) continue
     const value = decode(raw)
-    if (credential(tag, raw, value ?? '')) {
-      // A match that cuts through JSON syntax (ends mid-escape) cannot be mapped safely.
-      if (value === undefined) return { withhold: 'redact: a match in this result ran into its JSON syntax, so it could not be mapped back and the result was withheld. Narrow the call and retry.' }
-      const minted = mint(tag.slice(1, -10), value, tags)
-      if (!placed(value, minted)) return { withhold: UNPLACED }
-      inContext.push([value, minted])
+    const credential = isCredential(tag, raw, value ?? '')
+    // A match that cuts through JSON syntax (ends mid-escape) cannot be mapped safely.
+    if (value === undefined) {
+      if (credential) return { withhold: JSON_SYNTAX }
       continue
     }
-    // A name the JSON view misread (`\n` before a line-start email reads as
-    // `nrobin@…`) sits in no string. The string's own scan hid what it holds.
-    if (value === undefined) continue
-    const minted = mint(tag.slice(1, -10), value, tags)
+    const minted = mint(labelOf(tag), value, tags)
     if (placed(value, minted)) inContext.push([value, minted])
+    else if (credential) return { withhold: UNPLACED }
   }
   inContext.sort(([a], [b]) => b.length - a.length)
   const fix = (s: string): string => {
@@ -165,7 +168,7 @@ export async function maskResult(scan: Scan, r: ToolOutput, mask: MaskOptions = 
     const ownFinds = [...valuesIn(masked, { literals: true })]
     // A short value can only be put back where it is the whole string.
     const stray = ownFinds.filter(([v]) => !sitsIn(s, v))
-    if (stray.some(([v, tag]) => credential(tag, v))) throw new Error('redact: a hidden value cannot be placed')
+    if (stray.some(([v, tag]) => isCredential(tag, v))) throw new Error('redact: a hidden value cannot be placed')
     // A short name stays hidden where the values found by name are still
     // whole in the masked string; otherwise it shows, and they are hidden.
     if (stray.length > 0 && byName.every(([v]) => masked.includes(v))) return replaceAll(masked, byName)
@@ -173,7 +176,7 @@ export async function maskResult(scan: Scan, r: ToolOutput, mask: MaskOptions = 
   }
   // A number cannot hold a placeholder: one whose hidden parts are all
   // names stays as it is, and one holding a credential withholds.
-  const st2: WalkState = { incomplete: false, keep: (n) => [...valuesIn(fix(n), { literals: true })].every(([v, tag]) => !credential(tag, v)) }
+  const st2: WalkState = { incomplete: false, keepNumber: (n) => [...valuesIn(fix(n), { literals: true })].every(([v, tag]) => !isCredential(tag, v)) }
   const result = walk(r.result, fix, st2)
   if (st2.incomplete) return { withhold: 'redact: a hidden value sits in a number in this result, which cannot hold a placeholder, so the result was withheld.' }
   const context = r.context?.map(fix)
