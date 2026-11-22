@@ -192,3 +192,15 @@ test('a binary that exits non-zero is not taken for a missing one', async () => 
   expect(err.message).toContain('exit 3: pack would not load')
   expect(err.notFound).toBe(false)
 })
+
+test('a session folder that cannot be checked gets no PATH hint', async () => {
+  const { $, runs } = goneFolder([])
+  $.fs.exists = async () => {
+    throw new Error('network path')
+  }
+  const err = await binaryScan($, { binary: 'redact', timeoutMs: 1000 })(['short']).catch((e) => e)
+  expect(err).toBeInstanceOf(ScanFailed)
+  expect(err.message).toContain('could not check whether this session\'s folder exists')
+  expect(err.notFound).toBe(false)
+  expect(runs).toHaveLength(1)
+})

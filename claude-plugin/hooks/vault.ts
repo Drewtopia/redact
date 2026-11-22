@@ -299,18 +299,24 @@ export function binaryScan($: any, o: ScanOptions): Scan {
       }
     }
     let run = await attempt(o.binary)
+    // A folder whose existence cannot be checked (a network path) may be the
+    // cause, so a start that still fails then gets no PATH hint.
+    const folder = 'ran' in run || run.timedOut ? undefined : await goneFolder($).catch(() => 'unchecked' as const)
+    if (folder !== undefined && folder !== 'unchecked' && !folder.start) {
+      throw fail(`this session's folder ${folder.gone} no longer exists, nor any folder above it`)
+    }
+    const start = folder === 'unchecked' ? undefined : folder?.start
     if (!('ran' in run) && !run.timedOut) {
-      const folder = await goneFolder($).catch(() => undefined)
-      if (folder && !folder.start) throw fail(`this session's folder ${folder.gone} no longer exists, nor any folder above it`)
-      if (folder) run = await attempt(o.binary, folder.start)
+      if (start) run = await attempt(o.binary, start)
       const found = 'ran' in run || run.timedOut ? undefined : await locate($, o.binary).catch(() => undefined)
       if (found) {
-        run = await attempt(found, folder?.start)
+        run = await attempt(found, start)
         if ('ran' in run) o.onLocated?.(found)
       }
     }
     if (!('ran' in run)) {
       if (run.timedOut) throw fail(`\`${o.binary} scan\` did not finish within ${o.timeoutMs} ms`)
+      if (folder === 'unchecked') throw fail(`could not start \`${o.binary}\`, and could not check whether this session's folder exists`)
       if (/ENOENT|not found|no such file|cannot find/i.test(run.message)) throw fail(`\`${o.binary}\` was not found`, true)
       throw fail(`could not start \`${o.binary}\` (${run.message})`)
     }
