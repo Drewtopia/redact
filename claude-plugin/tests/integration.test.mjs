@@ -491,6 +491,7 @@ test('a glob in restoreTools restores for a matching tool, and not for another',
   assert.equal(await restoresFor('Read,mcp__someapp__*', 'mcp__someapp__open_thread'), true)
   assert.equal(await restoresFor('Read,mcp__someapp__*', 'mcp__otherapp__open_thread'), false)
   assert.equal(await restoresFor('Read,mcp__someapp__*', 'xmcp__someapp__open'), false)
+  assert.equal(await restoresFor('Read,mcp__someapp__*', 'WebFetch'), false)
 })
 
 test('an exclusion in restoreTools beats a matching glob, in either order', async () => {
