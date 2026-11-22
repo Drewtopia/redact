@@ -384,6 +384,17 @@ test('a binary that exits non-zero drops the prompt without the PATH hint', asyn
   expect(r.drop).not.toContain('PATH')
 })
 
+test('a refusal from beneath that cannot be scanned is withheld, and says why', async ($, on) => {
+  on('ui.notice', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('process.run', () => ({ value: { exitCode: 2, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('tool.call', () => ({ deny: `refused TOKEN=${TOKEN}` }))
+  const r = await call($, { tool: 'Bash', command: 'cat .env' })
+  expect(JSON.stringify(r)).not.toContain(TOKEN)
+  expect(r.deny).toContain('exit 2.')
+  expect(r.deny).not.toContain('PATH')
+})
+
 test('output the mod cannot read withholds without the PATH hint', async ($, on) => {
   on('ui.notice', () => ({ value: undefined }))
   on('ui.toast', () => ({ value: undefined }))

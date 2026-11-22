@@ -284,7 +284,9 @@ export const register: Register = (on, options) => {
     const scanCommand = overrideCommand(command)
     if (r.deny !== undefined) {
       // A refusal from beneath may quote the input it refused, real values and all.
-      const d = await run($, next, binary, [r.deny], { handed, escape: true }, scanCommand)
+      const d = await run($, next, binary, [r.deny], { handed, escape: true }, scanCommand).catch((err: unknown) => err)
+      if (d instanceof ScanFailed) return { deny: withheld(d) }
+      if (d instanceof Error) throw d
       return d.tags.size === 0 ? r : { deny: d.masked[0] ?? WITHHELD }
     }
 

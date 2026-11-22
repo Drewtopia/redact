@@ -316,7 +316,8 @@ export function binaryScan($: any, o: ScanOptions): Scan {
     }
     const r = run.ran
     if (r.exitCode !== 0 || r.isStdoutTruncated) {
-      throw fail(`\`${o.binary} scan\` exit ${r.exitCode}: ${r.stderr.trim().split('\n')[0] ?? ''}`)
+      const said = r.stderr.trim().split('\n')[0]
+      throw fail(`\`${o.binary} scan\` exit ${r.exitCode}${said ? `: ${said}` : ''}`)
     }
     let spans: unknown
     try {
