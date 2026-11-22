@@ -235,9 +235,11 @@ export const register: Register = (on, options) => {
   // 1. What the person types, and context a hook above attached to it.
   on('prompt.submit', async ($, e, next) => {
     const context = e.context ?? []
-    const scanned = await run($, next, binary, [e.text, ...context]).catch((err: unknown) => err)
-    // Here, not in .catch: what reaches .catch is a message, not the error.
-    if (scanned instanceof Error) return { drop: `redact failed to scan this prompt, so it was not sent${because(scanned)}` }
+    // Here, not in the hook's .catch: what reaches that is a message, not the error.
+    const scanned = await run($, next, binary, [e.text, ...context]).catch((err: unknown) => ({
+      drop: `redact failed to scan this prompt, so it was not sent${because(err)}`,
+    }))
+    if ('drop' in scanned) return scanned
     const { masked, tags } = scanned
     if (tags.size === 0) return next(e)
     const n = countHidden(tags)
@@ -284,9 +286,11 @@ export const register: Register = (on, options) => {
     const scanCommand = overrideCommand(command)
     if (r.deny !== undefined) {
       // A refusal from beneath may quote the input it refused, real values and all.
-      const d = await run($, next, binary, [r.deny], { handed, escape: true }, scanCommand).catch((err: unknown) => err)
-      if (d instanceof ScanFailed) return { deny: withheld(d) }
-      if (d instanceof Error) throw d
+      const d = await run($, next, binary, [r.deny], { handed, escape: true }, scanCommand).catch((err: unknown) => {
+        if (err instanceof ScanFailed) return { deny: withheld(err) }
+        throw err
+      })
+      if ('deny' in d) return d
       return d.tags.size === 0 ? r : { deny: d.masked[0] ?? WITHHELD }
     }
 
