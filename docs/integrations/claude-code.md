@@ -110,8 +110,11 @@ The mod fails closed. It withholds the text instead of passing it on raw when th
 - is missing
 - is too old
 - exits with an error, such as a pack that will not load
+- does not finish in time
 
-A toast says why.
+A toast says why, and only a binary that was not found gets the hint about `PATH`.
+
+If the session's folder was removed while the session ran, such as a worktree removed after its merge, no process can start there. The mod then runs redact from the nearest folder above it that still exists. An `[[override]]` whose `dir` is that folder or one above it still applies, but one for the removed folder itself no longer does.
 
 The rules live in the binary and the hook logic in the mod, so a fix can need both. Once a session the mod runs `redact --version`, and a toast says so when the binary comes from another release than the mod. Update the older one: `mise up github:Drewtopia/redact` for the binary.
 

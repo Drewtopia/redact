@@ -200,7 +200,8 @@ export type ScanOptions = {
   timeoutMs: number
   // Called once with the reason when the binary cannot run, so the person
   // learns why everything is being withheld.
-  onBroken?: (why: string) => void
+  // `notFound` when the binary itself could not be found.
+  onBroken?: (why: string, notFound: boolean) => void
   // Called with the full path when the bare name failed and locate found it.
   onLocated?: (path: string) => void
 }
@@ -237,35 +238,86 @@ export async function locate($: any, name: string): Promise<string | undefined> 
 }
 
 // The binary would not start, exited non-zero or printed something unreadable.
-export class ScanFailed extends Error {}
+// `notFound` is the one case where pointing the person at PATH helps.
+export class ScanFailed extends Error {
+  notFound: boolean
+  constructor(why: string, notFound = false) {
+    super(why)
+    this.notFound = notFound
+  }
+}
+
+// The folder above `dir`, or undefined at a root (`/`, `C:\`).
+function parentOf(dir: string): string | undefined {
+  const trimmed = dir.replace(/[\\/]+$/, '')
+  const i = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  if (i < 0) return undefined
+  const up = trimmed.slice(0, i)
+  return up === '' || up.endsWith(':') ? trimmed.slice(0, i + 1) : up
+}
+
+// No process starts in a folder that is gone (a worktree removed while the
+// session ran), and the spawn fails as a missing binary does. An
+// `[[override]] dir` matches the folder the binary runs in and those below
+// it, so the nearest folder above that still exists keeps the most overrides.
+// Undefined when the session's folder exists; no `start` when nothing above it does.
+async function goneFolder($: any): Promise<{ gone: string; start?: string } | undefined> {
+  const cwd: string = await $.session.cwd()
+  if (await $.fs.exists(cwd)) return undefined
+  for (let d = parentOf(cwd); d; d = parentOf(d)) if (await $.fs.exists(d)) return { gone: cwd, start: d }
+  return { gone: cwd }
+}
+
+type RunResult = { exitCode: number; stdout: string; stderr: string; isStdoutTruncated: boolean }
 
 // The redact binary behind the scan port. Throws ScanFailed when it fails, so the hook withholds.
 export function binaryScan($: any, o: ScanOptions): Scan {
   return async (pieces) => {
     if (pieces.length === 0) return []
     const joined = pieces.join(SEP)
+    const fail = (why: string, notFound = false) => {
+      o.onBroken?.(why, notFound)
+      return new ScanFailed(why, notFound)
+    }
     // An env var, not --command: a build too old to know it still runs.
-    const exec = (binary: string) =>
-      $.process.run([binary, 'scan', '--json'], { stdin: joined, timeoutMs: o.timeoutMs, ...(o.command ? { env: { REDACT_COMMAND: o.command } } : {}) })
-    let r: { exitCode: number; stdout: string; stderr: string; isStdoutTruncated: boolean }
-    try {
-      r = await exec(o.binary)
-    } catch (err) {
-      const found = await locate($, o.binary).catch(() => undefined)
+    const exec = (binary: string, cwd?: string) =>
+      $.process.run([binary, 'scan', '--json'], {
+        stdin: joined,
+        timeoutMs: o.timeoutMs,
+        ...(cwd ? { cwd } : {}),
+        ...(o.command ? { env: { REDACT_COMMAND: o.command } } : {}),
+      })
+    let last: unknown
+    let timedOut = false
+    const attempt = async (binary: string, cwd?: string): Promise<RunResult | undefined> => {
+      const started = Date.now()
       try {
-        if (!found) throw err
-        r = await exec(found)
-        o.onLocated?.(found)
-      } catch {
-        const why = `could not run \`${o.binary}\` (${err instanceof Error ? err.message : String(err)})`
-        o.onBroken?.(why)
-        throw new ScanFailed(why)
+        return await exec(binary, cwd)
+      } catch (err) {
+        last = err
+        timedOut = Date.now() - started >= o.timeoutMs || /still running after|timed? ?out|ETIMEDOUT/i.test(String((err as Error)?.message ?? err))
+        return undefined
       }
     }
+    let r = await attempt(o.binary)
+    if (!r && !timedOut) {
+      const folder = await goneFolder($).catch(() => undefined)
+      if (folder && !folder.start) throw fail(`this session's folder ${folder.gone} no longer exists, nor any folder above it`)
+      if (folder) r = await attempt(o.binary, folder.start)
+      const found = r || timedOut ? undefined : await locate($, o.binary).catch(() => undefined)
+      if (found) {
+        r = await attempt(found, folder?.start)
+        if (r) o.onLocated?.(found)
+      }
+    }
+    if (!r) {
+      const message = String((last as Error)?.message ?? last)
+      if (timedOut) throw fail(`\`${o.binary} scan\` did not finish within ${o.timeoutMs} ms`)
+      if (/ENOENT|not found|no such file|cannot find/i.test(message)) throw fail(`\`${o.binary}\` was not found`, true)
+      throw fail(`could not start \`${o.binary}\` (${message})`)
+    }
     if (r.exitCode !== 0 || r.isStdoutTruncated) {
-      const why = `\`${o.binary} scan\` exit ${r.exitCode}: ${r.stderr.trim().split('\n')[0] ?? ''}`
-      o.onBroken?.(why)
-      throw new ScanFailed(why)
+      throw fail(`\`${o.binary} scan\` exit ${r.exitCode}: ${r.stderr.trim().split('\n')[0] ?? ''}`)
     }
     let spans: unknown
     try {
@@ -278,9 +330,7 @@ export function binaryScan($: any, o: ScanOptions): Scan {
     const ok = (s: any): s is Span =>
       Number.isInteger(s?.start) && Number.isInteger(s?.end) && s.start >= 0 && s.start < s.end && s.end <= size && typeof s.label === 'string'
     if (!Array.isArray(spans) || !spans.every(ok)) {
-      const why = `\`${o.binary} scan --json\` printed spans of an unknown shape`
-      o.onBroken?.(why)
-      throw new ScanFailed(why)
+      throw fail(`\`${o.binary} scan --json\` printed spans of an unknown shape`)
     }
     const at = byteIndexes(joined, spans.flatMap((s) => [s.start, s.end]))
 

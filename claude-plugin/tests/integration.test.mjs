@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
@@ -509,4 +509,42 @@ test('an empty or malformed restoreTools entry is ignored without throwing', asy
   assert.equal(await restoresFor(list, 'mcp__someapp__x'), false)
   assert.equal(await restoresFor('Read,mcp__a.b', 'mcp__a.b'), true)
   assert.equal(await restoresFor('Read,mcp__a.b', 'mcp__aXb'), false)
+})
+
+// A session whose folder was removed while it ran (a merged worktree): the
+// real spawn fails with ENOENT there, so the scan starts from the folder above.
+test('a prompt typed in a session whose folder is gone is scanned by the real binary', async () => {
+  const gone = mkdtempSync(join(dir, 'worktree-'))
+  rmSync(gone, { recursive: true })
+  let handler
+  register((name, fn) => {
+    if (name === 'prompt.submit') handler = fn
+    return { catch() {} }
+  }, { binary, notify: false })
+  const cwds = []
+  const api = {
+    session: { cwd: async () => gone },
+    fs: { exists: async (path) => existsSync(path) },
+    process: {
+      async run(argv, init) {
+        cwds.push(init.cwd ?? gone)
+        const r = spawnSync(argv[0], argv.slice(1), {
+          input: init.stdin,
+          cwd: init.cwd ?? gone,
+          encoding: 'utf8',
+          timeout: init.timeoutMs,
+          env: { ...process.env, ...init.env, REDACT_CONFIG: config },
+        })
+        if (r.error) throw r.error
+        return { exitCode: r.status, stdout: r.stdout, stderr: r.stderr, isStdoutTruncated: false }
+      },
+    },
+    ui: { toast() {}, notice() {} },
+  }
+  const password = 'made-up-' + 'pass-4821'
+  const next = Object.assign(async (e) => e, { budget: { remainingMs: 10000 } })
+  const r = await handler(api, { text: JSON.stringify({ password, user: 'ann' }) }, next)
+  assert.equal(r.drop, undefined, r.drop)
+  assert.ok(!r.text.includes(password), r.text)
+  assert.equal(cwds.at(-1), dir)
 })
