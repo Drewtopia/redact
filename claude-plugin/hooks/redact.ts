@@ -23,8 +23,8 @@ const because = (err: unknown): string =>
 const NARROW = 'Narrow the output (head, grep, offset) and retry.'
 const WITHHELD = `redact could not scan this result, so it was withheld. ${NARROW}`
 // Narrowing cannot help a binary that was not found.
-const withheld = (err: ScanFailed): string => `redact could not scan this result, so it was withheld${because(err)}${err.notFound ? '' : ` ${NARROW}`}`
-const UNMAPPED = 'redact could not scan this result in full or map a hidden value back into it, so it was withheld. Narrow the output (head, grep, offset) and retry.'
+const withheldBecause = (err: ScanFailed): string => `redact could not scan this result, so it was withheld${because(err)}${err.notFound ? '' : ` ${NARROW}`}`
+const UNMAPPED = 'redact could not scan this result in full or map a hidden value back into it, so it was withheld. ' + NARROW
 const BLOCK_WITHHELD = '[redact withheld this text: the scan failed]'
 
 // Subagent answers hold placeholders the subagent used: they stay live.
@@ -287,7 +287,7 @@ export const register: Register = (on, options) => {
     if (r.deny !== undefined) {
       // A refusal from beneath may quote the input it refused, real values and all.
       const d = await run($, next, binary, [r.deny], { handed, escape: true }, scanCommand).catch((err: unknown) => {
-        if (err instanceof ScanFailed) return { deny: withheld(err) }
+        if (err instanceof ScanFailed) return { deny: withheldBecause(err) }
         throw err
       })
       if ('deny' in d) return d
@@ -295,7 +295,7 @@ export const register: Register = (on, options) => {
     }
 
     const m = await maskResult(scanner($, next, binary, scanCommand), r, { handed, escape: !LIVE_TAG_TOOLS.has(e.tool) })
-      .catch((err) => ({ withhold: err instanceof ScanFailed ? withheld(err) : UNMAPPED }))
+      .catch((err) => ({ withhold: err instanceof ScanFailed ? withheldBecause(err) : UNMAPPED }))
     if ('withhold' in m) return { deny: m.withhold }
     if (m.tags.size === 0) return r
     const n = countHidden(m.tags)
