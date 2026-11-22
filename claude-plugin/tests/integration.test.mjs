@@ -507,4 +507,6 @@ test('an empty or malformed restoreTools entry is ignored without throwing', asy
   assert.equal(await restoresFor(list, 'mcp__someapp__open'), true)
   assert.equal(await restoresFor(list, 'mcp__some[app(__x'), true)
   assert.equal(await restoresFor(list, 'mcp__someapp__x'), false)
+  assert.equal(await restoresFor('Read,mcp__a.b', 'mcp__a.b'), true)
+  assert.equal(await restoresFor('Read,mcp__a.b', 'mcp__aXb'), false)
 })
