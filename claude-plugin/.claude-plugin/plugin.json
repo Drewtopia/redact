@@ -18,7 +18,7 @@
     "restoreTools": {
       "type": "string",
       "title": "Tools that get real values",
-      "description": "Tools that run on this machine and may receive the real value behind a placeholder, separated by commas. Never list a tool that sends its input to another model or the network (Agent, WebFetch, WebSearch)",
+      "description": "Tools that get the real value behind a placeholder, separated by commas. * matches any run of characters, and ! in front of a name leaves that tool out. A listed tool receives real values, so list only tools you trust with them. Leave out every tool that sends text to another model, service or the network (Agent, WebFetch, WebSearch), and never list a lone *",
       "default": "Bash,PowerShell,Write,Edit,MultiEdit,NotebookEdit,Read,Glob,Grep"
     },
     "restoreHosts": {
