@@ -13,7 +13,10 @@ import { register } from '../hooks/redact.ts'
 // Build with `cargo build` first. integration.test.mjs imports this file, so
 // it runs first there, before any value is remembered; it also runs alone.
 //
-// Every name, path, host, org, project and email below is made up.
+// Every name, path, host, org, project and email below is made up, and none
+// is used by another test file. The mod hides a remembered value of 8 or
+// more characters wherever it turns up later, so a shared name would let
+// another test's "is hidden" check pass even with its rule broken.
 
 const binary = fileURLToPath(new URL(`../../target/debug/redact${process.platform === 'win32' ? '.exe' : ''}`, import.meta.url))
 const dir = mkdtempSync(join(tmpdir(), 'redact-corpus-'))
@@ -51,7 +54,7 @@ function hook(output) {
 
 const bash = (command, stdout) => ({ event: { tool: 'Bash', command }, result: { stdout, stderr: '', interrupted: false, isImage: false } })
 
-const markdown = `# Widget
+const markdown = `# Tessel
 
 A small cache for parsed documents.
 
@@ -62,8 +65,8 @@ mise install
 cargo test
 \`\`\`
 
-The repository lives at https://dev.azure.com/fabrikam-labs/Gadgets/_git/widget-api and
-mirrors to https://github.com/example-org/widget. Ask in #widget-dev, or mail
+The repository lives at https://dev.azure.com/quillon-labs/Marrowfen/_git/tessel-api and
+mirrors to https://github.com/quillon-org/tessel. Ask in #tessel-dev, or mail
 robin@example.com.
 
 | Setting | Default |
@@ -92,11 +95,11 @@ Date:   Sun Nov 15 18:03:10 2026 +0000
   },
   // One address per line: in the JSON view the line break before each one
   // reads `\n`, and the email rule takes that `n` into its match.
-  { name: 'git log --format=%ae', ...bash('git log --format=%ae', 'robin.sample@fabrikamq.example\nalex.tester@fabrikamq.example\n') },
+  { name: 'git log --format=%ae', ...bash('git log --format=%ae', 'robin.sample@quillmere.example\nalex.tester@quillmere.example\n') },
   {
     name: 'git status',
-    ...bash('git status', `On branch feat/widget-cache
-Your branch is up to date with 'origin/feat/widget-cache'.
+    ...bash('git status', `On branch feat/tessel-cache
+Your branch is up to date with 'origin/feat/tessel-cache'.
 
 Changes not staged for commit:
   (use "git add <file>..." to update what will be committed)
@@ -114,7 +117,7 @@ no changes added to commit (use "git add" and/or "git commit -a")
   // A tab before each SSH URL reads `\t` in the JSON view.
   {
     name: 'git remote -v',
-    ...bash('git remote -v', 'origin\tgit@ssh.dev.azure.com:v3/fabrikam-labs/Gadgets/widget-api (fetch)\norigin\tgit@ssh.dev.azure.com:v3/fabrikam-labs/Gadgets/widget-api (push)\n'),
+    ...bash('git remote -v', 'origin\tgit@ssh.dev.azure.com:v3/quillon-labs/Marrowfen/tessel-api (fetch)\norigin\tgit@ssh.dev.azure.com:v3/quillon-labs/Marrowfen/tessel-api (push)\n'),
   },
   {
     name: 'gh pr view --json',
@@ -123,9 +126,9 @@ no changes added to commit (use "git add" and/or "git commit -a")
       title: 'feat(cache): evict entries by size',
       state: 'OPEN',
       author: { login: 'robin-sample', name: 'Robin Sample' },
-      headRefName: 'feat/widget-cache',
+      headRefName: 'feat/tessel-cache',
       baseRefName: 'main',
-      url: 'https://github.com/example-org/widget/pull/42',
+      url: 'https://github.com/quillon-org/tessel/pull/42',
       body: '## Summary\n\nEvicts by total size instead of entry count.\n\n- [x] tests\n- [ ] docs\n\nRefs #40',
       files: [
         { path: 'src/cache/store.ts', additions: 31, deletions: 6 },
@@ -145,7 +148,7 @@ TMPDIR=/tmp/robin-1000
 LANG=en_US.UTF-8
 EDITOR=nvim
 TERM=xterm-256color
-PWD=/home/robin/projects/widget
+PWD=/home/robin/projects/tessel
 MISE_SHELL=zsh
 GIT_PAGER=less -FRX
 XDG_CONFIG_HOME=/home/robin/.config
@@ -154,25 +157,25 @@ XDG_CONFIG_HOME=/home/robin/.config
   {
     name: 'mise ls',
     ...bash('mise ls', `Tool      Version  Source                                 Requested
-lefthook  2.2.2    ~/projects/widget/mise.toml            2.2.2
+lefthook  2.2.2    ~/projects/tessel/mise.toml            2.2.2
 node      24.11.0  ~/.config/mise/config.toml             24
-python    3.13.9   ~/projects/widget/mise.toml            3.13
-rust      1.99.1   ~/projects/widget/rust-toolchain.toml  1.99.1
+python    3.13.9   ~/projects/tessel/mise.toml            3.13
+rust      1.99.1   ~/projects/tessel/rust-toolchain.toml  1.99.1
 `),
   },
   {
     name: 'rg',
     ...bash('rg -n "cache|evict"', `src/cache/store.ts:12:export const CACHE_TTL_SECONDS = 300
 src/cache/store.ts:48:  // TODO: evict by size, not count
-docs/guide/caching.md:7:Set \`cache.ttl\` in \`widget.toml\` to change how long entries live.
+docs/guide/caching.md:7:Set \`cache.ttl\` in \`tessel.toml\` to change how long entries live.
 notes/2026-11-16.md:3:- ask Robin about the eviction policy
 `),
   },
   { name: 'cat of a Markdown file', ...bash('cat README.md', markdown) },
   {
     name: 'Read of a Markdown file',
-    event: { tool: 'Read', file_path: '/home/robin/projects/widget/README.md' },
-    result: { type: 'text', file: { filePath: '/home/robin/projects/widget/README.md', content: markdown, numLines: 21, startLine: 1, totalLines: 21 } },
+    event: { tool: 'Read', file_path: '/home/robin/projects/tessel/README.md' },
+    result: { type: 'text', file: { filePath: '/home/robin/projects/tessel/README.md', content: markdown, numLines: 21, startLine: 1, totalLines: 21 } },
   },
   {
     name: 'az account show',
@@ -182,7 +185,7 @@ notes/2026-11-16.md:3:- ask Robin about the eviction policy
       id: '8d2b6e1f-4a9c-4f3e-b7d1-6c0a9e5f2b18',
       isDefault: true,
       managedByTenants: [],
-      name: 'Fabrikam Development',
+      name: 'Quillon Development',
       state: 'Enabled',
       tenantId: '3c1f9a2e-7b4d-4e8a-9c6f-2d5e8b1a7f04',
       user: { name: 'robin@example.com', type: 'user' },
@@ -190,16 +193,16 @@ notes/2026-11-16.md:3:- ask Robin about the eviction policy
   },
   {
     name: 'az repos show',
-    ...bash('az repos show -r widget-api -o json', JSON.stringify({
+    ...bash('az repos show -r tessel-api -o json', JSON.stringify({
       defaultBranch: 'refs/heads/main',
       id: 'f4e3d2c1-b0a9-4876-9543-210fedcba987',
       isDisabled: false,
-      name: 'widget-api',
-      project: { id: '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d', name: 'Gadgets', state: 'wellFormed', visibility: 'private' },
-      remoteUrl: 'https://fabrikam-labs@dev.azure.com/fabrikam-labs/Gadgets/_git/widget-api',
+      name: 'tessel-api',
+      project: { id: '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d', name: 'Marrowfen', state: 'wellFormed', visibility: 'private' },
+      remoteUrl: 'https://quillon-labs@dev.azure.com/quillon-labs/Marrowfen/_git/tessel-api',
       size: 482113,
-      sshUrl: 'git@ssh.dev.azure.com:v3/fabrikam-labs/Gadgets/widget-api',
-      webUrl: 'https://dev.azure.com/fabrikam-labs/Gadgets/_git/widget-api',
+      sshUrl: 'git@ssh.dev.azure.com:v3/quillon-labs/Marrowfen/tessel-api',
+      webUrl: 'https://dev.azure.com/quillon-labs/Marrowfen/_git/tessel-api',
     }, null, 2) + '\n'),
   },
   {
@@ -207,7 +210,7 @@ notes/2026-11-16.md:3:- ask Robin about the eviction policy
     // Run first in the same case, so the two names are remembered whatever
     // ran before: a filter, a shard or a reorder cannot change what it shows.
     seed: bash('git log -2', 'commit 3f2a9c1e\nAuthor: Robin Sample <robin@example.com>\n\ncommit 9e8d7c6b\nAuthor: Alex Tester <alex.tester@example.org>\n'),
-    ...bash('az ad user list --query "[].[mail,displayName]" -o tsv', 'robin.sample@fabrikamq.example\tRobin Sample\nalex.tester@fabrikamq.example\tAlex Tester\n'),
+    ...bash('az ad user list --query "[].[mail,displayName]" -o tsv', 'robin.sample@quillmere.example\tRobin Sample\nalex.tester@quillmere.example\tAlex Tester\n'),
   },
 ]
 
@@ -253,6 +256,11 @@ const WITHHELD = {
 
 const labels = (r) => (JSON.stringify(r.result).match(/\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\]/g) ?? []).map((t) => t.slice(1, -10)).sort()
 
+test('corpus: every WITHHELD and KNOWN_GAPS entry names a case', () => {
+  const names = new Set(CORPUS.map((c) => c.name))
+  for (const key of [...Object.keys(WITHHELD), ...Object.keys(KNOWN_GAPS)]) assert.ok(names.has(key), `no corpus case named ${key}`)
+})
+
 for (const c of CORPUS) {
   test(`corpus: ${c.name}`, async () => {
     if (c.seed) await hook(c.seed.result)(c.seed.event)
@@ -271,7 +279,7 @@ for (const c of CORPUS) {
 const token = 'ghp_' + 'Q7mK2xV9pL4sT8nW3cR6' + 'yB1dF5hJ0aE2gZ4uN6'
 for (const [name, stdout] of [
   ['an env line', `HOME=/home/robin\nGITHUB_TOKEN=${token}\nSHELL=/bin/zsh\n`],
-  ['a bare line', `robin.sample@fabrikamq.example\n${token}\nalex.tester@fabrikamq.example\n`],
+  ['a bare line', `robin.sample@quillmere.example\n${token}\nalex.tester@quillmere.example\n`],
   ['a JSON document', JSON.stringify({ user: { name: 'robin@example.com' }, accessToken: token }, null, 2)],
 ]) {
   test(`corpus: a credential on ${name} is hidden or withheld`, async () => {
