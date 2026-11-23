@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0](https://github.com/Drewtopia/redact/compare/v0.4.1...v0.5.0) (2026-11-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **packs:** hide an env line's value only when its name says secret ([#119](https://github.com/Drewtopia/redact/issues/119))
+* **packs:** leave a known AI tool's attribution trailer alone ([#117](https://github.com/Drewtopia/redact/issues/117))
+
+### Bug Fixes
+
+* **claude:** refuse a call that would send on a placeholder this session made ([#116](https://github.com/Drewtopia/redact/issues/116)) ([a64ff64](https://github.com/Drewtopia/redact/commit/a64ff6478eca6841c7a620edef80daa1e1a85644))
+* **claude:** scan from the folder above when the session's folder is gone ([#124](https://github.com/Drewtopia/redact/issues/124)) ([2a5200c](https://github.com/Drewtopia/redact/commit/2a5200c066fa03a7bb568b844c9697c8a71bf483))
+* **packs:** hide an env line's value only when its name says secret ([#119](https://github.com/Drewtopia/redact/issues/119)) ([ef5b348](https://github.com/Drewtopia/redact/commit/ef5b348fe823551d18bdc05764d83fcb9da8d09c))
+* **packs:** leave a known AI tool's attribution trailer alone ([#117](https://github.com/Drewtopia/redact/issues/117)) ([eed85e2](https://github.com/Drewtopia/redact/commit/eed85e206317c2df5cb31c0d14b2366182e13893))
+* **packs:** tighten the trailer and env-dump exceptions from [#117](https://github.com/Drewtopia/redact/issues/117) and [#119](https://github.com/Drewtopia/redact/issues/119) ([#122](https://github.com/Drewtopia/redact/issues/122)) ([dd9ab27](https://github.com/Drewtopia/redact/commit/dd9ab27a658c2e746f2ca5c9bf5c0a5bdef1f05c))
+* quote nothing from the file in a TOML error ([#113](https://github.com/Drewtopia/redact/issues/113)) ([96770ee](https://github.com/Drewtopia/redact/commit/96770ee21949b0be747917c09d1cf7885c626975))
+
 ## [0.4.1](https://github.com/Drewtopia/redact/compare/v0.4.0...v0.4.1) (2026-11-18)
 
 
