@@ -7,6 +7,9 @@ import { after, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { register } from '../hooks/redact.ts'
 import { TAG } from '../hooks/vault.ts'
+// The everyday-output corpus. An import runs before this file's own tests
+// register, so the corpus runs first, before these tests remember any value.
+import './corpus.test.mjs'
 
 // Build with `cargo build` first. These tests use the production hooks and
 // scanner together; only the tool beneath the redactor is a stand-in.
