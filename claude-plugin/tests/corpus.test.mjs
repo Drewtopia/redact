@@ -217,15 +217,17 @@ notes/2026-11-16.md:3:- ask Robin about the eviction policy
 ]
 
 // Known gaps: the corpus holds no credential, so ideally nothing in it turns
-// into a placeholder. These cases still do, from the rules themselves (issue
-// #115, cause 3; PR #118 and its follow-ups), not from how a result is mapped.
+// into a placeholder. These cases still do, from the rules (issue #115,
+// cause 3; PR #118 and its follow-ups) or from a value a rule hid earlier and
+// the mod now hides wherever it turns up, not from how a result is mapped.
 // Each entry is the sorted placeholder labels the case shows, one per
 // placeholder. A change to the rules changes them, and this test then fails:
 // shrink the list to match.
 const KNOWN_GAPS = {
   // identity:git-person hides each Author name.
   'git log': ['PERSON', 'PERSON'],
-  // The author's display name, beside the login, hides as a person.
+  // No rule fires here: the seeded git log taught the mod the author's name,
+  // and the mod hides a remembered name wherever it turns up (#115, cause 3).
   'gh pr view --json': ['PERSON'],
   // credentials:named-secret reads the `PWD` in `PWD=` as a password name (#115, comment).
   env: ['SECRET'],
@@ -278,7 +280,7 @@ for (const c of CORPUS) {
 
 // Safety: a credential in the same everyday output is still hidden, or the
 // result is withheld. Built at run time so no token-shaped value sits in the repo.
-const token = 'ghp_' + 'Q7mK2xV9pL4sT8nW3cR6' + 'yB1dF5hJ0aE2gZ4uN6'
+const token = 'ghp_' + 'Q7mK2xV9pL4sT8nW3cR6' + 'yB1dF5hJ0aE2gZ4u'
 for (const [name, stdout] of [
   ['an env line', `HOME=/home/robin\nGITHUB_TOKEN=${token}\nSHELL=/bin/zsh\n`],
   ['a JSON document', JSON.stringify({ user: { name: 'robin@example.com' }, accessToken: token }, null, 2)],
