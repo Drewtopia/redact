@@ -12,9 +12,11 @@ const call = async ($: any, input: Record<string, unknown>): Promise<Answer> => 
 
 // Claude Code beneath the mod: each tool prints `output(e)`; `seen` keeps what it was given.
 // `start` runs first and may throw, as a spawn that cannot find the binary does.
-function fakeRedact(on: any, label = 'SECRET', start?: (argv0: string) => void) {
+// A string from `start` is the engine's rejection, as `$.process.run` gives it.
+function fakeRedact(on: any, label = 'SECRET', start?: (argv0: string, cwd?: string) => void | string, toasts: string[] = []) {
   on('process.run', (_$: unknown, e: any) => {
-    start?.(e.argv[0])
+    const refused = start?.(e.argv[0], e.init?.cwd)
+    if (typeof refused === 'string') return { deny: refused }
     const text: string = e.init?.stdin ?? ''
     const bytes = (s: string) => new TextEncoder().encode(s).length
     // `password: x` stands for a rule keyed on a field name.
@@ -28,7 +30,7 @@ function fakeRedact(on: any, label = 'SECRET', start?: (argv0: string) => void) 
     return { value: { exitCode: 0, stdout: JSON.stringify(spans), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('ui.notice', () => ({ value: undefined }))
-  on('ui.toast', () => ({ value: undefined }))
+  on('ui.toast', (_$: unknown, e: unknown) => (toasts.push(JSON.stringify(e)), { value: undefined }))
 }
 
 function tools(on: any, output: (e: any) => string, seen: any[] = []) {
@@ -295,12 +297,17 @@ test('redact missing from PATH is found in ~/.mise/shims', async ($, on) => {
   expect(argv0s).toEqual(['redact', shim, shim])
 })
 
-test('only a binary that will not run gets the PATH hint', async ($, on) => {
+test('a binary that exits non-zero gets no PATH hint, and the refusal says why', async ($, on) => {
+  const toasts: string[] = []
   on('ui.notice', () => ({ value: undefined }))
-  on('ui.toast', () => ({ value: undefined }))
+  on('ui.toast', (_$: unknown, e: unknown) => (toasts.push(JSON.stringify(e)), { value: undefined }))
   on('process.run', () => ({ value: { exitCode: 3, stdout: '', stderr: 'pack would not load', isStdoutTruncated: false, isStderrTruncated: false } }))
   on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
-  expect((await call($, { tool: 'Bash', command: 'cat .env' })).deny).toContain('PATH')
+  const r = await call($, { tool: 'Bash', command: 'cat .env' })
+  expect(r.deny).toContain('withheld')
+  expect(r.deny).toContain('pack would not load')
+  expect(r.deny).not.toContain('PATH')
+  expect(toasts.join('\n')).not.toContain('PATH')
 })
 
 test('a hidden value that cannot be mapped back withholds without the PATH hint', async ($, on) => {
@@ -311,4 +318,90 @@ test('a hidden value that cannot be mapped back withholds without the PATH hint'
   expect(r.deny).toContain('withheld')
   expect(r.deny).not.toContain('PATH')
   expect(JSON.stringify(r)).not.toContain('abcdTOKEN')
+})
+
+type Drop = { text?: string; drop?: string }
+const submit = async ($: any, text: string): Promise<Drop> => (await $.prompt.submit({ text })) as Drop
+
+// A session whose folder was removed while it ran (a merged worktree): no
+// process starts in it, and the spawn fails with ENOENT as for a missing binary.
+function goneFolder(on: any, dirs: string[], binaries = ['redact']) {
+  const toasts: string[] = []
+  on('session.cwd', () => ({ value: '/work/trees/gone' }))
+  on('fs.exists', (_$: unknown, e: any) => ({ value: dirs.includes(e.path) }))
+  mock.env(on, { HOME: '/home/t' })
+  fakeRedact(on, 'SECRET', (argv0, cwd) => {
+    if (!dirs.includes(cwd ?? '/work/trees/gone') || !binaries.includes(argv0)) return `failed to start: ENOENT: spawn ${argv0} ENOENT`
+  }, toasts)
+  on('prompt.submit', (_$: unknown, e: any) => ({ text: e.text }))
+  return toasts
+}
+
+test('a prompt typed in a session whose folder is gone is still scanned and masked', async ($, on) => {
+  goneFolder(on, ['/work', '/'])
+  const r = await submit($, `deploy with TOKEN=${TOKEN}`)
+  expect(r.drop).toBeUndefined()
+  expect(r.text).toMatch(/^deploy with TOKEN=\[SECRET-[0-9a-f]{8}\]$/)
+})
+
+test('a binary found nowhere drops the prompt and says it was not found, with the PATH hint', async ($, on) => {
+  const toasts = goneFolder(on, ['/work/trees/gone'], [])
+  const r = await submit($, `TOKEN=${TOKEN}`)
+  expect(r.text).toBeUndefined()
+  expect(r.drop).toContain('not found')
+  expect(r.drop).toContain('PATH')
+  expect(toasts.join('\n')).toContain('PATH')
+})
+
+test('a session folder with nothing above it drops the prompt, names the folder and gives no PATH hint', async ($, on) => {
+  goneFolder(on, [])
+  const r = await submit($, `TOKEN=${TOKEN}`)
+  expect(r.drop).toContain('/work/trees/gone')
+  expect(r.drop).not.toContain('PATH')
+})
+
+test('a scan that times out withholds without the PATH hint', async ($, on) => {
+  const toasts: string[] = []
+  fakeRedact(on, 'SECRET', () => 'aborted: still running after 1000ms', toasts)
+  on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
+  on('prompt.submit', (_$: unknown, e: any) => ({ text: e.text }))
+  const r = await call($, { tool: 'Bash', command: 'cat .env' })
+  expect(JSON.stringify(r)).not.toContain(TOKEN)
+  expect(r.deny).toContain('did not finish')
+  expect(r.deny).not.toContain('PATH')
+  const p = await submit($, `TOKEN=${TOKEN}`)
+  expect(p.drop).toContain('did not finish')
+  expect(p.drop).not.toContain('PATH')
+  expect(toasts.join('\n')).not.toContain('PATH')
+})
+
+test('a binary that exits non-zero drops the prompt without the PATH hint', async ($, on) => {
+  on('ui.toast', () => ({ value: undefined }))
+  on('process.run', () => ({ value: { exitCode: 3, stdout: '', stderr: 'pack would not load', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('prompt.submit', (_$: unknown, e: any) => ({ text: e.text }))
+  const r = await submit($, `TOKEN=${TOKEN}`)
+  expect(r.drop).toContain('pack would not load')
+  expect(r.drop).not.toContain('PATH')
+})
+
+test('a refusal from beneath that cannot be scanned is withheld, and says why', async ($, on) => {
+  on('ui.notice', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('process.run', () => ({ value: { exitCode: 2, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('tool.call', () => ({ deny: `refused TOKEN=${TOKEN}` }))
+  const r = await call($, { tool: 'Bash', command: 'cat .env' })
+  expect(JSON.stringify(r)).not.toContain(TOKEN)
+  expect(r.deny).toContain('exit 2.')
+  expect(r.deny).not.toContain('PATH')
+})
+
+test('output the mod cannot read withholds without the PATH hint', async ($, on) => {
+  on('ui.notice', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: 'warning: old config', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('tool.call', () => ({ result: `TOKEN=${TOKEN}` }))
+  const r = await call($, { tool: 'Bash', command: 'cat .env' })
+  expect(JSON.stringify(r)).not.toContain(TOKEN)
+  expect(r.deny).toContain('unknown shape')
+  expect(r.deny).not.toContain('PATH')
 })

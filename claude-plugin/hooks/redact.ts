@@ -15,8 +15,16 @@ import { maskResult, walk } from './result.ts'
 
 const SCAN_CAP = 16_000_000
 const HINT = "Is `redact` on this session's PATH? Install it with `mise use -g github:Drewtopia/redact`, or set the mod's `binary` option to its full path."
-const WITHHELD = `redact could not scan this result, so it was withheld. Narrow the output (head, grep, offset) and retry. ${HINT}`
-const UNMAPPED = 'redact could not scan this result in full or map a hidden value back into it, so it was withheld. Narrow the output (head, grep, offset) and retry.'
+// What failed, to end a message with. The PATH hint only helps when the
+// binary was not found, not when it timed out, exited non-zero or the
+// session's folder is gone.
+const because = (err: unknown): string =>
+  err instanceof ScanFailed ? `: ${err.message.replace(/\.+$/, '')}.${err.notFound ? ` ${HINT}` : ''}` : '.'
+const NARROW = 'Narrow the output (head, grep, offset) and retry.'
+const WITHHELD = `redact could not scan this result, so it was withheld. ${NARROW}`
+// Narrowing cannot help a binary that was not found.
+const withheldBecause = (err: ScanFailed): string => `redact could not scan this result, so it was withheld${because(err)}${err.notFound ? '' : ` ${NARROW}`}`
+const UNMAPPED = 'redact could not scan this result in full or map a hidden value back into it, so it was withheld. ' + NARROW
 const BLOCK_WITHHELD = '[redact withheld this text: the scan failed]'
 
 // Subagent answers hold placeholders the subagent used: they stay live.
@@ -181,10 +189,10 @@ function scanner($: any, next: Budget, binary: string, command?: string): Scan {
       onLocated: (path) => {
         located = path
       },
-      onBroken: (why) => {
+      onBroken: (why, notFound) => {
         if (warned) return
         warned = true
-        try { $.ui.toast(`redact: ${why}. Withholding text until it runs. ${HINT}`) } catch {}
+        try { $.ui.toast(`redact: ${why}. Withholding text until it runs.${notFound ? ` ${HINT}` : ''}`) } catch {}
       },
     })(texts)
     // Once a session, after a scan worked, so a slow or old binary never blocks one.
@@ -227,12 +235,17 @@ export const register: Register = (on, options) => {
   // 1. What the person types, and context a hook above attached to it.
   on('prompt.submit', async ($, e, next) => {
     const context = e.context ?? []
-    const { masked, tags } = await run($, next, binary, [e.text, ...context])
+    // Here, not in the hook's .catch: what reaches that is a message, not the error.
+    const scanned = await run($, next, binary, [e.text, ...context]).catch((err: unknown) => ({
+      drop: `redact failed to scan this prompt, so it was not sent${because(err)}`,
+    }))
+    if ('drop' in scanned) return scanned
+    const { masked, tags } = scanned
     if (tags.size === 0) return next(e)
     const n = countHidden(tags)
     if (n > 0 && notify) $.ui.toast(`redact: hid ${n} value(s) from the prompt`)
     return next({ ...e, text: masked[0] ?? '', ...(e.context ? { context: masked.slice(1) } : {}) })
-  }).catch(($, e, next) => (next.called ? next(e) : { drop: `redact failed to scan this prompt, so it was not sent. ${HINT}` }))
+  }).catch(($, e, next) => (next.called ? next(e) : { drop: 'redact failed to scan this prompt, so it was not sent.' }))
 
   // 2. Every tool call. In: a placeholder becomes its real value, only for a
   //    tool that runs on this machine. Out: result, text and context.
@@ -273,13 +286,16 @@ export const register: Register = (on, options) => {
     const scanCommand = overrideCommand(command)
     if (r.deny !== undefined) {
       // A refusal from beneath may quote the input it refused, real values and all.
-      const d = await run($, next, binary, [r.deny], { handed, escape: true }, scanCommand)
+      const d = await run($, next, binary, [r.deny], { handed, escape: true }, scanCommand).catch((err: unknown) => {
+        if (err instanceof ScanFailed) return { deny: withheldBecause(err) }
+        throw err
+      })
+      if ('deny' in d) return d
       return d.tags.size === 0 ? r : { deny: d.masked[0] ?? WITHHELD }
     }
 
     const m = await maskResult(scanner($, next, binary, scanCommand), r, { handed, escape: !LIVE_TAG_TOOLS.has(e.tool) })
-      // The PATH hint only helps when the binary itself failed.
-      .catch((err) => ({ withhold: err instanceof ScanFailed ? WITHHELD : UNMAPPED }))
+      .catch((err) => ({ withhold: err instanceof ScanFailed ? withheldBecause(err) : UNMAPPED }))
     if ('withhold' in m) return { deny: m.withhold }
     if (m.tags.size === 0) return r
     const n = countHidden(m.tags)

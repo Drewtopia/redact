@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { binaryScan, restore, scrub, type Scan, type Span } from '../hooks/vault.ts'
+import { binaryScan, restore, scrub, ScanFailed, type Scan, type Span } from '../hooks/vault.ts'
 
 // Fake values are built at run time so no key-shaped string sits in the repo.
 const TOKEN = 'abc123' + 'def456ghi789'
@@ -128,4 +128,79 @@ test('spans out of order or overlapping are merged before masking, so nothing le
 test('a scan that answers for fewer texts than it was given throws, so the hook withholds', async () => {
   const scan: Scan = async () => [[]]
   await expect(scrub(scan, ['one', `TOKEN=${TOKEN}`])).rejects.toThrow('2 texts')
+})
+
+// A session whose folder was removed while it ran (a merged worktree): a
+// process cannot start in a folder that is gone, and the spawn fails with
+// ENOENT as if the binary were missing. `dirs` are the folders that exist.
+function goneFolder(dirs: string[], { binaries = ['redact'], fail }: { binaries?: string[]; fail?: Error } = {}) {
+  const runs: { argv0: string; cwd?: string }[] = []
+  const $ = {
+    session: { cwd: async () => '/work/trees/gone' },
+    env: { get: async () => undefined },
+    fs: { exists: async (path: string) => dirs.includes(path) },
+    process: {
+      run: async (argv: string[], init: { stdin: string; cwd?: string }) => {
+        runs.push({ argv0: argv[0]!, cwd: init.cwd })
+        if (fail) throw fail
+        if (!dirs.includes(init.cwd ?? '/work/trees/gone') || !binaries.includes(argv[0]!)) throw new Error(`failed to start: ENOENT: spawn ${argv[0]} ENOENT`)
+        return { exitCode: 0, stdout: JSON.stringify([at(init.stdin, TOKEN)]), stderr: '', isStdoutTruncated: false }
+      },
+    },
+  }
+  return { $, runs }
+}
+
+test('a session folder that is gone scans from the nearest folder above it that exists', async () => {
+  const { $, runs } = goneFolder(['/work', '/'])
+  const why: string[] = []
+  const { masked } = await scrub(binaryScan($, { binary: 'redact', timeoutMs: 1000, onBroken: (w) => why.push(w) }), [`TOKEN=${TOKEN}`])
+  expect(masked[0]).toMatch(/^TOKEN=\[SECRET-[0-9a-f]{8}\]$/)
+  expect(runs.at(-1)).toEqual({ argv0: 'redact', cwd: '/work' })
+  expect(why).toEqual([])
+})
+
+test('a session folder with no folder above it still withholds, and names the folder', async () => {
+  const { $ } = goneFolder([])
+  const why: string[] = []
+  await expect(binaryScan($, { binary: 'redact', timeoutMs: 1000, onBroken: (w) => why.push(w) })(['short'])).rejects.toThrow('/work/trees/gone')
+  expect(why).toHaveLength(1)
+})
+
+test('a binary found nowhere throws, says it was not found and asks for the PATH hint', async () => {
+  const { $ } = goneFolder(['/work/trees/gone'], { binaries: [] })
+  const broken: [string, boolean][] = []
+  const err = await binaryScan($, { binary: 'redact', timeoutMs: 1000, onBroken: (w, notFound) => broken.push([w, notFound]) })(['short']).catch((e) => e)
+  expect(err).toBeInstanceOf(ScanFailed)
+  expect(err.message).toContain('not found')
+  expect(err.notFound).toBe(true)
+  expect(broken).toEqual([[err.message, true]])
+})
+
+test('a scan that times out says so, and is not taken for a missing binary', async () => {
+  const { $, runs } = goneFolder(['/work/trees/gone'], { fail: new Error('aborted: still running after 1000ms') })
+  const err = await binaryScan($, { binary: 'redact', timeoutMs: 1000 })(['short']).catch((e) => e)
+  expect(err).toBeInstanceOf(ScanFailed)
+  expect(err.message).toContain('did not finish')
+  expect(err.notFound).toBe(false)
+  expect(runs).toHaveLength(1)
+})
+
+test('a binary that exits non-zero is not taken for a missing one', async () => {
+  const $ = { process: { run: async () => ({ exitCode: 3, stdout: '', stderr: 'pack would not load', isStdoutTruncated: false }) } }
+  const err = await binaryScan($, { binary: 'redact', timeoutMs: 1000 })(['short']).catch((e) => e)
+  expect(err.message).toContain('exit 3: pack would not load')
+  expect(err.notFound).toBe(false)
+})
+
+test('a session folder that cannot be checked gets no PATH hint', async () => {
+  const { $, runs } = goneFolder([])
+  $.fs.exists = async () => {
+    throw new Error('network path')
+  }
+  const err = await binaryScan($, { binary: 'redact', timeoutMs: 1000 })(['short']).catch((e) => e)
+  expect(err).toBeInstanceOf(ScanFailed)
+  expect(err.message).toContain('could not check whether this session\'s folder exists')
+  expect(err.notFound).toBe(false)
+  expect(runs).toHaveLength(1)
 })

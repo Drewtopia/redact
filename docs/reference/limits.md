@@ -16,6 +16,8 @@ redact will miss things. Check its output before you share anything that matters
 - **Personal data without a clue word.** With `pii` on, redact shows a phone number, SSN, or National Insurance number when no clue word sits on its line or the line before. Examples are the rows of a table under a `Phone` header, or `M: 07700 900123` in a signature.
 - **Random tokens with no prefix.** The `random-token` rule hides 24 or more letters and digits that mix lower case, capitals, and digits, and score above 3.6 bits of entropy a character. It misses a token joined to a symbol (`key_…`, a path, a URL, base64 with `+` or `/`, a JSON `\n` escape). It misses a token alone on a 64- or 76-character line, because that reads as wrapped base64. It also misses a few random tokens that happen to read as a camelCase name: about 1 in 150 of 24 characters, fewer when longer.
 
+- **Settings of a removed folder, in Claude Code.** When a session's folder is removed while it runs, the mod runs redact from the nearest folder above it that exists. From there, an `[[override]]` whose `dir` is the removed folder, or a folder between the two, no longer applies. A git name or email set only in that repository's config, or through `includeIf`, is not read, so it is not hidden. A relative `env_files` path is read from the folder above.
+
 ## What it hides too much
 
 - **YAML blocks.** A `password: |` block hides every indented line after it. That can take in the next key when that key is indented too.
