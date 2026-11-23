@@ -19,7 +19,7 @@ redact needs no config file. Without one, the built-in packs load on their own. 
 | :- | :- |
 | `minimal` (default) | `me`, secret-named environment variables, and `.env` files, switched on |
 | `full` | Everything in `minimal`, plus `.env.keys` and the `pii` pack |
-| `strict` | Everything in `full`, plus the `work` pack: everything hidden. Its comments show how to make it strict on one machine or in one folder only |
+| `strict` | Everything in `full`, plus the `azure-names` and `gcp-names` packs: everything hidden. Its comments show how to make it strict on one machine or in one folder only |
 | `commented` | Every setting, shown and switched off |
 
 `--print` prints the file instead of writing it. `--force` replaces a file that is already there.
@@ -46,10 +46,10 @@ allow = ["Contoso", "$ACME_ORG"]
 enable = ["pii"]     # packs that start switched off
 disable = ["gcp"]    # packs you do not want
 
-# On the work laptop only: hide the values in the work .env as well.
+# On one laptop only: hide the values in a project's .env as well.
 [[override]]
-host = "work-laptop"
-env_files = ["~/work/.env"]
+host = "dev-box"
+env_files = ["~/dev/acme/.env"]
 
 # For `gh pr` output: the people are already in the PR, so leave them.
 [[override]]
@@ -89,7 +89,7 @@ A variable that is not set allows nothing. `redact config ls` lists it as not se
 
 ## Packs
 
-Every pack is on unless it says `default = false`, as [`pii`](../packs/pii) and [`work`](../packs/work) do. `[packs]` changes that:
+Every pack is on unless it says `default = false`, as [`pii`](../packs/pii), [`azure-names`](../packs/azure-names) and [`gcp-names`](../packs/gcp-names) do. `[packs]` changes that:
 
 ```toml
 [packs]
@@ -159,7 +159,7 @@ gh pr view 42 | redact scan --command "gh pr view 42"
 
 ## Load order
 
-1. The built-in packs: `azure`, `work`, `identity`, `kubernetes`, `docker`, `npm`, `http`, `gcp`, `credentials`, and `pii`. `work` and `pii` are off.
+1. The built-in packs: `azure`, `azure-names`, `identity`, `kubernetes`, `docker`, `npm`, `http`, `gcp`, `gcp-names`, `credentials`, and `pii`. `azure-names`, `gcp-names` and `pii` are off.
 2. Every `.toml` and `.txt` in `~/.config/redact/packs/`.
 3. The config file and everything it imports, in order, then each override that applies.
 4. `--file` and `--env-file` from the command line.

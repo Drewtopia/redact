@@ -81,7 +81,7 @@ redact config ls
 12  config  ~/.config/redact/config.toml  missing
 ```
 
-The `pii` pack hides phone numbers, card numbers, and IP addresses, and the `work` pack hides organisation, project, repo and host names. Both start switched off. To turn them on, see [Packs](../reference/config#packs), or run `redact config init --preset strict`.
+The `pii` pack hides phone numbers, card numbers, and IP addresses, and the `azure-names` and `gcp-names` packs hide organisation, project, repo and host names. All three start switched off. To turn them on, see [Packs](../reference/config#packs), or run `redact config init --preset strict`.
 
 A file redact looks for and does not find is listed as `missing`. You have no config file yet, so the last line says `missing`.
 

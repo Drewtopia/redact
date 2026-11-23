@@ -29,10 +29,11 @@
 # --- Packs -----------------------------------------------------------------------
 
 # Built-in packs: azure, identity, kubernetes, docker, npm, http, gcp, credentials,
-# and two that start switched off: work (organisation, project, repo and host
-# names) and pii (personal data). `--preset strict` writes a config with both on.
+# and three that start switched off: azure-names and gcp-names (organisation,
+# project, repo and host names) and pii (personal data). `--preset strict`
+# writes a config with all three on.
 # [packs]
-# enable = ["work", "pii"]  # packs that start switched off
+# enable = ["azure-names", "gcp-names", "pii"]  # packs that start switched off
 # disable = ["gcp"]       # packs you do not want, or one rule as pack:rule ("pii:ipv4")
 
 # --- Placeholder labels ----------------------------------------------------------
@@ -55,7 +56,7 @@
 # env_files, allow, [override.packs] and [override.labels].
 
 # [[override]]
-# host = "work-laptop"
+# host = "dev-box"
 # allow = ["$ACME_ORG"]
 
 # [[override]]

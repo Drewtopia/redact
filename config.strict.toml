@@ -1,6 +1,7 @@
 # redact config: ~/.config/redact/config.toml (%APPDATA%\redact\config.toml on Windows).
-# Written by `redact config init --preset strict`: everything hidden, work names
-# included. Commands and links that hold a work name will hold a placeholder.
+# Written by `redact config init --preset strict`: everything hidden,
+# organisation, project, repo and host names included. Commands and links that
+# hold one of those names will hold a placeholder.
 # `redact config ls` shows what loads and why;
 # `redact config init --preset commented --print` shows every setting.
 
@@ -14,14 +15,15 @@ env = ["*_TOKEN", "*_KEY", "*_SECRET", "*_PASSWORD"]
 env_files = [".env", ".env.local", ".env.keys"]
 
 # Built-in packs: azure, identity, kubernetes, docker, npm, http, gcp, credentials,
-# and two that start switched off and are on here: work (organisation, project,
-# repo and host names) and pii (personal data: phone numbers, cards, IP addresses).
+# and three that start switched off and are on here: azure-names and gcp-names
+# (organisation, project, repo and host names) and pii (personal data: phone
+# numbers, cards, IP addresses).
 [packs]
-enable = ["work", "pii"]
+enable = ["azure-names", "gcp-names", "pii"]
 
 # Strict on one machine or in one folder only: leave [packs] out above and
 # switch the packs on in an override instead.
 # [[override]]
-# host = "work-laptop"      # or dir = "~/dev/work"
+# host = "dev-box"          # or dir = "~/dev/acme"
 # [override.packs]
-# enable = ["work", "pii"]
+# enable = ["azure-names", "gcp-names", "pii"]

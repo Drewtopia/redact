@@ -4,7 +4,7 @@ layout: home
 hero:
   name: redact
   text: Keep secrets out of what AI sees
-  tagline: Pipe any output through redact. The parts that say who you are, who you work for or how to get in come back as placeholders, so you can hand the rest to Claude, Codex or a chat window.
+  tagline: Pipe any output through redact. The parts that say who you are or how to get in come back as placeholders, so you can hand the rest to Claude, Codex or a chat window.
   actions:
     - theme: brand
       text: Get started

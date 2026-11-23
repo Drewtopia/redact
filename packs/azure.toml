@@ -5,7 +5,7 @@
 # reads as a name; `"any"` does so for any capitalised or 5+ character value.
 schema_version = 1
 id = "azure"
-description = "Azure tenant, subscription and identity IDs; people in Azure DevOps and Microsoft Graph records; az sign-in details; and pipeline variable and key values. Org, project, repo and host names are in the work pack"
+description = "Azure tenant, subscription and identity IDs; people in Azure DevOps and Microsoft Graph records; az sign-in details; and pipeline variable and key values. Org, project, repo and host names are in the azure-names pack"
 keywords = ["tenant", "subscription", "client", "app", "object", "principal", "identities", "isdefault", "uniquename", "principalname", "system.", "microsoft.vsts.", "user", "mail", "userprincipalname", "phone", "lastaccesseddate", "microsoftonline", "sts.windows", "application", "/secrets/", "keyname", "masterkey", "primarykey", "secondarykey", "mailaddress", "issecret", "\"value\"", "directoryalias"]
 
 # Public values Microsoft documents: never hidden.

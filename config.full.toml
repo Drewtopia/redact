@@ -13,7 +13,8 @@ env = ["*_TOKEN", "*_KEY", "*_SECRET", "*_PASSWORD"]
 env_files = [".env", ".env.local", ".env.keys"]
 
 # Built-in packs: azure, identity, kubernetes, docker, npm, http, gcp, credentials,
-# and pii (personal data: phone numbers, cards, IP addresses), on here. work
-# (organisation, project, repo and host names) stays off; --preset strict turns it on.
+# and pii (personal data: phone numbers, cards, IP addresses), on here.
+# azure-names and gcp-names (organisation, project, repo and host names) stay
+# off; --preset strict turns them on.
 [packs]
 enable = ["pii"]

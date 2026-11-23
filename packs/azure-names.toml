@@ -1,20 +1,21 @@
-# Built-in pack: work names. Off by default; turn it on in config.toml:
+# Built-in pack: Azure names. Off by default; turn it on in config.toml:
 #   [packs]
-#   enable = ["work"]
+#   enable = ["azure-names"]
 # or write a config that does with `redact config init --preset strict`.
-# It hides organisation, project, repo and host names, which turn up in paths,
-# commands and links: once hidden, those hold placeholders and may not run.
+# It hides Azure DevOps organisation, project and repo names, and Azure host, tenant
+# and subscription names, which turn up in paths, commands and links: once hidden,
+# those hold placeholders and may not run.
 # ADR 0001 (docs/adr/0001-defaults-and-opt-in.md) explains why it is a choice.
-# People, credentials and cloud IDs stay in the azure and gcp packs, on by default.
+# People, credentials and cloud IDs stay in the azure pack, on by default.
 # Each rule's regex finds a spot; `secretGroup` is the capture group that gets hidden,
 # and `label` is what the placeholder says instead: [ORG-1a2b3c4d].
 # `remember = "distinctive"` hides that value everywhere else in the same text when it
 # reads as a name; `"any"` does so for any capitalised or 5+ character value.
 schema_version = 1
-id = "work"
-description = "Work names: Azure DevOps organisation, project and repo names; your own Azure hosts; tenant, subscription and company names; Google Cloud project IDs. Off by default"
+id = "azure-names"
+description = "Azure DevOps organisation, project and repo names, and Azure host, tenant and subscription names. Off by default"
 default = false
-keywords = ["dev.azure.com", "/_git/", "visualstudio", "system.", "wellformed", "remoteurl", "sshurl", "dynamics.com", "azurewebsites", "powerappsportals", "vault.azure", "windows.net", "azurecr", "sharepoint", "onmicrosoft", "tenantdisplayname", "isdefault", "companyname", "project_id", "projectid", "projects/", "--project"]
+keywords = ["dev.azure.com", "/_git/", "visualstudio", "system.", "wellformed", "remoteurl", "sshurl", "dynamics.com", "azurewebsites", "powerappsportals", "vault.azure", "windows.net", "azurecr", "sharepoint", "onmicrosoft", "tenantdisplayname", "isdefault", "companyname"]
 
 # A public value Microsoft documents: never hidden.
 allow = ["AzureCloud"]
@@ -198,7 +199,7 @@ matrix = false
 input = "{\"name\": \"northwind-api\", \"remoteUrl\": \"https://example.test/r\"}"
 expect = ["northwind-api"]
 
-# --- Your own Azure hosts: the <name> part is yours, the suffix is Microsoft's ---
+# --- Azure hosts: the <name> part names the resource, the suffix is Microsoft's ---
 
 [[rules]]
 id = "dataverse-env"
@@ -300,47 +301,3 @@ matrix = false
 [[rules.tests]]
 input = "{\"companyName\": \"Fabrikam Q Ltd\"}"
 expect = ["Fabrikam Q Ltd"]
-
-# --- Google Cloud project IDs -------------------------------------------------
-
-[[rules]]
-id = "project-id-field"
-description = "project_id and projectId in a service account key file or API output"
-regex = '''(?i)"(?:project_id|projectId|quota_project_id)"\s*:\s*"([a-z][a-z0-9-]{4,28}[a-z0-9])"'''
-secretGroup = 1
-label = "PROJECT"
-remember = "any"
-keywords = ["project_id", "projectid"]
-
-matrix = false
-[[rules.tests]]
-input = "{\"project_id\": \"fabrikam-dev-123\"}"
-expect = ["fabrikam-dev-123"]
-
-[[rules]]
-id = "project-path"
-description = "The project in a resource path: projects/<id>/..."
-regex = '''(?:^|[^A-Za-z0-9_]|\\[nrt])projects/([a-z][a-z0-9-]{4,28}[a-z0-9])\b'''
-secretGroup = 1
-label = "PROJECT"
-remember = "any"
-keywords = ["projects/"]
-
-matrix = false
-[[rules.tests]]
-input = "projects/fabrikam-dev-123/locations/us"
-expect = ["fabrikam-dev-123"]
-
-[[rules]]
-id = "project-flag"
-description = "The project after --project (gcloud)"
-regex = '''--project[= \t]+([a-z][a-z0-9-]{4,28}[a-z0-9])\b'''
-secretGroup = 1
-label = "PROJECT"
-remember = "any"
-keywords = ["--project"]
-
-matrix = false
-[[rules.tests]]
-input = "gcloud run deploy --project fabrikam-dev-123"
-expect = ["fabrikam-dev-123"]

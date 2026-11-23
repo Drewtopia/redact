@@ -17,9 +17,9 @@ const binary = fileURLToPath(new URL(`../../target/debug/redact${process.platfor
 const dir = mkdtempSync(join(tmpdir(), 'redact-integration-'))
 const config = join(dir, 'config.toml')
 writeFileSync(config, '')
-// Work names (org, project, repo) are hidden only with the work pack on (ADR 0001).
-const workConfig = join(dir, 'work.toml')
-writeFileSync(workConfig, '[packs]\nenable = ["work"]\n')
+// Org, project and repo names are hidden only with the name packs on (ADR 0001).
+const namesConfig = join(dir, 'names.toml')
+writeFileSync(namesConfig, '[packs]\nenable = ["azure-names", "gcp-names"]\n')
 after(() => rmSync(dir, { recursive: true }))
 
 function scan(text, args = []) {
@@ -448,7 +448,7 @@ test('an Azure DevOps URL in Bash stdout keeps its host, hides project and repo,
     },
   }, null, 2)
   for (const stdout of [`${pr}\n`, `${web}/pullrequest/42\n`, `${web}\n`]) {
-    const h = hook((e) => e.tool === 'Bash' ? { stdout, stderr: '', interrupted: false } : 'written', workConfig)
+    const h = hook((e) => e.tool === 'Bash' ? { stdout, stderr: '', interrupted: false } : 'written', namesConfig)
     const r = await h.call({ tool: 'Bash', command: 'az repos pr show --id 42' })
     assert.equal(r.deny, undefined, r.deny)
     const shown = r.result.stdout
@@ -462,11 +462,11 @@ test('an Azure DevOps URL in Bash stdout keeps its host, hides project and repo,
 
 test('Bash stdout that already holds placeholders, as field lines and JSON, passes without a PATH hint', async () => {
   const web = 'https://dev.azure.com/fabrikamqa/Ops/_git/widget-api'
-  const h = hook(() => ({ stdout: `${web}\n`, stderr: '', interrupted: false, isImage: false }), workConfig)
+  const h = hook(() => ({ stdout: `${web}\n`, stderr: '', interrupted: false, isImage: false }), namesConfig)
   const masked = (await h.call({ tool: 'Bash', command: 'az repos pr show --id 42' })).result.stdout
   const shown = { stdout: masked, stderr: '', interrupted: false, isImage: false }
   const stdout = `stdout: ${masked}stderr: \ninterrupted: false\nisImage: false\n${JSON.stringify(shown)}\n`
-  const again = hook(() => ({ stdout, stderr: '', interrupted: false, isImage: false }), workConfig)
+  const again = hook(() => ({ stdout, stderr: '', interrupted: false, isImage: false }), namesConfig)
   const r = await again.call({ tool: 'Bash', command: 'cat scan.txt' })
   assert.equal(r.deny, undefined, r.deny)
   assert.ok(!r.result.stdout.includes('widget-api'), r.result.stdout)

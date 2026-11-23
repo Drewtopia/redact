@@ -231,16 +231,10 @@ const KNOWN_GAPS = {
   'gh pr view --json': ['PERSON'],
   // credentials:named-secret reads the `PWD` in `PWD=` as a password name (#115, comment).
   env: ['SECRET'],
-  // gcp:project-path hides the folder under ~/projects (#109).
-  'mise ls': ['PROJECT', 'PROJECT', 'PROJECT'],
-  // The azure work-name rules hide the org, project and repo in the URL.
-  'cat of a Markdown file': ['ORG', 'PROJECT', 'REPO'],
-  // As above, plus gcp:project-path on the file's path under ~/projects (#109).
-  'Read of a Markdown file': ['ORG', 'PROJECT', 'PROJECT', 'PROJECT', 'PROJECT', 'PROJECT', 'REPO'],
-  // The tenant and subscription IDs, the subscription's name and the user.
-  'az account show': ['ID', 'ID', 'ID', 'RESOURCE', 'USER'],
-  // The azure work-name rules hide the org, project and repo in each URL and field.
-  'az repos show': ['ORG', 'ORG', 'ORG', 'ORG', 'PROJECT', 'PROJECT', 'PROJECT', 'PROJECT', 'REPO', 'REPO', 'REPO', 'REPO'],
+  // The file's path is the `PWD` the env case hid, so the mod hides it again.
+  'Read of a Markdown file': ['SECRET'],
+  // The tenant and subscription IDs and the user.
+  'az account show': ['ID', 'ID', 'ID', 'USER'],
 }
 
 // Known gaps: cases withheld whole today, from how a result is mapped back

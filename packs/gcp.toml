@@ -1,7 +1,7 @@
 # Built-in pack: Google Cloud.
 schema_version = 1
 id = "gcp"
-description = "Google access tokens and private key IDs. Project IDs are in the work pack"
+description = "Google access tokens and private key IDs. Project IDs are in the gcp-names pack"
 keywords = ["ya29.", "private_key_id"]
 
 [[rules]]

@@ -162,7 +162,7 @@ enum Preset {
     Minimal,
     /// Every setting that needs none of your own names, switched on, pii included.
     Full,
-    /// Everything hidden: you, personal data (pii) and work names (work).
+    /// Everything hidden: you, personal data (pii) and org, project, repo and host names.
     Strict,
     /// Every setting shown and switched off, as a reference.
     Commented,
@@ -559,7 +559,7 @@ mod docs {
     }
 
     /// The minimal, full and strict presets load as written; full turns pii on,
-    /// and strict turns on pii and work.
+    /// and strict turns on pii, azure-names and gcp-names.
     #[test]
     fn the_live_presets_load() {
         for (name, text) in [
@@ -570,14 +570,16 @@ mod docs {
             let loaded = with_config(name, text).unwrap_or_else(|e| panic!("{name} preset: {e}"));
             let on = |id: &str| loaded.packs.iter().any(|p| p.id == id);
             assert_eq!(on("pii"), name != "minimal", "{name}: pii");
-            assert_eq!(on("work"), name == "strict", "{name}: work");
+            assert_eq!(on("azure-names"), name == "strict", "{name}: azure-names");
+            assert_eq!(on("gcp-names"), name == "strict", "{name}: gcp-names");
             assert!(loaded.sources.iter().any(|s| s.kind == "me"), "{name}: me");
         }
     }
 
-    /// Work names show by default and are hidden once `work` is on (ADR 0001).
+    /// Organisation, project, repo and host names show by default and are hidden
+    /// once `azure-names` and `gcp-names` are on (ADR 0001).
     #[test]
-    fn work_names_are_hidden_only_with_the_work_pack_on() {
+    fn names_are_hidden_only_with_the_name_packs_on() {
         let text = "https://dev.azure.com/contoso/Fabrikam/_git/storefront\n\
                     gcloud projects/contoso-web-prod\n";
         let hidden = |loaded: &pack::Loaded| -> Vec<String> {
@@ -588,7 +590,11 @@ mod docs {
                 .collect()
         };
         assert_eq!(hidden(&builtin()), Vec::<String>::new());
-        let on = with_config("work-on", "[packs]\nenable = [\"work\"]\n").unwrap();
+        let on = with_config(
+            "names-on",
+            "[packs]\nenable = [\"azure-names\", \"gcp-names\"]\n",
+        )
+        .unwrap();
         assert_eq!(
             hidden(&on),
             ["contoso", "Fabrikam", "storefront", "contoso-web-prod"]
@@ -624,7 +630,7 @@ mod docs {
             env_files: vec![],
             command: Some("gh pr view 42".into()),
             cwd: Some(d.clone()),
-            host: Some("work-laptop".into()),
+            host: Some("dev-box".into()),
         });
         std::fs::remove_dir_all(&d).unwrap();
         let loaded = loaded.expect("the uncommented starter config loads");
@@ -699,7 +705,8 @@ mod docs {
         };
         assert_eq!(on("azure"), true);
         assert_eq!(on("pii"), false);
-        assert_eq!(on("work"), false);
+        assert_eq!(on("azure-names"), false);
+        assert_eq!(on("gcp-names"), false);
         let azure = &v["packs"][0];
         assert_eq!(
             azure["rules"].as_array().unwrap().len(),
