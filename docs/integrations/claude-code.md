@@ -114,7 +114,11 @@ The mod fails closed. It withholds the text instead of passing it on raw when th
 
 A toast says why, and only a binary that was not found gets the hint about `PATH`.
 
-If the session's folder was removed while the session ran, such as a worktree removed after its merge, no process can start there. The mod then runs redact from the nearest folder above it that still exists. An `[[override]]` whose `dir` is that folder or one above it still applies, but one for the removed folder itself no longer does.
+If the session's folder was removed while the session ran, such as a worktree removed after its merge, no process can start there. The mod then runs redact from the nearest folder above it that still exists. From there, redact sees less of the removed folder's settings:
+
+- An `[[override]]` whose `dir` is that folder or one above it still applies. One whose `dir` is the removed folder, or a folder between it and the one redact runs from, no longer does.
+- Git config is read in the folder redact runs from. A git name or email set only in the repository's own config, or through `includeIf`, is not read, so it is not hidden.
+- A relative `env_files` path, such as `".env"`, is read from that folder, not from the removed one.
 
 The rules live in the binary and the hook logic in the mod, so a fix can need both. Once a session the mod runs `redact --version`, and a toast says so when the binary comes from another release than the mod. Update the older one: `mise up github:Drewtopia/redact` for the binary.
 
