@@ -73,12 +73,14 @@ redact config ls
 
 ```text
  1  builtin azure                         21 rules
- 2  builtin work                          22 rules, off
+ 2  builtin azure-names                   19 rules, off
  3  builtin identity                      5 rules
  …
-10  builtin pii                           12 rules, off
-11  folder  ~/.config/redact/packs        missing
-12  config  ~/.config/redact/config.toml  missing
+ 9  builtin gcp-names                     3 rules, off
+ …
+11  builtin pii                           12 rules, off
+12  folder  ~/.config/redact/packs        missing
+13  config  ~/.config/redact/config.toml  missing
 ```
 
 The `pii` pack hides phone numbers, card numbers, and IP addresses, and the `azure-names` and `gcp-names` packs hide organisation, project, repo and host names. All three start switched off. To turn them on, see [Packs](../reference/config#packs), or run `redact config init --preset strict`.

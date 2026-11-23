@@ -35,7 +35,7 @@ A label says what kind of thing a placeholder hides, so a model can tell a perso
 | `SECRET` | Tokens, keys, passwords, cookies and other credentials |
 | `ENV-VALUE` | A value from an environment dump, a dotenv file, an `env` variable or a pipeline variable |
 | `ID` | Tenant, subscription, app, object and identity IDs |
-| `PERSON`, `EMAIL`, `USER`, `PROFILE` | A person's name, email address, login, and profile details such as company or location |
+| `PERSON`, `EMAIL`, `USER`, `PROFILE` | A person's name, email address, login, and profile details such as company or location (a company in Microsoft Graph records only with `azure-names` on) |
 | `ORG`, `PROJECT`, `REPO`, `RESOURCE` | Organisation, project, repository and cloud resource names, from the `azure-names` and `gcp-names` packs |
 | `PHONE`, `CARD`, `IBAN`, `IP`, `MAC`, `NATIONAL-ID` | Personal data from the `pii` pack |
 | `WORDLIST` | A line from one of your word lists |

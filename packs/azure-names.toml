@@ -13,7 +13,7 @@
 # reads as a name; `"any"` does so for any capitalised or 5+ character value.
 schema_version = 1
 id = "azure-names"
-description = "Azure DevOps organisation, project and repo names, and Azure host, tenant and subscription names. Off by default"
+description = "Azure DevOps organisation, project and repo names, and Azure host, tenant, subscription and company names. Off by default"
 default = false
 keywords = ["dev.azure.com", "/_git/", "visualstudio", "system.", "wellformed", "remoteurl", "sshurl", "dynamics.com", "azurewebsites", "powerappsportals", "vault.azure", "windows.net", "azurecr", "sharepoint", "onmicrosoft", "tenantdisplayname", "isdefault", "companyname"]
 
