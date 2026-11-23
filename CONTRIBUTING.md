@@ -42,6 +42,14 @@ CI also runs `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`
 
 `redact scan --explain` shows which `pack:rule` hid each part, which helps while writing the regex.
 
+### Refresh the AI tool list
+
+The AI tool addresses and GitHub App names that `identity:email` and `identity:git-person` leave visible come from commit-check's `commit_check/ai_signatures_data.py`, and the header of `packs/identity.toml` names the version. A test fails when `mise.toml` pins a newer commit-check than that. To refresh:
+
+1. Run `mise install`, then read `ai_signatures_data.py` in the commit-check version `mise.toml` now pins (under `mise where pipx:commit-check`).
+2. Copy each tool's address-anchored and `<login>[bot]` identities into both the email rule's `except` and git-person's `exceptMatch` (TOML cannot share one list), with a test from the tool's own example. Leave out a bare name such as `Devin` or `Amp`: a person can have it.
+3. Set the version in the header of `packs/identity.toml` and in `LICENSE-THIRD-PARTY` and `docs/reference/thanks.md`.
+
 ## Pull requests
 
 - One change per PR, titled as a [Conventional Commit](https://www.conventionalcommits.org/) (`feat(packs): ...`, `fix(scan): ...`). A check fails a title that doesn't parse.

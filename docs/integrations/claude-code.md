@@ -54,7 +54,11 @@ When Claude writes a placeholder into a command or a file, the mod swaps it back
 
 ### Only local tools
 
-Bash, PowerShell, Write, Edit, MultiEdit, NotebookEdit, Read, Glob, and Grep get real values. Agent, WebFetch, WebSearch, and MCP tools never do. An MCP tool off the list is refused a placeholder this session made, since it would store the placeholder text where nothing can read it back. To change the list, use the `restoreTools` setting.
+By default, Bash, PowerShell, Write, Edit, MultiEdit, NotebookEdit, Read, Glob, and Grep get real values. Agent, WebFetch, WebSearch, and MCP tools do not. An MCP tool off the list is refused a placeholder this session made, since it would store the placeholder text where nothing can read it back.
+
+To change the list, use the `restoreTools` setting. It holds tool names separated by commas and replaces the default list, so keep the names you still want. In a name, `*` matches any run of characters. A `!` in front of a name leaves that tool out, wherever it sits in the list. For example, `Bash,Read,mcp__notes__*,!mcp__notes__share` gives real values to Bash, Read, and every tool of a `notes` app except `mcp__notes__share`. Never list a lone `*`: it would match every tool, Agent and WebFetch included.
+
+A listed tool receives real values, so list only tools you trust with them. Leave out every tool that sends text to another service, such as one that posts a comment, opens an issue, or shares a note.
 
 ### Only to hosts you list
 
@@ -106,8 +110,15 @@ The mod fails closed. It withholds the text instead of passing it on raw when th
 - is missing
 - is too old
 - exits with an error, such as a pack that will not load
+- does not finish in time
 
-A toast says why.
+A toast says why, and only a binary that was not found gets the hint about `PATH`.
+
+If the session's folder was removed while the session ran, such as a worktree removed after its merge, no process can start there. The mod then runs redact from the nearest folder above it that still exists. From there, redact sees less of the removed folder's settings:
+
+- An `[[override]]` whose `dir` is that folder or one above it still applies. One whose `dir` is the removed folder, or a folder between it and the one redact runs from, no longer does.
+- Git config is read in the folder redact runs from. A git name or email set only in the repository's own config, or through `includeIf`, is not read, so it is not hidden.
+- A relative `env_files` path, such as `".env"`, is read from that folder, not from the removed one.
 
 The rules live in the binary and the hook logic in the mod, so a fix can need both. Once a session the mod runs `redact --version`, and a toast says so when the binary comes from another release than the mod. Update the older one: `mise up github:Drewtopia/redact` for the binary.
 
@@ -126,7 +137,7 @@ Claude Code asks for these settings when you install the mod. To change them lat
 | Setting | Default | What it does |
 | :- | :- | :- |
 | `binary` | `redact` | The redact command to run |
-| `restoreTools` | `Bash,PowerShell,Write,Edit,MultiEdit,NotebookEdit,Read,Glob,Grep` | Tools that get the real value behind a placeholder |
+| `restoreTools` | `Bash,PowerShell,Write,Edit,MultiEdit,NotebookEdit,Read,Glob,Grep` | Tools that get the real value behind a placeholder, separated by commas. `*` matches any run of characters, and `!` in front of a name leaves that tool out. List only tools you trust with real values |
 | `restoreHosts` | empty | Hosts a shell command may send a real value to, separated by commas. Each covers its subdomains |
 | `notify` | on | A count on the tool row and a toast on a prompt when something is hidden |
 

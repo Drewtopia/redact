@@ -9,11 +9,14 @@ redact will miss things. Check its output before you share anything that matters
 - **Free text.** A customer named in an issue title, a log line, or a commit message is hidden only if it is in a word list, an environment variable you named, or a `.env` file. No rule can tell a customer's name from any other word.
 - **Shapes no pack knows.** redact shows the IDs and names of a service it has no pack for. The built-in packs cover Azure, people, credentials, Kubernetes, Docker, npm, HTTP headers, and Google Cloud, plus personal data and work names once `pii` and `work` are on.
 - **Values without a name or shape.** A password printed on its own, with nothing like `password=` beside it, looks like any other word.
+- **Environment values under an ordinary name.** In `env`, `mise env` or `.env` text piped to redact, a `NAME=value` line is hidden only when the name says secret, such as `GITHUB_TOKEN`, `DB_PASSWORD` or `SIGNING_KEY`, or when the value has a known token shape. So `DEPLOY_HOOK=https://hooks.example.test/x` shows. To hide such a value, name the variable in `env` or list the file in `env_files`.
 - **Transformed values.** redact does not recognise a key that is base64-encoded, reversed, or split across lines.
 - **Case beyond ASCII.** Word matching ignores case for ASCII letters only, so `ÄBC` does not match `äbc`.
 - **Very short values.** To avoid hiding ordinary words everywhere, redact skips word-list entries under 3 characters, `.env` values under 4, and values named as secrets under 6. So `password: Ab3$x` shows. To hide a short secret, add it to a word list.
 - **Personal data without a clue word.** With `pii` on, redact shows a phone number, SSN, or National Insurance number when no clue word sits on its line or the line before. Examples are the rows of a table under a `Phone` header, or `M: 07700 900123` in a signature.
 - **Random tokens with no prefix.** The `random-token` rule hides 24 or more letters and digits that mix lower case, capitals, and digits, and score above 3.6 bits of entropy a character. It misses a token joined to a symbol (`key_…`, a path, a URL, base64 with `+` or `/`, a JSON `\n` escape). It misses a token alone on a 64- or 76-character line, because that reads as wrapped base64. It also misses a few random tokens that happen to read as a camelCase name: about 1 in 150 of 24 characters, fewer when longer.
+
+- **Settings of a removed folder, in Claude Code.** When a session's folder is removed while it runs, the mod runs redact from the nearest folder above it that exists. From there, an `[[override]]` whose `dir` is the removed folder, or a folder between the two, no longer applies. A git name or email set only in that repository's config, or through `includeIf`, is not read, so it is not hidden. A relative `env_files` path is read from the folder above.
 
 ## What it hides too much
 
@@ -39,5 +42,6 @@ Each integration has limits of its own. See [Claude Code](../integrations/claude
 - Public values a pack knows, such as the app IDs and hosts Microsoft documents for Azure.
 - Settings in `.env` files: numbers, `true`, `localhost`, and `development`.
 - Service addresses such as `git@github.com`.
+- An AI agent's own attribution: the address of an AI tool on [commit-check](https://github.com/commit-check/commit-check)'s list of known AI tool signatures, and the name before one of them in a `Co-authored-by:` or `Author:` line, as well as an AI tool's GitHub App name, such as `cursor[bot]`. GitHub's own `noreply@` address shows too, but the name before it only when that name is `GitHub`: anyone can set that address. A bare name never counts, since Devin or Jules can be a person. A person's GitHub noreply address, `<id>+<login>@users.noreply.github.com`, holds their login, so it and their name stay hidden, and so does another bot's name.
 - Email addresses at `example.com`, `example.org`, and `example.net`, which RFC 2606 keeps for documentation.
 - Values already hidden: a mask such as `********`, a marker such as `[REDACTED]`, and redact's own tags. Redacting redacted text changes nothing.
