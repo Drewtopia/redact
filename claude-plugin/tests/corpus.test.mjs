@@ -121,6 +121,8 @@ no changes added to commit (use "git add" and/or "git commit -a")
   },
   {
     name: 'gh pr view --json',
+    // Seeds the author's name, as the az case below does, so it passes alone.
+    seed: bash('git log -1', 'commit 3f2a9c1e\nAuthor: Robin Sample <robin@example.com>\n'),
     ...bash('gh pr view 42 --json number,title,state,author,headRefName,baseRefName,url,body,files,reviewDecision', JSON.stringify({
       number: 42,
       title: 'feat(cache): evict entries by size',
@@ -225,7 +227,7 @@ const KNOWN_GAPS = {
   'git log': ['PERSON', 'PERSON'],
   // The author's display name, beside the login, hides as a person.
   'gh pr view --json': ['PERSON'],
-  // PWD holds `PW`, so env-dump reads it as a password (#115, comment).
+  // credentials:named-secret reads the `PWD` in `PWD=` as a password name (#115, comment).
   env: ['SECRET'],
   // gcp:project-path hides the folder under ~/projects (#109).
   'mise ls': ['PROJECT', 'PROJECT', 'PROJECT'],
@@ -248,7 +250,7 @@ const KNOWN_GAPS = {
 const WITHHELD = {
   // One address per line: identity:email matches `nrobin.sample@…`.
   'git log --format=%ae': 'could not be put back in place',
-  // A tab before each SSH URL: the azure work-name rules match from the `t`.
+  // A tab before each SSH URL: identity:email takes the `t` and matches `tgit@…`.
   'git remote -v': 'could not be put back in place',
   // One address at the start of each line, as in --format=%ae.
   'az ad user list -o tsv': 'could not be put back in place',
@@ -279,7 +281,6 @@ for (const c of CORPUS) {
 const token = 'ghp_' + 'Q7mK2xV9pL4sT8nW3cR6' + 'yB1dF5hJ0aE2gZ4uN6'
 for (const [name, stdout] of [
   ['an env line', `HOME=/home/robin\nGITHUB_TOKEN=${token}\nSHELL=/bin/zsh\n`],
-  ['a bare line', `robin.sample@quillmere.example\n${token}\nalex.tester@quillmere.example\n`],
   ['a JSON document', JSON.stringify({ user: { name: 'robin@example.com' }, accessToken: token }, null, 2)],
 ]) {
   test(`corpus: a credential on ${name} is hidden or withheld`, async () => {
@@ -287,3 +288,13 @@ for (const [name, stdout] of [
     if (r.deny === undefined) assert.ok(!JSON.stringify(r).includes(token), JSON.stringify(r))
   })
 }
+
+// A token alone on its line, with no email beside it to trip the mapping
+// (see WITHHELD): the result passes, with the token hidden.
+test('corpus: a credential on a bare line is hidden, not withheld', async () => {
+  const stdout = `notes for the tessel cache\n${token}\nend of notes\n`
+  const r = await hook({ stdout, stderr: '', interrupted: false, isImage: false })({ tool: 'Bash', command: 'cat notes.txt' })
+  assert.equal(r.deny, undefined, r.deny)
+  assert.ok(!JSON.stringify(r).includes(token), JSON.stringify(r))
+  assert.match(r.result.stdout, /^notes for the tessel cache\n\[[A-Z][A-Z0-9-]*-[0-9a-f]{8}\]\nend of notes\n$/)
+})
