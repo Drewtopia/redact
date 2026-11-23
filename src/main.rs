@@ -162,7 +162,7 @@ enum Preset {
     Minimal,
     /// Every setting that needs none of your own names, switched on, pii included.
     Full,
-    /// Everything hidden: you, personal data (pii) and org, project, repo and host names.
+    /// Also hides you, personal data (pii) and org, project, repo and host names.
     Strict,
     /// Every setting shown and switched off, as a reference.
     Commented,

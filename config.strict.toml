@@ -1,6 +1,6 @@
 # redact config: ~/.config/redact/config.toml (%APPDATA%\redact\config.toml on Windows).
-# Written by `redact config init --preset strict`: everything hidden,
-# organisation, project, repo and host names included. Commands and links that
+# Written by `redact config init --preset strict`: the optional packs on, so
+# you, personal data and organisation, project, repo and host names are hidden too. Commands and links that
 # hold one of those names will hold a placeholder.
 # `redact config ls` shows what loads and why;
 # `redact config init --preset commented --print` shows every setting.

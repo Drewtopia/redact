@@ -19,7 +19,7 @@ redact needs no config file. Without one, the built-in packs load on their own. 
 | :- | :- |
 | `minimal` (default) | `me`, secret-named environment variables, and `.env` files, switched on |
 | `full` | Everything in `minimal`, plus `.env.keys` and the `pii` pack |
-| `strict` | Everything in `full`, plus the `azure-names` and `gcp-names` packs: everything hidden. Its comments show how to make it strict on one machine or in one folder only |
+| `strict` | Everything in `full`, plus the `azure-names` and `gcp-names` packs. Its comments show how to make it strict on one machine or in one folder only |
 | `commented` | Every setting, shown and switched off |
 
 `--print` prints the file instead of writing it. `--force` replaces a file that is already there.

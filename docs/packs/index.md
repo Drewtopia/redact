@@ -7,7 +7,7 @@ A pack is a TOML file of rules. Each rule's `regex` finds a spot in the text, an
 | Pack | Hides |
 | :- | :- |
 | [azure](./azure) | IDs and people in Azure, Azure DevOps, Microsoft Graph, and `az` output, and pipeline variable and key values |
-| [azure-names](./azure-names) | **Off by default.** Azure DevOps organisation, project and repo names, and Azure host, tenant and subscription names |
+| [azure-names](./azure-names) | **Off by default.** Azure DevOps organisation, project and repo names, and Azure host, tenant, subscription and company names |
 | [identity](./identity) | Emails anywhere, git authors and `user.name`, and GitHub user records |
 | [kubernetes](./kubernetes) | Secret `data:` values in YAML and JSON, and kubeconfig client keys |
 | [docker](./docker) | Registry logins in `config.json`, and secret-named `docker inspect` env entries |

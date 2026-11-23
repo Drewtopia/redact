@@ -111,7 +111,7 @@ host = "dev-box"
 env_files = ["~/dev/acme/.env"]
 ```
 
-`redact config init` writes a starter file with every setting switched off. `redact config init --preset strict` writes one that hides everything: you (`me = true`), personal data (`pii`) and organisation, project, repo and host names (`azure-names` and `gcp-names`). The [config reference](https://drewtopia.github.io/redact/reference/config) covers each one.
+`redact config init` writes a starter file with every setting switched off. `redact config init --preset strict` writes one that also hides you (`me = true`), personal data (`pii`) and organisation, project, repo and host names (`azure-names` and `gcp-names`). The [config reference](https://drewtopia.github.io/redact/reference/config) covers each one.
 
 `me` asks git for your `user.name` and `user.email` (in the repo you run it from, and globally: a work email set by an `includeIf` counts when you run redact inside that repo) and reads your GitHub logins from gh's `hosts.yml`. They are hidden everywhere as `[ME-NAME-…]`, `[ME-EMAIL-…]` and `[ME-GITHUB-…]`, so your username stops showing in GitHub URLs and remotes. Nothing to keep in sync: change your git name and redact follows.
 
