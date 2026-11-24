@@ -225,7 +225,7 @@ expect = ["tok_abcd"]
     );
 }
 
-/// Every built-in pack, switched-off ones (`pii`) included.
+/// Every built-in pack, switched-off ones (`pii`, `azure-names`, `gcp-names`) included.
 fn builtin() -> Vec<Pack> {
     let l = load(&[], true).unwrap();
     l.packs.into_iter().chain(l.off).collect()
@@ -305,8 +305,8 @@ const OVERLAPS: &[(&str, &str, &str)] = &[
     ),
     // `pkgs.dev.azure.com/org` holds `dev.azure.com/org`.
     (
-        "azure:ado-org-artifacts",
-        "azure:ado-org",
+        "azure-names:ado-org-artifacts",
+        "azure-names:ado-org",
         "same org, same label",
     ),
     // A `+1 (555) …` phone after `phone:` is an international number too.

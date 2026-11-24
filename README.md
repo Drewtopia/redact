@@ -3,7 +3,7 @@
 > [!WARNING]
 > **Work in progress.** redact hides a lot, but not everything, and it will miss things. Check its output before you share anything that matters, and do not rely on it as your only safeguard. Found a leak? Please [open an issue](https://github.com/Drewtopia/redact/issues) naming the command and the field, never the value.
 
-Keep secrets, names, and sensitive information out of what AI sees. Pipe any output through `redact` and the parts that say who you are, who you work for or how to get in (tokens, passwords, people, emails, internal hosts and IDs) come back as placeholders, so you can hand it to Claude, Codex or a chat window without giving those away.
+Keep secrets, names, and sensitive information out of what AI sees. Pipe any output through `redact` and the parts that say who you are or how to get in (tokens, passwords, people, emails and cloud IDs) come back as placeholders, so you can hand it to Claude, Codex or a chat window without giving those away. Organisation, project, repo and host names are hidden too with `redact config init --preset strict`, or once you enable the `azure-names` and `gcp-names` packs.
 
 ```console
 $ { git log -1; env | grep BILLING; curl -sv https://api.example.com/v1/jobs; } 2>&1 | redact
@@ -73,10 +73,12 @@ Built-in packs for common tools:
 - **`docker`:** registry logins in `~/.docker/config.json`, and secret-named entries in `docker inspect`'s `Env` list.
 - **`npm`:** `_authToken`, `_password` and `_auth` in `.npmrc`, for any registry.
 - **`http`:** `Cookie` and `Set-Cookie` values and API key headers such as `x-api-key`, as `curl -v` prints them.
-- **`gcp`:** `ya29.` access tokens, and project IDs in key files, resource paths and `--project`.
+- **`gcp`:** `ya29.` access tokens and private key IDs.
+- **`gcp-names`, off by default:** Google Cloud project IDs in key files, resource paths and `--project` flags. Like `azure-names`, they show unless you turn this on: `[packs] enable = ["gcp-names"]`. These rules were in `gcp` before, so `gcp:project-path` is now `gcp-names:project-path`, and their keys under `[labels.gcp]` move to `[labels.gcp-names]`. The old name stops the config loading. See [the gcp-names pack](https://drewtopia.github.io/redact/packs/gcp-names).
 - **`pii`, off by default:** card numbers and IBANs that pass their checksums, IP and MAC addresses, and phone numbers, US Social Security and UK National Insurance numbers beside a clue word such as `phone` or `ssn` on the same line or the line before. Turn it on with `[packs] enable = ["pii"]`.
 
-- **`azure`:** tenant, subscription and identity IDs beside their names, people in Azure DevOps and Microsoft Graph records, your own Azure hosts, and Azure DevOps org, project and repo names. Public values Microsoft documents stay visible. See [the azure pack](https://drewtopia.github.io/redact/packs/azure).
+- **`azure`:** tenant, subscription and identity IDs beside their names, people in Azure DevOps and Microsoft Graph records, and pipeline variable and key values. Public values Microsoft documents stay visible. See [the azure pack](https://drewtopia.github.io/redact/packs/azure).
+- **`azure-names`, off by default:** Azure DevOps organisation, project and repo names in URLs and records, and Azure host, tenant, subscription and company names (`<name>.azurewebsites.net`, `<name>.vault.azure.net`). They turn up in paths, commands and links, and a hidden one breaks them, so they show unless you turn this on ([ADR 0001](docs/adr/0001-defaults-and-opt-in.md)): `[packs] enable = ["azure-names"]`. These rules were in `azure` before, so a `disable = ["azure:ado-org"]` now needs `azure-names:ado-org`, and their keys under `[labels.azure]` move to `[labels.azure-names]`. The old name stops the config loading. See [the azure-names pack](https://drewtopia.github.io/redact/packs/azure-names).
 
 Rules find things by where they sit (the value after `password=`, the name in an `Author:` line), so you do not list them. Every pack's rules: [drewtopia.github.io/redact/packs](https://drewtopia.github.io/redact/packs/).
 
@@ -105,11 +107,11 @@ enable = ["pii"]     # phone numbers, cards, IBANs, IPs: off by default
 
 # Settings for one machine, folder (`dir`) or command (`--command`).
 [[override]]
-host = "work-laptop"
-env_files = ["~/work/.env"]
+host = "dev-box"
+env_files = ["~/dev/acme/.env"]
 ```
 
-`redact config init` writes a starter file with every setting switched off. The [config reference](https://drewtopia.github.io/redact/reference/config) covers each one.
+`redact config init` writes a starter file with every setting switched off. `redact config init --preset strict` writes one that also hides you (`me = true`), personal data (`pii`) and organisation, project, repo and host names (`azure-names` and `gcp-names`). The [config reference](https://drewtopia.github.io/redact/reference/config) covers each one.
 
 `me` asks git for your `user.name` and `user.email` (in the repo you run it from, and globally: a work email set by an `includeIf` counts when you run redact inside that repo) and reads your GitHub logins from gh's `hosts.yml`. They are hidden everywhere as `[ME-NAME-…]`, `[ME-EMAIL-…]` and `[ME-GITHUB-…]`, so your username stops showing in GitHub URLs and remotes. Nothing to keep in sync: change your git name and redact follows.
 

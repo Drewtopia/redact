@@ -1,0 +1,61 @@
+# Built-in pack: Google Cloud names. Off by default; turn it on in config.toml:
+#   [packs]
+#   enable = ["gcp-names"]
+# or write a config that does with `redact config init --preset strict`.
+# It hides Google Cloud project IDs, which turn up in paths, commands and links:
+# once hidden, those hold placeholders and may not run.
+# ADR 0001 (docs/adr/0001-defaults-and-opt-in.md) explains why it is a choice.
+# Credentials stay in the gcp pack, on by default.
+# Each rule's regex finds a spot; `secretGroup` is the capture group that gets hidden,
+# and `label` is what the placeholder says instead: [PROJECT-1a2b3c4d].
+# `remember = "distinctive"` hides that value everywhere else in the same text when it
+# reads as a name; `"any"` does so for any capitalised or 5+ character value.
+schema_version = 1
+id = "gcp-names"
+description = "Google Cloud project IDs. Off by default"
+default = false
+keywords = ["project_id", "projectid", "projects/", "--project"]
+
+# --- Google Cloud project IDs -------------------------------------------------
+
+[[rules]]
+id = "project-id-field"
+description = "project_id and projectId in a service account key file or API output"
+regex = '''(?i)"(?:project_id|projectId|quota_project_id)"\s*:\s*"([a-z][a-z0-9-]{4,28}[a-z0-9])"'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["project_id", "projectid"]
+
+matrix = false
+[[rules.tests]]
+input = "{\"project_id\": \"fabrikam-dev-123\"}"
+expect = ["fabrikam-dev-123"]
+
+[[rules]]
+id = "project-path"
+description = "The project in a resource path: projects/<id>/..."
+regex = '''(?:^|[^A-Za-z0-9_]|\\[nrt])projects/([a-z][a-z0-9-]{4,28}[a-z0-9])\b'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["projects/"]
+
+matrix = false
+[[rules.tests]]
+input = "projects/fabrikam-dev-123/locations/us"
+expect = ["fabrikam-dev-123"]
+
+[[rules]]
+id = "project-flag"
+description = "The project after --project (gcloud)"
+regex = '''--project[= \t]+([a-z][a-z0-9-]{4,28}[a-z0-9])\b'''
+secretGroup = 1
+label = "PROJECT"
+remember = "any"
+keywords = ["--project"]
+
+matrix = false
+[[rules.tests]]
+input = "gcloud run deploy --project fabrikam-dev-123"
+expect = ["fabrikam-dev-123"]

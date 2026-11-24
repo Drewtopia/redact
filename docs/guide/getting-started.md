@@ -72,15 +72,18 @@ redact config ls
 ```
 
 ```text
- 1  builtin azure                         40 rules
- 2  builtin identity                      5 rules
+ 1  builtin azure                         21 rules
+ 2  builtin azure-names                   19 rules, off
+ 3  builtin identity                      5 rules
  …
- 9  builtin pii                           12 rules, off
-10  folder  ~/.config/redact/packs        missing
-11  config  ~/.config/redact/config.toml  missing
+ 9  builtin gcp-names                     3 rules, off
+ …
+11  builtin pii                           12 rules, off
+12  folder  ~/.config/redact/packs        missing
+13  config  ~/.config/redact/config.toml  missing
 ```
 
-The `pii` pack hides phone numbers, card numbers, and IP addresses. It starts switched off. To turn it on, see [Packs](../reference/config#packs).
+The `pii` pack hides phone numbers, card numbers, and IP addresses, and the `azure-names` and `gcp-names` packs hide organisation, project, repo and host names. All three start switched off. To turn them on, see [Packs](../reference/config#packs), or run `redact config init --preset strict`.
 
 A file redact looks for and does not find is listed as `missing`. You have no config file yet, so the last line says `missing`.
 

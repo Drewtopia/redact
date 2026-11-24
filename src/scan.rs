@@ -556,10 +556,11 @@ mod tests {
         })
     }
 
-    /// The built-in packs' output, with each tag's random hex shown as `…`: a
-    /// random tag such as `[ID-a17946f0]` must not read as a leaked `7946`.
+    /// The built-in packs' output, `azure-names` and `gcp-names` switched on, with each tag's random hex
+    /// shown as `…`: a random tag such as `[ID-a17946f0]` must not read as a
+    /// leaked `7946`.
     fn azure(text: &str) -> String {
-        let loaded = pack::load(&pack::Options {
+        let mut loaded = pack::load(&pack::Options {
             files: vec![],
             builtin: true,
             user: false,
@@ -570,12 +571,24 @@ mod tests {
             host: None,
         })
         .unwrap();
+        names_on(&mut loaded);
         let out = mask(
             text,
             &scan(text, &loaded).unwrap(),
             &mut Tagger::new(None).unwrap(),
         );
         blank_tags(&out)
+    }
+
+    /// Switches on `azure-names` and `gcp-names` in the built-in order, as
+    /// `[packs] enable = ["azure-names", "gcp-names"]` leaves them: each right
+    /// after its cloud's pack.
+    fn names_on(loaded: &mut pack::Loaded) {
+        for (id, after) in [("azure-names", "azure"), ("gcp-names", "gcp")] {
+            let off = loaded.off.iter().position(|p| p.id == id).unwrap();
+            let at = loaded.packs.iter().position(|p| p.id == after).unwrap() + 1;
+            loaded.packs.insert(at, loaded.off.remove(off));
+        }
     }
 
     fn blank_tags(out: &str) -> String {
@@ -835,7 +848,7 @@ mod tests {
             host: None,
         })
         .unwrap();
-        // `pii` is off by default; its rules are tested here too.
+        // `pii`, `azure-names` and `gcp-names` are off by default; their rules are tested here too.
         loaded.packs.append(&mut loaded.off);
         loaded.packs.retain(|p| p.id == pack_id);
         for p in &mut loaded.packs {
@@ -882,27 +895,27 @@ mod tests {
         for end in ["\\n", "\\\"", "\\\\"] {
             for (id, url, value) in [
                 (
-                    "azure:ado-repo-url",
+                    "azure-names:ado-repo-url",
                     "https://dev.azure.com/fabrikamqa/Ops/_git/widget-api",
                     "widget-api",
                 ),
                 (
-                    "azure:ado-project-url",
+                    "azure-names:ado-project-url",
                     "https://dev.azure.com/fabrikamqa/Ops",
                     "Ops",
                 ),
                 (
-                    "azure:ado-project-visualstudio",
+                    "azure-names:ado-project-visualstudio",
                     "https://fabrikamqa.visualstudio.com/Ops",
                     "Ops",
                 ),
                 (
-                    "azure:ado-org-ssh",
+                    "azure-names:ado-org-ssh",
                     "git@ssh.dev.azure.com:v3/fabrikamqa",
                     "",
                 ),
                 (
-                    "azure:ado-project-ssh",
+                    "azure-names:ado-project-ssh",
                     "git@ssh.dev.azure.com:v3/fabrikamqa/Ops",
                     "",
                 ),
@@ -982,7 +995,7 @@ mod tests {
                 String::new(),
             ),
             (
-                "gcp:project-path",
+                "gcp-names:project-path",
                 "projects/bluefinq-prod-45/x".into(),
                 "bluefinq-prod-45".into(),
             ),
@@ -2068,7 +2081,7 @@ mod tests {
     fn a_label_never_shows_a_value_a_rule_hid() {
         let d = tmp("labelvalue");
         std::fs::write(d.join("x.env"), "CONTOSOQ_API_KEY=Zq8vToken42abc\n").unwrap();
-        let loaded = pack::load(&pack::Options {
+        let mut loaded = pack::load(&pack::Options {
             files: vec![],
             builtin: true,
             user: false,
@@ -2079,6 +2092,7 @@ mod tests {
             host: None,
         })
         .unwrap();
+        names_on(&mut loaded);
         let text = r#"{"name": "Contosoq", "isDefault": true} and Zq8vToken42abc"#;
         let out = blank_tags(&mask(
             text,
@@ -2297,26 +2311,37 @@ mod tests {
     #[test]
     fn allowed_values_stay_visible_in_any_case() {
         let url = "https://dev.azure.com/fabrikamq/Bluefinq/_git/app and C:\\BLUEFINQ\\x";
-        let out = with_config("allow", "allow = [\"fabrikamq\", \"bluefinq\"]\n", url).unwrap();
+        let out = with_config(
+            "allow",
+            "allow = [\"fabrikamq\", \"bluefinq\"]\n[packs]\nenable = [\"azure-names\"]\n",
+            url,
+        )
+        .unwrap();
         assert!(
             out.contains("dev.azure.com/fabrikamq/Bluefinq/_git/")
                 && out.contains("C:\\BLUEFINQ\\"),
             "{out}"
         );
         // Not allowed: still hidden.
-        let out = with_config("allow2", "allow = [\"fabrikamq\"]\n", url).unwrap();
+        let out = with_config(
+            "allow2",
+            "allow = [\"fabrikamq\"]\n[packs]\nenable = [\"azure-names\"]\n",
+            url,
+        )
+        .unwrap();
         assert!(!out.contains("Bluefinq"), "{out}");
     }
 
     #[test]
     fn packs_can_be_turned_on_and_off() {
+        // `gcp-names` is off by default (ADR 0001); `enable` turns it on.
         let text = "projects/bluefinq-prod-45/locations/eu";
         assert!(
-            !with_config("on", "", text)
+            !with_config("on", "[packs]\nenable = [\"gcp-names\"]\n", text)
                 .unwrap()
                 .contains("bluefinq-prod-45")
         );
-        let off = with_config("off", "[packs]\ndisable = [\"gcp\"]\n", text).unwrap();
+        let off = with_config("off", "", text).unwrap();
         assert!(off.contains("bluefinq-prod-45"), "{off}");
         let err = with_config("typo", "[packs]\ndisable = [\"gpc\"]\n", text)
             .err()
@@ -2395,9 +2420,9 @@ mod tests {
     #[test]
     fn overrides_by_machine_folder_and_command() {
         let url = "https://dev.azure.com/fabrikamq/Bluefinq/_git/app";
-        let cfg = "[[override]]\nhost = \"work-*\"\nallow = [\"fabrikamq\"]\n\n[[override]]\ndir = \"/srv/bluefinq\"\nallow = [\"bluefinq\"]\n\n[[override]]\ncommand = \"az repos pr *\"\n[override.packs]\ndisable = [\"identity\"]\n";
+        let cfg = "[packs]\nenable = [\"azure-names\"]\n\n[[override]]\nhost = \"dev-*\"\nallow = [\"fabrikamq\"]\n\n[[override]]\ndir = \"/srv/bluefinq\"\nallow = [\"bluefinq\"]\n\n[[override]]\ncommand = \"az repos pr *\"\n[override.packs]\ndisable = [\"identity\"]\n";
         // host matches: the org shows; folder does not: the project stays hidden.
-        let out = with_context("ov1", cfg, url, Some("WORK-LAPTOP"), Some("/tmp"), None).unwrap();
+        let out = with_context("ov1", cfg, url, Some("DEV-BOX"), Some("/tmp"), None).unwrap();
         assert!(
             out.contains("/fabrikamq/") && !out.contains("Bluefinq"),
             "{out}"
