@@ -162,7 +162,7 @@ enum Preset {
     Minimal,
     /// Every setting that needs none of your own names, switched on, pii included.
     Full,
-    /// Also hides you, personal data (pii) and org, project, repo and host names.
+    /// You, pii, azure-names and gcp-names on: org, project, repo and host names hidden too.
     Strict,
     /// Every setting shown and switched off, as a reference.
     Commented,
